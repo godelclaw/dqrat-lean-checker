@@ -1,0 +1,10 @@
+name = "dqrat-lean"
+version = "0.1.0"
+defaultTargets = ["dqrat-lean"]
+
+[[lean_lib]]
+name = "DqratLean"
+
+[[lean_exe]]
+name = "dqrat-lean"
+root = "Main"
