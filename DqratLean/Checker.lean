@@ -113,9 +113,72 @@ def checkDQRATE (lits : Array Literal) : CheckM (Bool × Option CRef) := do
   | some c => return (false, some c)
   | none   => return (true, none)
 
+-- ─── D^∀-pure path reachability to a target clause ───────────────────────
+
+-- Check if there is a D^∀-pure path from the negations of existential literals
+-- in `lits` (that depend on var(l)) through the clause store to `target`.
+-- Used in DQRATU to skip blocker clauses that are disconnected from the proof clause.
+-- l must be a universal literal.
+def checkPathC (st : CheckState) (l : Literal) (lits : Array Literal) (target : CRef) : Bool :=
+  let lvar := l.var
+  if st.formula.isVarExistential lvar then false
+  else
+    let numLits := st.formula.maxVar * 2 + 2
+    -- Starting worklist: ~e for each existential e in lits that depends on lvar
+    let initWorklist : Array Literal := lits.foldl (fun wl lit =>
+      let v := lit.var
+      if !st.formula.isVarExistential v then wl
+      else
+        let deps := st.formula.depset.getD v #[]
+        if deps.contains lvar then wl.push lit.negate else wl
+    ) #[]
+    let explored : Array Bool := (List.replicate numLits false).toArray
+    -- Fuel-bounded DFS
+    let rec go : Nat → Array Literal → Array Bool → Bool
+      | 0, _, _ => false
+      | f + 1, wl, expl =>
+          if wl.isEmpty then false
+          else
+            let cur := wl.getD (wl.size - 1) ⟨0⟩
+            let wl' := wl.pop
+            let idx := cur.x
+            if expl.getD idx false then go f wl' expl
+            else
+              let expl' := arraySafeSet expl idx true
+              let occs := st.clauses.getOcc cur
+              let (found, wl'') := occs.foldl (fun (fd, acc) cref =>
+                if fd then (true, acc)
+                else if cref == target then (true, acc)  -- target reached
+                else
+                  match st.clauses.getClauseRaw cref with
+                  | none => (false, acc)
+                  | some clause =>
+                      if clause.deleted then (false, acc)
+                      -- Skip clauses containing l (not u-pure)
+                      else if clause.lits.contains l then (false, acc)
+                      else
+                        -- Add ~lit to worklist for existentials depending on lvar
+                        let acc' := clause.lits.foldl (fun acc2 lit =>
+                          if lit == cur then acc2
+                          else if expl'.getD lit.negate.x false then acc2
+                          else
+                            let litvar := lit.var
+                            if !st.formula.isVarExistential litvar then acc2
+                            else
+                              let deps := st.formula.depset.getD litvar #[]
+                              if deps.contains lvar then acc2.push lit.negate else acc2
+                        ) acc
+                        (false, acc')
+              ) (false, wl')
+              if found then true
+              else go f wl'' expl'
+    go (numLits + 2) initWorklist explored
+
 -- ─── DQRATU check ─────────────────────────────────────────────────────────
 
 -- DQRATU check: pivot must be universal; try RUP-without-pivot then RAT.
+-- Only checks blocker clauses that are connected to the proof clause via
+-- a D^∀-pure path (checkPathC), or that are the proof clause itself.
 def checkDQRATU (lits : Array Literal) (pivot : Literal) : CheckM Bool := do
   -- ── RUP without pivot (opens decision level 1) ──
   let isRup ← negateAndPropagate lits (fun l => l != pivot)
@@ -127,6 +190,9 @@ def checkDQRATU (lits : Array Literal) (pivot : Literal) : CheckM Bool := do
   let st ← get
   let negPivot := pivot.negate
   let occPivot := st.clauses.getOcc negPivot
+  -- CRef of the clause being proved (if it already exists in the formula)
+  let sortedLits := lits.qsort (fun a b => a.x < b.x)
+  let crefOfLits := st.clauses.findSortedClause sortedLits
 
   let isRat ← occPivot.foldlM (fun allOk cref => do
     if !allOk then return false
@@ -135,6 +201,9 @@ def checkDQRATU (lits : Array Literal) (pivot : Literal) : CheckM Bool := do
     | none => return true
     | some clause =>
       if clause.deleted then return true
+      -- Skip disconnected blocker clauses (Mixed-EUR: EUR check)
+      let connected := checkPathC st pivot lits cref || crefOfLits == some cref
+      if !connected then return true
       let f := st.formula
       let isouter : Literal → Bool := fun l =>
         l != negPivot && f.isVarOuterOfUnivar l.var pivot.var

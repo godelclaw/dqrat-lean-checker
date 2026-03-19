@@ -283,7 +283,8 @@ def processProof (st : CheckState) (content : String) : ProofResult :=
           finalResult := .Failed lineCtr #["LOCATE", "UR"] #[] none; break
         | some _ =>
           let f2 ← (·.formula) <$> get
-          let pivotReducible := lits.all fun l =>
+          -- Not reducible if clause contains ~pivot (Mixed-EUR: no tautology reductions)
+          let pivotReducible := !lits.any (· == pivot.negate) && lits.all fun l =>
             !f2.isVarExistential l.var || !f2.isVarOuterOfExivar pivot.var l.var
           if pivotReducible then
             let litsNoPivot := lits.filter (· != pivot)
