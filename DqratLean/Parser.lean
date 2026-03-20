@@ -105,7 +105,7 @@ def parseDQDIMACS (content : String) : Except String (Option CheckState) := do
               deps := deps.push internalDep
           modify fun st =>
             { st with formula :=
-              { st.formula with depset := arraySafeSet st.formula.depset internalExi deps } }
+              { st.formula with depset := st.formula.depset.setIfInBounds internalExi deps } }
           for u in deps do makeIndepUnknown u
       else if tok == "c" then
         -- Skip comment token (the rest of the line is already tokenized away)
@@ -146,199 +146,222 @@ def parseDQDIMACS (content : String) : Except String (Option CheckState) := do
   | .ok (some _, _) => return none    -- UNSAT during parsing
   | .ok (none, st)  => return some st
 
+-- ─── Proof actions ─────────────────────────────────────────────────────────
+
+/-- A single step in a DQRAT proof, with external variable numbers still unresolved. -/
+inductive DQRatAction where
+  /-- 'a': add universal variables (extVars may include negatives for error reporting) -/
+  | AddUniversal      (lineNum : Nat) (extVars    : List Int)
+  /-- 'e': modify existential; positive dep = add, negative dep = remove -/
+  | ModifyExistential (lineNum : Nat) (extExi     : Nat)  (depChanges : List Int)
+  /-- 'd': delete clause given by external literals -/
+  | DeleteClause      (lineNum : Nat) (extLits    : List Int)
+  /-- 'u': universal reduction -/
+  | UniversalReduction(lineNum : Nat) (extLits    : List Int)
+  /-- digit: RUP / DQRATE step -/
+  | RatClause         (lineNum : Nat) (extLits    : List Int)
+
+-- ─── Phase 1: pure parsing ─────────────────────────────────────────────────
+
+/-- Read integers from `toks` starting at `pos` until a 0 or non-integer token.
+    Returns the (non-zero) integer list and the new position (after the terminator). -/
+private def readIntList (toks : Array String) (start : Nat) : List Int × Nat :=
+  let n := toks.size
+  let rec go (pos : Nat) (acc : List Int) : List Int × Nat :=
+    if pos >= n then (acc.reverse, pos)
+    else
+      match (toks.getD pos "").toInt? with
+      | none   => (acc.reverse, pos + 1)
+      | some 0 => (acc.reverse, pos + 1)
+      | some i => go (pos + 1) (i :: acc)
+  termination_by n - pos
+  go start []
+
+/-- Phase 1: tokenize proof content and produce a list of DQRatAction.
+    Pure function — no state access. -/
+def parseProofActions (content : String) : List DQRatAction := Id.run do
+  let toks := tokenize content
+  let n    := toks.size
+  let mut pos     := 0
+  let mut lineNum := 0
+  let mut acc : List DQRatAction := []
+
+  while pos < n do
+    let tok := toks.getD pos ""
+    pos     := pos + 1
+    lineNum := lineNum + 1
+
+    if tok = "a" then
+      let (vars, pos') := readIntList toks pos
+      pos := pos'
+      acc := .AddUniversal lineNum vars :: acc
+
+    else if tok = "e" then
+      if pos >= n then
+        acc := .ModifyExistential lineNum 0 [] :: acc
+      else
+        let exiStr := toks.getD pos ""
+        match exiStr.toNat? with
+        | none =>
+          pos := pos + 1
+          acc := .ModifyExistential lineNum 0 [] :: acc
+        | some extExi =>
+          pos := pos + 1
+          let (deps, pos') := readIntList toks pos
+          pos := pos'
+          acc := .ModifyExistential lineNum extExi deps :: acc
+
+    else if tok = "d" then
+      let (lits, pos') := readIntList toks pos
+      pos := pos'
+      acc := .DeleteClause lineNum lits :: acc
+
+    else if tok = "u" then
+      let (lits, pos') := readIntList toks pos
+      pos := pos'
+      acc := .UniversalReduction lineNum lits :: acc
+
+    else
+      match tok.toInt? with
+      | none => pure ()  -- skip unrecognised token
+      | some firstLit =>
+        let (rest, pos') := readIntList toks pos
+        pos := pos'
+        let extLits := if firstLit = 0 then rest else firstLit :: rest
+        acc := .RatClause lineNum extLits :: acc
+
+  return acc.reverse
+
+-- ─── Phase 2: monadic checking ─────────────────────────────────────────────
+
+/-- Phase 2: execute a list of parsed actions in CheckM. -/
+private def checkActions : List DQRatAction → CheckM ProofResult
+  | [] => return .Unknown
+
+  | .AddUniversal lineNum extVars :: rest => do
+    for cv in extVars do
+      if cv < 0 then
+        let extVar := (-cv).toNat
+        let f ← (·.formula) <$> get
+        if f.externalVarExists extVar then
+          return .Failed lineNum #["UADD"] #[cv] none
+      else
+        let extVar := cv.toNat
+        let f ← (·.formula) <$> get
+        if f.externalVarExists extVar then
+          return .Failed lineNum #["UADD"] #[cv] none
+        else
+          let _ ← addVarForall extVar
+    checkActions rest
+
+  | .ModifyExistential lineNum extExi depChanges :: rest => do
+    if extExi = 0 then return .Failed lineNum #["UADD"] #[] none
+    let f ← (·.formula) <$> get
+    let internalExi ←
+      if !f.externalVarExists extExi then addVarExists extExi #[]
+      else match f.lookupInternal extExi with
+        | none   => throw s!"Var {extExi} not found"
+        | some v => pure v
+    for cv in depChanges do
+      if cv < 0 then
+        let extDep := (-cv).toNat
+        let f2 ← (·.formula) <$> get
+        if f2.externalVarExists extDep then
+          match f2.lookupInternal extDep with
+          | none => pure ()
+          | some internalDep =>
+            let ok ← delDependency internalExi internalDep
+            if !ok then
+              return .Failed lineNum #["DPURE"] #[cv, Int.ofNat extExi] none
+      else
+        let extDep := cv.toNat
+        let f2 ← (·.formula) <$> get
+        let internalDep ←
+          if !f2.externalVarExists extDep then addVarForall extDep
+          else match f2.lookupInternal extDep with
+            | none   => throw s!"Dep var {extDep} not found"
+            | some v => pure v
+        addDependency internalExi internalDep
+    checkActions rest
+
+  | .DeleteClause lineNum extLits :: rest => do
+    let mut lits : Array Literal := #[]
+    for lit in extLits do
+      let extVar := lit.natAbs
+      let f ← (·.formula) <$> get
+      match f.lookupInternal extVar with
+      | none    => pure ()
+      | some iv => lits := lits.push (mkLit iv (lit > 0))
+    let sorted := lits.qsort (fun a b => a.x < b.x)
+    let st ← get
+    match st.clauses.findSortedClause sorted with
+    | none =>
+      return .Failed lineNum #["LOCATE", "DEL"] #[] none
+    | some cref =>
+      modify fun s => { s with clauses := s.clauses.deleteClause cref }
+      checkActions rest
+
+  | .UniversalReduction lineNum extLits :: rest => do
+    let mut lits : Array Literal := #[]
+    for lit in extLits do
+      let extVar := lit.natAbs
+      let f ← (·.formula) <$> get
+      match f.lookupInternal extVar with
+      | none    => pure ()
+      | some iv => lits := lits.push (mkLit iv (lit > 0))
+    if lits.isEmpty then
+      return .Failed lineNum #["UR"] #[] none
+    let pivot := lits.getD 0 ⟨0⟩
+    let f ← (·.formula) <$> get
+    if f.isVarExistential pivot.var then
+      return .Failed lineNum #["UR"] #[f.externalizeLit pivot] none
+    let sorted := lits.qsort (fun a b => a.x < b.x)
+    let st ← get
+    match st.clauses.findSortedClause sorted with
+    | none =>
+      return .Failed lineNum #["LOCATE", "UR"] #[] none
+    | some _ =>
+      let f2 ← (·.formula) <$> get
+      -- Not reducible if clause contains ~pivot (Mixed-EUR: no tautology reductions)
+      let pivotReducible := !lits.any (· = pivot.negate) && lits.all fun l =>
+        !f2.isVarExistential l.var || !f2.isVarOuterOfExivar pivot.var l.var
+      if pivotReducible then
+        let litsNoPivot := lits.filter (· ≠ pivot)
+        let r ← addClause litsNoPivot
+        if r.isNone then return .Verified lineNum
+      else
+        let ok ← checkDQRATU lits pivot
+        if !ok then
+          return .Failed lineNum #["UR", "DQRATU"] #[] none
+        else
+          let r ← addClause lits
+          if r.isNone then return .Verified lineNum
+      checkActions rest
+
+  | .RatClause lineNum extLits :: rest => do
+    let mut lits : Array Literal := #[]
+    for lit in extLits do
+      let extVar := lit.natAbs
+      let f ← (·.formula) <$> get
+      if !f.externalVarExists extVar then
+        -- QRAT compat: create extension var with all univars as deps
+        let univs := f.univars
+        let _ ← addVarExists extVar univs
+      let f2 ← (·.formula) <$> get
+      match f2.lookupInternal extVar with
+      | none    => pure ()
+      | some iv => lits := lits.push (mkLit iv (lit > 0))
+    let (success, blocker) ← checkDQRATE lits
+    if !success then
+      return .Failed lineNum #["RUP", "DQRATE"] #[] blocker
+    else
+      let r ← addClause lits
+      if r.isNone then return .Verified lineNum
+      checkActions rest
+
 -- ─── Proof processor ───────────────────────────────────────────────────────
 
 def processProof (st : CheckState) (content : String) : ProofResult :=
-  let toks := tokenize content
-  let n := toks.size
-
-  let proc : CheckM ProofResult := do
-    let mut pos := 0
-    let mut lineCtr := 0
-    let mut finalResult : ProofResult := .Unknown
-
-    while pos < n do
-      let tok := toks.getD pos ""
-      pos := pos + 1
-      lineCtr := lineCtr + 1
-
-      if tok == "a" then
-        let mut failed := false
-        let mut inner := true
-        while inner && pos < n do
-          let varTok := toks.getD pos ""
-          pos := pos + 1
-          match varTok.toInt? with
-          | none   => inner := false
-          | some 0 => inner := false
-          | some cv =>
-            if cv < 0 then
-              let extVar := (-cv).toNat
-              let f ← (·.formula) <$> get
-              if f.externalVarExists extVar then
-                finalResult := .Failed lineCtr #["UADD"] #[cv] none
-                failed := true; inner := false
-            else
-              let extVar := cv.toNat
-              let f ← (·.formula) <$> get
-              if f.externalVarExists extVar then
-                finalResult := .Failed lineCtr #["UADD"] #[cv] none
-                failed := true; inner := false
-              else
-                let _ ← addVarForall extVar
-        if failed then break
-
-      else if tok == "e" then
-        let exiTok := toks.getD pos ""
-        pos := pos + 1
-        match exiTok.toNat? with
-        | none =>
-          finalResult := .Failed lineCtr #["UADD"] #[] none; break
-        | some extExi =>
-          let f ← (·.formula) <$> get
-          let internalExi ←
-            if !f.externalVarExists extExi then addVarExists extExi #[]
-            else match f.lookupInternal extExi with
-              | none   => throw s!"Var {extExi} not found"
-              | some v => pure v
-          let mut failed := false
-          let mut inner := true
-          while inner && pos < n do
-            let dtok := toks.getD pos ""
-            pos := pos + 1
-            match dtok.toInt? with
-            | none   => inner := false
-            | some 0 => inner := false
-            | some cv =>
-              if cv < 0 then
-                let extDep := (-cv).toNat
-                let f2 ← (·.formula) <$> get
-                if f2.externalVarExists extDep then
-                  match f2.lookupInternal extDep with
-                  | none => pure ()
-                  | some internalDep =>
-                    let ok ← delDependency internalExi internalDep
-                    if !ok then
-                      finalResult := .Failed lineCtr #["DPURE"] #[cv, Int.ofNat extExi] none
-                      failed := true; inner := false
-              else
-                let extDep := cv.toNat
-                let f2 ← (·.formula) <$> get
-                let internalDep ←
-                  if !f2.externalVarExists extDep then addVarForall extDep
-                  else match f2.lookupInternal extDep with
-                    | none   => throw s!"Dep var {extDep} not found"
-                    | some v => pure v
-                addDependency internalExi internalDep
-          if failed then break
-
-      else if tok == "d" then
-        let mut lits : Array Literal := #[]
-        let mut inner := true
-        while inner && pos < n do
-          let ltok := toks.getD pos ""
-          pos := pos + 1
-          match ltok.toInt? with
-          | none   => inner := false
-          | some 0 => inner := false
-          | some lit =>
-            let extVar := lit.natAbs
-            let f ← (·.formula) <$> get
-            match f.lookupInternal extVar with
-            | none    => pure ()
-            | some iv => lits := lits.push (mkLit iv (lit > 0))
-        let sorted := lits.qsort (fun a b => a.x < b.x)
-        let st2 ← get
-        match st2.clauses.findSortedClause sorted with
-        | none =>
-          finalResult := .Failed lineCtr #["LOCATE", "DEL"] #[] none; break
-        | some cref =>
-          modify fun s => { s with clauses := s.clauses.deleteClause cref }
-
-      else if tok == "u" then
-        let mut lits : Array Literal := #[]
-        let mut inner := true
-        while inner && pos < n do
-          let ltok := toks.getD pos ""
-          pos := pos + 1
-          match ltok.toInt? with
-          | none   => inner := false
-          | some 0 => inner := false
-          | some lit =>
-            let extVar := lit.natAbs
-            let f ← (·.formula) <$> get
-            match f.lookupInternal extVar with
-            | none    => pure ()
-            | some iv => lits := lits.push (mkLit iv (lit > 0))
-        if lits.isEmpty then
-          finalResult := .Failed lineCtr #["UR"] #[] none; break
-        let pivot := lits.getD 0 ⟨0⟩
-        let f ← (·.formula) <$> get
-        if f.isVarExistential pivot.var then
-          finalResult := .Failed lineCtr #["UR"] #[f.externalizeLit pivot] none; break
-        let sorted := lits.qsort (fun a b => a.x < b.x)
-        let st2 ← get
-        match st2.clauses.findSortedClause sorted with
-        | none =>
-          finalResult := .Failed lineCtr #["LOCATE", "UR"] #[] none; break
-        | some _ =>
-          let f2 ← (·.formula) <$> get
-          -- Not reducible if clause contains ~pivot (Mixed-EUR: no tautology reductions)
-          let pivotReducible := !lits.any (· == pivot.negate) && lits.all fun l =>
-            !f2.isVarExistential l.var || !f2.isVarOuterOfExivar pivot.var l.var
-          if pivotReducible then
-            let litsNoPivot := lits.filter (· != pivot)
-            let r ← addClause litsNoPivot
-            if r.isNone then
-              finalResult := .Verified lineCtr; break
-          else
-            let ok ← checkDQRATU lits pivot
-            if !ok then
-              finalResult := .Failed lineCtr #["UR", "DQRATU"] #[] none; break
-            else
-              let r ← addClause lits
-              if r.isNone then
-                finalResult := .Verified lineCtr; break
-
-      else
-        match tok.toInt? with
-        | none => pure ()  -- skip non-integer token
-        | some firstLit =>
-          let mut lits : Array Literal := #[]
-          if firstLit != 0 then
-            let extVar := firstLit.natAbs
-            let f ← (·.formula) <$> get
-            if !f.externalVarExists extVar then
-              -- QRAT compat: create extension var with all univars as deps
-              let univs := f.univars
-              let _ ← addVarExists extVar univs
-            let f2 ← (·.formula) <$> get
-            match f2.lookupInternal extVar with
-            | none    => pure ()
-            | some iv => lits := lits.push (mkLit iv (firstLit > 0))
-          let mut inner := true
-          while inner && pos < n do
-            let ltok := toks.getD pos ""
-            pos := pos + 1
-            match ltok.toInt? with
-            | none   => inner := false
-            | some 0 => inner := false
-            | some lit =>
-              let extVar := lit.natAbs
-              let f ← (·.formula) <$> get
-              match f.lookupInternal extVar with
-              | none    => pure ()
-              | some iv => lits := lits.push (mkLit iv (lit > 0))
-          let (success, blocker) ← checkDQRATE lits
-          if !success then
-            finalResult := .Failed lineCtr #["RUP", "DQRATE"] #[] blocker; break
-          else
-            let r ← addClause lits
-            if r.isNone then
-              finalResult := .Verified lineCtr; break
-
-    return finalResult
-
-  match proc.run st with
-  | .error e  => .Failed 0 #[e] #[] none
+  match (checkActions (parseProofActions content)).run st with
+  | .error e   => .Failed 0 #[e] #[] none
   | .ok (r, _) => r

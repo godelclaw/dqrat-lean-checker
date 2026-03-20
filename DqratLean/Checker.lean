@@ -11,7 +11,7 @@ def negateAndPropagate (lits : Array Literal) (which : Literal → Bool) : Check
     if !which l then return false
     let st ← get
     let v := l.var
-    if v == 0 || v > st.formula.maxVar then return false
+    if v = 0 || v > st.formula.maxVar then return false
     if satisfied st l then
       return true  -- l is already true; ~l would be false = contradiction
     else if satisfied st l.negate then
@@ -49,7 +49,7 @@ def addClause (lits : Array Literal) : CheckM (Option CRef) := do
     !st.isAssigned.getD (v - 1) false
   if unassigned.isEmpty then
     return none  -- all literals false = conflict
-  else if unassigned.size == 1 then
+  else if unassigned.size = 1 then
     enqueue (unassigned.getD 0 ⟨0⟩)
     let conflict ← propagate
     if conflict.isSome then return none
@@ -96,7 +96,7 @@ def checkDQRATE (lits : Array Literal) : CheckM (Bool × Option CRef) := do
         -- outer lit l ≠ ~pivot and isVarOuterOfExivar(var(l), var(pivot))
         let f := st.formula
         let isouter : Literal → Bool := fun l =>
-          l != negPivot && f.isVarOuterOfExivar l.var pivot.var
+          l ≠ negPivot && f.isVarOuterOfExivar l.var pivot.var
         -- Opens decision level 2
         let gotConflict ← negateAndPropagate clause.lits isouter
         if gotConflict then
@@ -144,11 +144,11 @@ def checkPathC (st : CheckState) (l : Literal) (lits : Array Literal) (target : 
             let idx := cur.x
             if expl.getD idx false then go f wl' expl
             else
-              let expl' := arraySafeSet expl idx true
+              let expl' := expl.setIfInBounds idx true
               let occs := st.clauses.getOcc cur
               let (found, wl'') := occs.foldl (fun (fd, acc) cref =>
                 if fd then (true, acc)
-                else if cref == target then (true, acc)  -- target reached
+                else if cref = target then (true, acc)  -- target reached
                 else
                   match st.clauses.getClauseRaw cref with
                   | none => (false, acc)
@@ -159,7 +159,7 @@ def checkPathC (st : CheckState) (l : Literal) (lits : Array Literal) (target : 
                       else
                         -- Add ~lit to worklist for existentials depending on lvar
                         let acc' := clause.lits.foldl (fun acc2 lit =>
-                          if lit == cur then acc2
+                          if lit = cur then acc2
                           else if expl'.getD lit.negate.x false then acc2
                           else
                             let litvar := lit.var
@@ -181,7 +181,7 @@ def checkPathC (st : CheckState) (l : Literal) (lits : Array Literal) (target : 
 -- a D^∀-pure path (checkPathC), or that are the proof clause itself.
 def checkDQRATU (lits : Array Literal) (pivot : Literal) : CheckM Bool := do
   -- ── RUP without pivot (opens decision level 1) ──
-  let isRup ← negateAndPropagate lits (fun l => l != pivot)
+  let isRup ← negateAndPropagate lits (fun l => l ≠ pivot)
   if isRup then
     backtrackBefore 1
     return true
@@ -202,11 +202,11 @@ def checkDQRATU (lits : Array Literal) (pivot : Literal) : CheckM Bool := do
     | some clause =>
       if clause.deleted then return true
       -- Skip disconnected blocker clauses (Mixed-EUR: EUR check)
-      let connected := checkPathC st pivot lits cref || crefOfLits == some cref
+      let connected := checkPathC st pivot lits cref || crefOfLits = some cref
       if !connected then return true
       let f := st.formula
       let isouter : Literal → Bool := fun l =>
-        l != negPivot && f.isVarOuterOfUnivar l.var pivot.var
+        l ≠ negPivot && f.isVarOuterOfUnivar l.var pivot.var
       let gotConflict ← negateAndPropagate clause.lits isouter
       backtrackBefore 2
       return gotConflict

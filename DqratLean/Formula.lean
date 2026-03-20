@@ -19,10 +19,10 @@ structure DQBF where
 namespace DQBF
 
 def lookupInternal (f : DQBF) (ext : Nat) : Option Var :=
-  f.internalName.findSome? fun (e, i) => if e == ext then some i else none
+  f.internalName.findSome? fun (e, i) => if e = ext then some i else none
 
 def externalVarExists (f : DQBF) (ext : Nat) : Bool :=
-  f.internalName.any fun (e, _) => e == ext
+  f.internalName.any fun (e, _) => e = ext
 
 def isVarExistential (f : DQBF) (v : Var) : Bool :=
   f.isExistential.getD v false
@@ -59,8 +59,8 @@ def isVarOuterOfUnivar (f : DQBF) (v : Var) (univar : Var) : Bool :=
 
 -- Force-delete dependency (no validity check; caller must verify)
 def forceDelDep (f : DQBF) (of_ on_ : Var) : DQBF :=
-  let deps := (f.depset.getD of_ #[]).filter (· != on_)
-  { f with depset := arraySafeSet f.depset of_ deps }
+  let deps := (f.depset.getD of_ #[]).filter (· ≠ on_)
+  { f with depset := f.depset.setIfInBounds of_ deps }
 
 -- Externalize a literal for error messages
 def externalizeLit (f : DQBF) (l : Literal) : Int :=

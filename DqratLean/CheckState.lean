@@ -46,7 +46,7 @@ def backtrackBefore (level : Nat) : CheckM Unit :=
           let lvl := tr.getD (tr.size - 1) #[]
           let ia' := lvl.foldl (fun acc l =>
             let v := l.var
-            if v > 0 then arraySafeSet acc (v - 1) false else acc
+            if v > 0 then acc.setIfInBounds (v - 1) false else acc
           ) ia
           clearLevels n tr.pop ia'
     let (trail', isAssigned') := clearLevels (st.trail.size + 1) st.trail st.isAssigned
@@ -57,14 +57,14 @@ def backtrackBefore (level : Nat) : CheckM Unit :=
 def enqueue (l : Literal) : CheckM Unit := do
   let st ← get
   let v := l.var
-  if v == 0 || v > st.formula.maxVar then return ()
+  if v = 0 || v > st.formula.maxVar then return ()
   if st.isAssigned.getD (v - 1) false then return ()
   let lastIdx := st.trail.size - 1
   let lastLevel := st.trail.getD lastIdx #[]
   set { st with
-    isAssigned := arraySafeSet st.isAssigned (v - 1) true
-    value      := arraySafeSet st.value      (v - 1) l.isPos
-    trail      := arraySafeSet st.trail lastIdx (lastLevel.push l)
+    isAssigned := st.isAssigned.setIfInBounds (v - 1) true
+    value      := st.value.setIfInBounds      (v - 1) l.isPos
+    trail      := st.trail.setIfInBounds      lastIdx (lastLevel.push l)
     propQueue  := st.propQueue.push l
   }
 
@@ -72,7 +72,7 @@ def enqueue (l : Literal) : CheckM Unit := do
 
 -- Process one propagated literal: check all clauses containing its negation
 -- Returns Some cref on conflict, None on success
-private def propagateOne (l : Literal) : CheckM (Option CRef) := do
+def propagateOne (l : Literal) : CheckM (Option CRef) := do
   let negL := l.negate
   let st ← get
   let occs := st.clauses.getOcc negL
@@ -98,14 +98,14 @@ private def propagateOne (l : Literal) : CheckM (Option CRef) := do
           !st.isAssigned.getD (v - 1) false
         if unassigned.isEmpty then
           return some cref  -- all literals false = conflict
-        else if unassigned.size == 1 then
+        else if unassigned.size = 1 then
           enqueue (unassigned.getD 0 ⟨0⟩)
           return none
         else
           return none
   ) none
 
-private def propagateAux : Nat → CheckM (Option CRef)
+def propagateAux : Nat → CheckM (Option CRef)
   | 0 => return none
   | n + 1 => do
     let st ← get
@@ -149,7 +149,7 @@ def getReachable (st : CheckState) (l : Literal) : Array Bool :=
           if expl.getD idx false then
             go f wl' reach expl
           else
-            let expl' := arraySafeSet expl idx true
+            let expl' := expl.setIfInBounds idx true
             -- Process each clause containing cur
             let occs := st.clauses.getOcc cur
             let (wl'', reach') := occs.foldl (fun (wl, rch) cref =>
@@ -161,7 +161,7 @@ def getReachable (st : CheckState) (l : Literal) : Array Bool :=
                 else if clause.lits.contains negL then (wl, rch)
                 else
                   clause.lits.foldl (fun (wl2, rch2) lit =>
-                    if lit == cur then (wl2, rch2)
+                    if lit = cur then (wl2, rch2)
                     else if expl'.getD lit.negate.x false then (wl2, rch2)
                     else
                       let litvar   := lit.var
@@ -173,7 +173,7 @@ def getReachable (st : CheckState) (l : Literal) : Array Bool :=
                       let wl3 := if litIsExi && dependsOnL then wl2.push lit.negate else wl2
                       -- Mark lit reachable if it is existential and depends on lvar
                       let rch3 := if litIsExi && dependsOnL then
-                        arraySafeSet rch2 lit.x true else rch2
+                        rch2.setIfInBounds lit.x true else rch2
                       (wl3, rch3)
                   ) (wl, rch)
             ) (wl', reach)
@@ -183,11 +183,11 @@ def getReachable (st : CheckState) (l : Literal) : Array Bool :=
 -- ─── Independence cache management ────────────────────────────────────────
 
 def makeIndepUnknown (univar : Var) : CheckM Unit :=
-  if univar == 0 then return ()
+  if univar = 0 then return ()
   else modify fun st =>
     { st with
-      indepKnown := arraySafeSet st.indepKnown (univar - 1) false
-      indepOf    := arraySafeSet st.indepOf    (univar - 1) #[]
+      indepKnown := st.indepKnown.setIfInBounds (univar - 1) false
+      indepOf    := st.indepOf.setIfInBounds    (univar - 1) #[]
     }
 
 -- Compute and cache independence for universal var v
@@ -209,8 +209,8 @@ def computeDeps (v : Var) : CheckM Unit := do
         (reachPos.getD xPos false && reachNeg.getD xNeg false))
   modify fun s =>
     { s with
-      indepKnown := arraySafeSet s.indepKnown (v - 1) true
-      indepOf    := arraySafeSet s.indepOf    (v - 1) indep
+      indepKnown := s.indepKnown.setIfInBounds (v - 1) true
+      indepOf    := s.indepOf.setIfInBounds    (v - 1) indep
     }
 
 -- Check if existential exiVar does NOT depend on universal univar
@@ -289,7 +289,7 @@ def addDependency (of_ on_ : Var) : CheckM Unit := do
   if deps.contains on_ then return ()  -- already there
   let deps' := deps.push on_
   modify fun s => { s with
-    formula := { s.formula with depset := arraySafeSet s.formula.depset of_ deps' }
+    formula := { s.formula with depset := s.formula.depset.setIfInBounds of_ deps' }
   }
   -- NOTE: C++ addDependency does NOT call makeIndependenciesUnknown here
 
