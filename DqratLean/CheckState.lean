@@ -1,6 +1,8 @@
 import DqratLean.Types
 import DqratLean.Formula
 import DqratLean.ClauseStore
+import Std.Tactic.Do
+open Std.Do
 
 -- Combined checker state
 structure CheckState where
@@ -17,7 +19,7 @@ structure CheckState where
   indepKnown : Array Bool := #[]
   indepOf    : Array (Array Var) := #[]   -- existential vars independent of this univar
 
-abbrev CheckM := StateT CheckState (Except String)
+abbrev CheckM := EStateM String CheckState
 
 -- ─── Assignment helpers ────────────────────────────────────────────────────
 
@@ -38,18 +40,18 @@ def newDecisionLevel : CheckM Unit :=
 
 def backtrackBefore (level : Nat) : CheckM Unit :=
   modify fun st =>
-    let rec clearLevels : Nat → Array (Array Literal) → Array Bool → (Array (Array Literal) × Array Bool)
-      | 0, tr, ia => (tr, ia)
-      | n + 1, tr, ia =>
-        if tr.size <= level then (tr, ia)
-        else
-          let lvl := tr.getD (tr.size - 1) #[]
-          let ia' := lvl.foldl (fun acc l =>
-            let v := l.var
-            if v > 0 then acc.setIfInBounds (v - 1) false else acc
-          ) ia
-          clearLevels n tr.pop ia'
-    let (trail', isAssigned') := clearLevels (st.trail.size + 1) st.trail st.isAssigned
+    let rec clearLevels (tr : Array (Array Literal)) (ia : Array Bool) :
+        Array (Array Literal) × Array Bool :=
+      if tr.size <= level then (tr, ia)
+      else
+        let lvl := tr.getD (tr.size - 1) #[]
+        let ia' := lvl.foldl (fun acc l =>
+          let v := l.var
+          if v > 0 then acc.setIfInBounds (v - 1) false else acc
+        ) ia
+        clearLevels tr.pop ia'
+    termination_by tr.size
+    let (trail', isAssigned') := clearLevels st.trail st.isAssigned
     { st with trail := trail', isAssigned := isAssigned', propQueue := #[] }
 
 -- ─── Enqueue ───────────────────────────────────────────────────────────────
@@ -58,6 +60,7 @@ def enqueue (l : Literal) : CheckM Unit := do
   let st ← get
   let v := l.var
   if v = 0 || v > st.formula.maxVar then return ()
+  if v - 1 >= st.isAssigned.size then return ()
   if st.isAssigned.getD (v - 1) false then return ()
   let lastIdx := st.trail.size - 1
   let lastLevel := st.trail.getD lastIdx #[]
@@ -67,6 +70,35 @@ def enqueue (l : Literal) : CheckM Unit := do
     trail      := st.trail.setIfInBounds      lastIdx (lastLevel.push l)
     propQueue  := st.propQueue.push l
   }
+
+-- `enqueue` preserves propQueue.size + isAssigned.count false.
+-- Key: the bounds guard `v - 1 >= isAssigned.size → return ()` ensures setIfInBounds
+-- is always in-bounds in the actual-enqueue branch, so push +1 and count false -1 cancel.
+@[spec]
+theorem enqueue_measure_spec (l : Literal) (m : Nat) :
+    ⦃fun s => ⌜s.propQueue.size + s.isAssigned.count false = m⌝⦄
+    (enqueue l : CheckM Unit)
+    ⦃⇓ _ s' => ⌜s'.propQueue.size + s'.isAssigned.count false = m⌝⦄ := by
+  mvcgen [enqueue]
+  -- rename_i goes oldest→newest; positions: 1=state, 2=measure, 3=var,
+  -- 4-6=do_jp/guard/do_jp, 7=bounds_check, 8=do_jp, 9=assigned_check, 10-11=let-bindings
+  rename_i s hm v _ _ _ s0 _ hv _ _
+  -- s : CheckState, hm : measure, v : Var := l.var
+  -- s0 : ¬(v - 1 ≥ s.isAssigned.size), hv : ¬isAssigned.getD (v-1) false = true
+  have hlt := Nat.lt_of_not_le s0
+  simp only [Bool.not_eq_true] at hv
+  -- hv : s.isAssigned.getD (v-1) false = false
+  simp only [Array.size_push, Array.setIfInBounds_def, dif_pos hlt, Array.count_set hlt]
+  -- count_set uses getElem notation; convert to getD via one rw (avoids simp loop)
+  rw [Array.getElem_eq_getD (fallback := false)]
+  simp only [hv, show (false == false) = true from rfl, show (true == false) = false from rfl,
+             ↓reduceIte, show (false = true) = False from by decide]
+  -- goal: s.propQueue.size + 1 + (Array.count false s.isAssigned - 1) = m
+  have hpos : 1 ≤ Array.count false s.isAssigned := by
+    have hmem := Array.getElem_mem hlt
+    rw [Array.getElem_eq_getD (fallback := false), hv] at hmem
+    exact Array.one_le_count_iff.mpr hmem
+  omega
 
 -- ─── Occurrence-list unit propagation ─────────────────────────────────────
 
@@ -105,22 +137,55 @@ def propagateOne (l : Literal) : CheckM (Option CRef) := do
           return none
   ) none
 
-def propagateAux : Nat → CheckM (Option CRef)
-  | 0 => return none
-  | n + 1 => do
-    let st ← get
-    if st.propQueue.isEmpty then return none
-    let l := st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩
-    modify fun s => { s with propQueue := s.propQueue.pop }
-    let result ← propagateOne l
-    match result with
-    | some c => return some c
-    | none   => propagateAux n
+-- `propagateOne` preserves the measure (propQueue.size + isAssigned.count false).
+-- The only state-changing call inside is `enqueue`, which preserves by enqueue_measure_spec.
+@[spec]
+theorem propagateOne_measure_spec (l : Literal) (m : Nat) :
+    ⦃fun s => ⌜s.propQueue.size + s.isAssigned.count false = m⌝⦄
+    (propagateOne l : CheckM (Option CRef))
+    ⦃⇓? _ s' => ⌜s'.propQueue.size + s'.isAssigned.count false = m⌝⦄ := by
+  mvcgen [propagateOne] invariants
+  · ⇓⟨_, _⟩ s => ⌜s.propQueue.size + s.isAssigned.count false = m⌝
+    with all_goals (first | assumption | omega | (intro; assumption))
 
-def propagate : CheckM (Option CRef) := do
-  let st ← get
-  -- fuel: each literal can be enqueued at most once per variable
-  propagateAux (st.formula.maxVar * 2 + 100)
+-- `propagate`: unit-propagate until the queue is empty or a conflict is found.
+-- Termination: each iteration pops one literal (measure -1) and enqueue preserves
+-- the measure, so propQueue.size + isAssigned.count false decreases by exactly 1.
+def propagate : CheckM (Option CRef) := fun st => aux st
+where
+  aux (st : CheckState) : EStateM.Result String CheckState (Option CRef) :=
+    if st.propQueue.isEmpty then .ok none st
+    else
+      let l  := st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩
+      let s₁ := { st with propQueue := st.propQueue.pop }
+      match hm : (propagateOne l) s₁ with
+      | .error e s => .error e s
+      | .ok (some c) s => .ok (some c) s
+      | .ok none s => aux s
+  termination_by st.propQueue.size + st.isAssigned.count false
+  decreasing_by
+    -- hm : (propagateOne l) s₁ = .ok none s (named via 'match hm : ...')
+    rename_i hne
+    -- hne : ¬st.propQueue.isEmpty = true
+    -- propagateOne preserves measure: s.propQueue.size + s.isAssigned.count false
+    --   = s₁.propQueue.size + s₁.isAssigned.count false
+    have hmeas : s.propQueue.size + s.isAssigned.count false
+               = s₁.propQueue.size + s₁.isAssigned.count false := by
+      have hspec := propagateOne_measure_spec l (s₁.propQueue.size + s₁.isAssigned.count false)
+      specialize hspec s₁ rfl
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
+      rw [hm] at hspec
+      exact hspec
+    -- s₁ = st with propQueue popped: s₁.propQueue.size = st.propQueue.size - 1
+    have hpop : s₁.propQueue.size = st.propQueue.size - 1 := by
+      simp [s₁, Array.size_pop]
+    -- hne: propQueue non-empty, so size ≥ 1
+    have hpos : 0 < st.propQueue.size := by
+      simp only [Array.isEmpty_iff_size_eq_zero] at hne
+      omega
+    -- s₁.isAssigned = st.isAssigned (only propQueue changed)
+    have hisac : s₁.isAssigned.count false = st.isAssigned.count false := rfl
+    omega
 
 -- ─── BFS reachability for D^∀-pure dep scheme ─────────────────────────────
 
@@ -136,49 +201,71 @@ def getReachable (st : CheckState) (l : Literal) : Array Bool :=
     let negL   := l.negate
     let reachable := (List.replicate numLits false).toArray
     let explored  := (List.replicate numLits false).toArray
-    -- BFS/DFS with fuel
-    let fuel := numLits + 2
-    let rec go : Nat → Array Literal → Array Bool → Array Bool → Array Bool
-      | 0, _, reach, _ => reach
-      | f + 1, worklist, reach, expl =>
-        if worklist.isEmpty then reach
+    -- BFS/DFS: terminates because each literal is explored at most once.
+    -- Measure: (unexplored count, worklist size) in lexicographic order.
+    let rec go (worklist : Array Literal) (reach expl : Array Bool) : Array Bool :=
+      if worklist.isEmpty then reach
+      else
+        let cur  := worklist.getD (worklist.size - 1) ⟨0⟩
+        let wl'  := worklist.pop
+        let idx  := cur.x
+        if expl.getD idx false then
+          -- already explored or out-of-bounds default: skip, worklist shrinks
+          go wl' reach expl
+        else if h : idx < expl.size then
+          -- newly explored: mark and process
+          let expl' := expl.set idx true h
+          let occs := st.clauses.getOcc cur
+          let (wl'', reach') := occs.foldl (fun (wl, rch) cref =>
+            match st.clauses.getClauseRaw cref with
+            | none => (wl, rch)
+            | some clause =>
+              if clause.deleted then (wl, rch)
+              else if clause.lits.contains negL then (wl, rch)
+              else
+                clause.lits.foldl (fun (wl2, rch2) lit =>
+                  if lit = cur then (wl2, rch2)
+                  else if expl'.getD lit.negate.x false then (wl2, rch2)
+                  else
+                    let litvar   := lit.var
+                    let litIsExi := st.formula.isVarExistential litvar
+                    let depset   := st.formula.depset.getD litvar #[]
+                    let dependsOnL := depset.contains lvar
+                    let wl3 := if litIsExi && dependsOnL then wl2.push lit.negate else wl2
+                    let rch3 := if litIsExi && dependsOnL then
+                      rch2.setIfInBounds lit.x true else rch2
+                    (wl3, rch3)
+                ) (wl, rch)
+          ) (wl', reach)
+          go wl'' reach' expl'
         else
-          let cur  := worklist.getD (worklist.size - 1) ⟨0⟩
-          let wl'  := worklist.pop
-          let idx  := cur.x
-          if expl.getD idx false then
-            go f wl' reach expl
-          else
-            let expl' := expl.setIfInBounds idx true
-            -- Process each clause containing cur
-            let occs := st.clauses.getOcc cur
-            let (wl'', reach') := occs.foldl (fun (wl, rch) cref =>
-              match st.clauses.getClauseRaw cref with
-              | none => (wl, rch)
-              | some clause =>
-                if clause.deleted then (wl, rch)
-                -- Skip if clause contains ~l (not u-pure)
-                else if clause.lits.contains negL then (wl, rch)
-                else
-                  clause.lits.foldl (fun (wl2, rch2) lit =>
-                    if lit = cur then (wl2, rch2)
-                    else if expl'.getD lit.negate.x false then (wl2, rch2)
-                    else
-                      let litvar   := lit.var
-                      let litIsExi := st.formula.isVarExistential litvar
-                      let depset   := st.formula.depset.getD litvar #[]
-                      -- lit's variable must depend on lvar
-                      let dependsOnL := depset.contains lvar
-                      -- Push ~lit if lit is existential and depends on lvar
-                      let wl3 := if litIsExi && dependsOnL then wl2.push lit.negate else wl2
-                      -- Mark lit reachable if it is existential and depends on lvar
-                      let rch3 := if litIsExi && dependsOnL then
-                        rch2.setIfInBounds lit.x true else rch2
-                      (wl3, rch3)
-                  ) (wl, rch)
-            ) (wl', reach)
-            go f wl'' reach' expl'
-    go fuel #[l] reachable explored
+          -- idx ≥ expl.size: out-of-bounds literal, skip (setIfInBounds is no-op)
+          go wl' reach expl
+    termination_by (expl.count false, worklist.size)
+    decreasing_by
+      · -- skip: already explored, worklist shrinks
+        simp_wf; apply Prod.Lex.right
+        have hne : worklist.size ≠ 0 := fun hz => ‹¬_› (by simp [Array.isEmpty, hz])
+        lia
+      · -- newly explored: expl gains one true, so countP (! ·) decreases
+        simp_wf; apply Prod.Lex.left
+        rename ¬expl.getD idx false = true => hval
+        simp only [Bool.not_eq_true] at hval
+        rw [←Array.getElem_eq_getD (h := h)] at hval
+        have hpos : 0 < expl.count false :=
+          Array.count_pos_iff.mpr (Array.mem_of_getElem hval)
+        simp only [Array.count_set]
+        simp only [beq_false, Bool.not_eq_eq_eq_not, Bool.not_true, Bool.false_eq_true, ↓reduceIte,
+          Nat.add_zero, gt_iff_lt]
+        simp only [← Array.getD_eq_getD_getElem?]
+        rw [hval]
+        simp [Nat.sub_one_lt_of_lt hpos]
+      · -- out-of-bounds: expl unchanged, worklist shrinks
+        simp_wf; apply Prod.Lex.right
+        have hne : worklist.size ≠ 0 := fun hz =>
+          ‹¬worklist.isEmpty› (by simp [Array.isEmpty, hz])
+        lia
+    go #[l] reachable explored
 
 -- ─── Independence cache management ────────────────────────────────────────
 

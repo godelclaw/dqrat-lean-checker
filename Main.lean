@@ -19,7 +19,7 @@ def main : List String → IO UInt32
         match result with
         | .Verified line =>
           IO.println s!"c line {line}: unit propagation derived conflict, proof valid"
-        | .Failed line rules info blocker =>
+        | .Failed line rules _info blocker =>
           let rulesStr := rules.foldl (· ++ ", " ++ ·) "" |>.drop 2
           IO.println s!"c line {line}: lemma checked for: {rulesStr}"
           if let some _ := blocker then
