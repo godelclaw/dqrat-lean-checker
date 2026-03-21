@@ -197,7 +197,7 @@ throw (e.g. for negative-test specs).
 -- ── §2.1  Primitive operation specs ──────────────────────────────────────────
 
 -- `pure v` leaves the state unchanged and returns `v`.
-example (v : α) :
+example {α : Type} (v : α) :
     ⦃fun _ => ⌜True⌝⦄
     (pure v : CheckM α)
     ⦃⇓ r _ => ⌜r = v⌝⦄ := by
@@ -264,6 +264,7 @@ it encounters the corresponding function.
 
 Proof structure:
 1. `mvcgen [f]` — generate while unfolding `f` VCs
+   sometimes explicit unfold is necessary in two steps `unfold f; mvcgen`
 2. Close VCs with `grind` (handles let-bound intermediates) or `lia` for arithmetic
 
 The `mvcgen_trivial` tactic (called internally by `mvcgen`) automatically closes
@@ -301,7 +302,7 @@ theorem enqueue_preserves_sizes (l : Literal) (n : Nat) :
     ⦃fun s => ⌜s.isAssigned.size = n ∧ s.value.size = n⌝⦄
     (enqueue l : CheckM Unit)
     ⦃⇓ _ s' => ⌜s'.isAssigned.size = n ∧ s'.value.size = n⌝⦄ := by
-  mvcgen [enqueue]
+  unfold enqueue; mvcgen
   -- mvcgen_trivial closed the two early-return VCs automatically.
   -- One VC remains: the actual-enqueue branch.
   grind
