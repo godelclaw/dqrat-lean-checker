@@ -426,8 +426,8 @@ theorem triple_to_run (prog : CheckM Bool) (st : CheckState)
     | .none => False := by
   -- unfold the Hoare triple
   specialize h st rfl -- plug in the initial state & the initial condition
-  simp only [WP.wp] at h -- uncover `match` at `h`
-  simp only [EStateM.run', EStateM.run] -- uncover `match` at `prog.run`
+  simp only [WP.wp, PredTrans.apply] at h -- uncover `match` at `h`
+  simp only [EStateM.run'] -- uncover `match` at `prog.run`
   split at h
   · rename_i a s heq -- case result
     simp only [heq]
