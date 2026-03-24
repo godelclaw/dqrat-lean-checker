@@ -15,7 +15,7 @@ structure ClauseStore where
 
 namespace ClauseStore
 
-private def getClauseAt (cs : ClauseStore) (cref : CRef) : Option Clause :=
+def getClauseAt (cs : ClauseStore) (cref : CRef) : Option Clause :=
   if h : cref < cs.clauses.size then some cs.clauses[cref] else none
 
 def getClause (cs : ClauseStore) (cref : CRef) : Option Clause :=
@@ -83,7 +83,6 @@ def findSortedClause (cs : ClauseStore) (sortedLits : Array Literal) : Option CR
         else none
 
 -- ─── Soundness helper lemmas ────────────────────────────────────────────────
--- (Placed here because they need access to the private `getClauseAt` function.)
 
 /-- `deleteClause` preserves the size of the clause array. -/
 theorem deleteClause_clauses_size (cs : ClauseStore) (cref : CRef) :
@@ -95,13 +94,13 @@ theorem deleteClause_clauses_size (cs : ClauseStore) (cref : CRef) :
 
 -- Internal helper: updating `clauses` at `cref` via `setIfInBounds` does not affect
 -- `getClauseAt` at a different index `cref'`.
-private theorem getClauseAt_clauses_update_ne (cs : ClauseStore) (cref cref' : CRef)
-    (h : cref' ≠ cref) (hlt : cref < cs.clauses.size) (c' : Clause) :
+theorem getClauseAt_clauses_update_ne (cs : ClauseStore) (cref cref' : CRef)
+    (h : cref' ≠ cref) (c' : Clause) :
     getClauseAt { cs with clauses := cs.clauses.setIfInBounds cref c' } cref' =
     getClauseAt cs cref' := by
   simp only [getClauseAt, Array.size_setIfInBounds]
   split
-  · next hlt' =>
+  next hlt' =>
     congr 1
     exact Array.getElem_setIfInBounds_ne hlt' (Ne.symm h)
   · rfl
@@ -113,12 +112,7 @@ theorem getClause_deleteClause_ne (cs : ClauseStore) (cref cref' : CRef) (h : cr
   cases hca : getClauseAt cs cref with
   | none => rfl
   | some c =>
-    have hlt : cref < cs.clauses.size := by
-      simp only [getClauseAt] at hca
-      split at hca
-      · assumption
-      · simp at hca
-    simp only [getClause, getClauseAt_clauses_update_ne cs cref cref' h hlt]
+    simp only [getClause, getClauseAt_clauses_update_ne cs cref cref' h]
 
 /-- After `deleteClause cref`, `getClause cref` returns `none` (clause is marked deleted). -/
 theorem getClause_deleteClause_eq (cs : ClauseStore) (cref : CRef) (hsize : cref < cs.clauses.size) :

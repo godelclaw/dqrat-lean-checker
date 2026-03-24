@@ -74,7 +74,6 @@ def enqueue (l : Literal) : CheckM Unit := do
 -- `enqueue` preserves propQueue.size + isAssigned.count false.
 -- Key: the bounds guard `v - 1 >= isAssigned.size → return ()` ensures setIfInBounds
 -- is always in-bounds in the actual-enqueue branch, so push +1 and count false -1 cancel.
-@[spec]
 theorem enqueue_measure_spec (l : Literal) (m : Nat) :
     ⦃fun s => ⌜s.propQueue.size + s.isAssigned.count false = m⌝⦄
     (enqueue l : CheckM Unit)
@@ -139,12 +138,11 @@ def propagateOne (l : Literal) : CheckM (Option CRef) := do
 
 -- `propagateOne` preserves the measure (propQueue.size + isAssigned.count false).
 -- The only state-changing call inside is `enqueue`, which preserves by enqueue_measure_spec.
-@[spec]
 theorem propagateOne_measure_spec (l : Literal) (m : Nat) :
     ⦃fun s => ⌜s.propQueue.size + s.isAssigned.count false = m⌝⦄
     (propagateOne l : CheckM (Option CRef))
     ⦃⇓? _ s' => ⌜s'.propQueue.size + s'.isAssigned.count false = m⌝⦄ := by
-  mvcgen [propagateOne] invariants
+  mvcgen [propagateOne, enqueue_measure_spec] invariants
   · ⇓⟨_, _⟩ s => ⌜s.propQueue.size + s.isAssigned.count false = m⌝
     with all_goals (first | assumption | omega | (intro; assumption))
 

@@ -214,3 +214,152 @@ def checkDQRATU (lits : Array Literal) (pivot : Literal) : CheckM Bool := do
 
   backtrackBefore 1
   return isRat
+
+-- ─── Proof result ──────────────────────────────────────────────────────────
+
+inductive ProofResult where
+  | Verified (line : Nat)
+  | Failed   (line : Nat) (rules : Array String) (info : Array Int) (blocker : Option CRef)
+  | Unknown
+
+def formatResult : ProofResult → String
+  | .Verified _ => "s VERIFIED"
+  | .Failed _ _ _ _ => "s FAILED"
+  | .Unknown => "s UNKNOWN"
+
+-- ─── Proof actions ─────────────────────────────────────────────────────────
+
+/-- A single step in a DQRAT proof, with external variable numbers still unresolved. -/
+inductive DQRatAction where
+  /-- 'a': add universal variables (extVars may include negatives for error reporting) -/
+  | AddUniversal      (lineNum : Nat) (extVars    : List Int)
+  /-- 'e': modify existential; positive dep = add, negative dep = remove -/
+  | ModifyExistential (lineNum : Nat) (extExi     : Nat) (depChanges : List Int)
+  /-- 'd': delete clause given by external literals -/
+  | DeleteClause      (lineNum : Nat) (extLits    : List Int)
+  /-- 'u': universal reduction -/
+  | UniversalReduction(lineNum : Nat) (extLits    : List Int)
+  /-- digit: RUP / DQRATE step -/
+  | RatClause         (lineNum : Nat) (extLits    : List Int)
+
+-- ─── Single-action checker ─────────────────────────────────────────────────
+
+/-- Check a single proof action. Returns `none` to continue, `some r` to stop. -/
+def checkAction (action : DQRatAction) : CheckM (Option ProofResult) := do
+  match action with
+
+  | .AddUniversal lineNum extVars => do
+    for cv in extVars do
+      if cv < 0 then
+        let extVar := (-cv).toNat
+        let f ← (·.formula) <$> get
+        if f.externalVarExists extVar then
+          return some (.Failed lineNum #["UADD"] #[cv] none)
+      else
+        let extVar := cv.toNat
+        let f ← (·.formula) <$> get
+        if f.externalVarExists extVar then
+          return some (.Failed lineNum #["UADD"] #[cv] none)
+        else
+          let _ ← addVarForall extVar
+    return none
+
+  | .ModifyExistential lineNum extExi depChanges => do
+    if extExi = 0 then return some (.Failed lineNum #["UADD"] #[] none)
+    let f ← (·.formula) <$> get
+    let internalExi ←
+      if !f.externalVarExists extExi then addVarExists extExi #[]
+      else match f.lookupInternal extExi with
+        | none   => throw s!"Var {extExi} not found"
+        | some v => pure v
+    for cv in depChanges do
+      if cv < 0 then
+        let extDep := (-cv).toNat
+        let f2 ← (·.formula) <$> get
+        if f2.externalVarExists extDep then
+          match f2.lookupInternal extDep with
+          | none => pure ()
+          | some internalDep =>
+            let ok ← delDependency internalExi internalDep
+            if !ok then
+              return some (.Failed lineNum #["DPURE"] #[cv, Int.ofNat extExi] none)
+      else
+        let extDep := cv.toNat
+        let f2 ← (·.formula) <$> get
+        let internalDep ←
+          if !f2.externalVarExists extDep then addVarForall extDep
+          else match f2.lookupInternal extDep with
+            | none   => throw s!"Dep var {extDep} not found"
+            | some v => pure v
+        addDependency internalExi internalDep
+    return none
+
+  | .DeleteClause lineNum extLits => do
+    let lits ← extLits.foldlM (fun acc lit => do
+      let f ← (·.formula) <$> get
+      match f.lookupInternal lit.natAbs with
+      | none    => return acc
+      | some iv => return (acc.push (mkLit iv (lit > 0)))
+    ) #[]
+    let st ← get
+    match st.clauses.findSortedClause (lits.qsort (fun a b => a.x < b.x)) with
+    | none      => return some (.Failed lineNum #["LOCATE", "DEL"] #[] none)
+    | some cref =>
+      modify fun s => { s with clauses := s.clauses.deleteClause cref }
+      return none
+
+  | .UniversalReduction lineNum extLits => do
+    let lits ← extLits.foldlM (fun acc lit => do
+      let f ← (·.formula) <$> get
+      match f.lookupInternal lit.natAbs with
+      | none    => return acc
+      | some iv => return (acc.push (mkLit iv (lit > 0)))
+    ) #[]
+    if lits.isEmpty then return some (.Failed lineNum #["UR"] #[] none)
+    let pivot := lits.getD 0 ⟨0⟩
+    let f ← (·.formula) <$> get
+    if f.isVarExistential pivot.var then
+      return some (.Failed lineNum #["UR"] #[f.externalizeLit pivot] none)
+    let st ← get
+    match st.clauses.findSortedClause (lits.qsort (fun a b => a.x < b.x)) with
+    | none   => return some (.Failed lineNum #["LOCATE", "UR"] #[] none)
+    | some _ =>
+      let f2 ← (·.formula) <$> get
+      -- Not reducible if clause contains ~pivot (Mixed-EUR: no tautology reductions)
+      let pivotReducible := !lits.any (· = pivot.negate) && lits.all fun l =>
+        !f2.isVarExistential l.var || !f2.isVarOuterOfExivar pivot.var l.var
+      if pivotReducible then
+        let r ← addClause (lits.filter (· ≠ pivot))
+        if r.isNone then return some (.Verified lineNum)
+      else
+        let ok ← checkDQRATU lits pivot
+        if !ok then return some (.Failed lineNum #["UR", "DQRATU"] #[] none)
+        let r ← addClause lits
+        if r.isNone then return some (.Verified lineNum)
+      return none
+
+  | .RatClause lineNum extLits => do
+    let lits ← extLits.foldlM (fun acc lit => do
+      let extVar := lit.natAbs
+      let f ← (·.formula) <$> get
+      -- QRAT compat: create extension var with all univars as deps
+      if !f.externalVarExists extVar then
+        let _ ← addVarExists extVar f.univars
+      let f2 ← (·.formula) <$> get
+      match f2.lookupInternal extVar with
+      | none    => return acc
+      | some iv => return (acc.push (mkLit iv (lit > 0)))
+    ) #[]
+    let (success, blocker) ← checkDQRATE lits
+    if !success then return some (.Failed lineNum #["RUP", "DQRATE"] #[] blocker)
+    let r ← addClause lits
+    if r.isNone then return some (.Verified lineNum)
+    return none
+
+-- ─── Action list checker ───────────────────────────────────────────────────
+
+/-- Check a list of proof actions, returning the first decisive result or `Unknown`. -/
+def checkActions (actions : List DQRatAction) : CheckM ProofResult := do
+  for action in actions do
+    if let some r ← checkAction action then return r
+  return .Unknown

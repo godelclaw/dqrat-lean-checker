@@ -1,18 +1,6 @@
 import DqratLean.CheckState
 import DqratLean.Checker
 
--- ─── Proof result ──────────────────────────────────────────────────────────
-
-inductive ProofResult where
-  | Verified (line : Nat)
-  | Failed   (line : Nat) (rules : Array String) (info : Array Int) (blocker : Option CRef)
-  | Unknown
-
-def formatResult : ProofResult → String
-  | .Verified _ => "s VERIFIED"
-  | .Failed _ _ _ _ => "s FAILED"
-  | .Unknown => "s UNKNOWN"
-
 -- ─── Tokenizer ─────────────────────────────────────────────────────────────
 
 def tokenize (content : String) : Array String :=
@@ -28,7 +16,7 @@ def tokenize (content : String) : Array String :=
 
 /-- Read a 0-terminated signed-integer list starting at `start`.
     Returns (integers, position-after-terminator). -/
-private def readIntList (toks : Array String) (start : Nat) : List Int × {p : Nat // start ≤ p} :=
+def readIntList (toks : Array String) (start : Nat) : List Int × {p : Nat // start ≤ p} :=
   let rec go (pos : Nat) (acc : List Int) : List Int × {p : Nat // pos ≤ p} :=
     if pos >= toks.size then (acc.reverse, ⟨pos, Nat.le_refl _⟩)
     else match (toks.getD pos "").toInt? with
@@ -43,7 +31,7 @@ private def readIntList (toks : Array String) (start : Nat) : List Int × {p : N
 -- ─── Monadic token-list readers for parseDQDIMACS ─────────────────────────
 
 /-- Read 'a'-line universals (via `toNat?`), adding each to the formula. -/
-private def readUniVarsM (toks : Array String) (start : Nat) (acc : Array Var) :
+def readUniVarsM (toks : Array String) (start : Nat) (acc : Array Var) :
     CheckM ({p : Nat // start ≤ p} × Array Var) := do
   if start >= toks.size then return (⟨start, Nat.le_refl _⟩, acc)
   else match (toks.getD start "").toNat? with
@@ -57,7 +45,7 @@ private def readUniVarsM (toks : Array String) (start : Nat) (acc : Array Var) :
 termination_by toks.size - start
 
 /-- Read 'e'-line existentials, using `allUnivs` as the dep-set for each. -/
-private def readExiVarsM (toks : Array String) (allUnivs : Array Var) (start : Nat) :
+def readExiVarsM (toks : Array String) (allUnivs : Array Var) (start : Nat) :
     CheckM {p : Nat // start ≤ p} := do
   if start >= toks.size then return ⟨start, Nat.le_refl _⟩
   else match (toks.getD start "").toNat? with
@@ -71,7 +59,7 @@ private def readExiVarsM (toks : Array String) (allUnivs : Array Var) (start : N
 termination_by toks.size - start
 
 /-- Read a 'd'-line dep list (via `toInt?`), creating missing universals as needed. -/
-private def readDepsM (toks : Array String) (start : Nat) (acc : Array Var) :
+def readDepsM (toks : Array String) (start : Nat) (acc : Array Var) :
     CheckM ({p : Nat // start ≤ p} × Array Var) := do
   if start >= toks.size then return (⟨start, Nat.le_refl _⟩, acc)
   else match (toks.getD start "").toInt? with
@@ -90,7 +78,7 @@ termination_by toks.size - start
 
 /-- Process DQDIMACS prefix lines until matrix start.
     Returns (first-matrix-token-pos, all-universals-seen). -/
-private def readPrefixM (toks : Array String) (pos : Nat) (univs : Array Var) :
+def readPrefixM (toks : Array String) (pos : Nat) (univs : Array Var) :
     CheckM (Nat × Array Var) := do
   if pos >= toks.size then return (pos, univs)
   else
@@ -124,7 +112,7 @@ private def readPrefixM (toks : Array String) (pos : Nat) (univs : Array Var) :
 termination_by toks.size - pos
 
 /-- Read matrix clauses; returns `true` if UNSAT by UP, else `false`. -/
-private def readMatrixM (toks : Array String) (pos : Nat) (curLits : Array Literal) :
+def readMatrixM (toks : Array String) (pos : Nat) (curLits : Array Literal) :
     CheckM Bool := do
   if pos >= toks.size then return false
   else
@@ -167,24 +155,9 @@ def parseDQDIMACS (content : String) : Except String (Option CheckState) := do
   | .ok true _   => return none
   | .ok false st => return some st
 
--- ─── Proof actions ─────────────────────────────────────────────────────────
+-- ─── Proof action parser ───────────────────────────────────────────────────
 
-/-- A single step in a DQRAT proof, with external variable numbers still unresolved. -/
-inductive DQRatAction where
-  /-- 'a': add universal variables (extVars may include negatives for error reporting) -/
-  | AddUniversal      (lineNum : Nat) (extVars    : List Int)
-  /-- 'e': modify existential; positive dep = add, negative dep = remove -/
-  | ModifyExistential (lineNum : Nat) (extExi     : Nat) (depChanges : List Int)
-  /-- 'd': delete clause given by external literals -/
-  | DeleteClause      (lineNum : Nat) (extLits    : List Int)
-  /-- 'u': universal reduction -/
-  | UniversalReduction(lineNum : Nat) (extLits    : List Int)
-  /-- digit: RUP / DQRATE step -/
-  | RatClause         (lineNum : Nat) (extLits    : List Int)
-
--- ─── Phase 1: pure parsing ─────────────────────────────────────────────────
-
-/-- Phase 1: tokenize proof content and produce a list of DQRatAction.
+/-- Tokenize proof content and produce a list of DQRatActions.
     Pure, no state access. Well-founded recursion on `toks.size - pos`. -/
 def parseProofActions (content : String) : List DQRatAction :=
   let toks := tokenize content
@@ -223,121 +196,6 @@ def parseProofActions (content : String) : List DQRatAction :=
           go pos'' ln (.RatClause ln extLits :: acc)
   termination_by n - pos
   go 0 0 []
-
--- ─── Phase 2: monadic checking ─────────────────────────────────────────────
-
-/-- Phase 2: execute a list of parsed actions in CheckM.
-    Structural recursion on the action list. -/
-private def checkActions : List DQRatAction → CheckM ProofResult
-  | [] => return .Unknown
-
-  | .AddUniversal lineNum extVars :: rest => do
-    for cv in extVars do
-      if cv < 0 then
-        let extVar := (-cv).toNat
-        let f ← (·.formula) <$> get
-        if f.externalVarExists extVar then
-          return .Failed lineNum #["UADD"] #[cv] none
-      else
-        let extVar := cv.toNat
-        let f ← (·.formula) <$> get
-        if f.externalVarExists extVar then
-          return .Failed lineNum #["UADD"] #[cv] none
-        else
-          let _ ← addVarForall extVar
-    checkActions rest
-
-  | .ModifyExistential lineNum extExi depChanges :: rest => do
-    if extExi = 0 then return .Failed lineNum #["UADD"] #[] none
-    let f ← (·.formula) <$> get
-    let internalExi ←
-      if !f.externalVarExists extExi then addVarExists extExi #[]
-      else match f.lookupInternal extExi with
-        | none   => throw s!"Var {extExi} not found"
-        | some v => pure v
-    for cv in depChanges do
-      if cv < 0 then
-        let extDep := (-cv).toNat
-        let f2 ← (·.formula) <$> get
-        if f2.externalVarExists extDep then
-          match f2.lookupInternal extDep with
-          | none => pure ()
-          | some internalDep =>
-            let ok ← delDependency internalExi internalDep
-            if !ok then
-              return .Failed lineNum #["DPURE"] #[cv, Int.ofNat extExi] none
-      else
-        let extDep := cv.toNat
-        let f2 ← (·.formula) <$> get
-        let internalDep ←
-          if !f2.externalVarExists extDep then addVarForall extDep
-          else match f2.lookupInternal extDep with
-            | none   => throw s!"Dep var {extDep} not found"
-            | some v => pure v
-        addDependency internalExi internalDep
-    checkActions rest
-
-  | .DeleteClause lineNum extLits :: rest => do
-    let lits ← extLits.foldlM (fun acc lit => do
-      let f ← (·.formula) <$> get
-      match f.lookupInternal lit.natAbs with
-      | none    => return acc
-      | some iv => return (acc.push (mkLit iv (lit > 0)))
-    ) #[]
-    let st ← get
-    match st.clauses.findSortedClause (lits.qsort (fun a b => a.x < b.x)) with
-    | none      => return .Failed lineNum #["LOCATE", "DEL"] #[] none
-    | some cref =>
-      modify fun s => { s with clauses := s.clauses.deleteClause cref }
-      checkActions rest
-
-  | .UniversalReduction lineNum extLits :: rest => do
-    let lits ← extLits.foldlM (fun acc lit => do
-      let f ← (·.formula) <$> get
-      match f.lookupInternal lit.natAbs with
-      | none    => return acc
-      | some iv => return (acc.push (mkLit iv (lit > 0)))
-    ) #[]
-    if lits.isEmpty then return .Failed lineNum #["UR"] #[] none
-    let pivot := lits.getD 0 ⟨0⟩
-    let f ← (·.formula) <$> get
-    if f.isVarExistential pivot.var then
-      return .Failed lineNum #["UR"] #[f.externalizeLit pivot] none
-    let st ← get
-    match st.clauses.findSortedClause (lits.qsort (fun a b => a.x < b.x)) with
-    | none   => return .Failed lineNum #["LOCATE", "UR"] #[] none
-    | some _ =>
-      let f2 ← (·.formula) <$> get
-      -- Not reducible if clause contains ~pivot (Mixed-EUR: no tautology reductions)
-      let pivotReducible := !lits.any (· = pivot.negate) && lits.all fun l =>
-        !f2.isVarExistential l.var || !f2.isVarOuterOfExivar pivot.var l.var
-      if pivotReducible then
-        let r ← addClause (lits.filter (· ≠ pivot))
-        if r.isNone then return .Verified lineNum
-      else
-        let ok ← checkDQRATU lits pivot
-        if !ok then return .Failed lineNum #["UR", "DQRATU"] #[] none
-        let r ← addClause lits
-        if r.isNone then return .Verified lineNum
-      checkActions rest
-
-  | .RatClause lineNum extLits :: rest => do
-    let lits ← extLits.foldlM (fun acc lit => do
-      let extVar := lit.natAbs
-      let f ← (·.formula) <$> get
-      -- QRAT compat: create extension var with all univars as deps
-      if !f.externalVarExists extVar then
-        let _ ← addVarExists extVar f.univars
-      let f2 ← (·.formula) <$> get
-      match f2.lookupInternal extVar with
-      | none    => return acc
-      | some iv => return (acc.push (mkLit iv (lit > 0)))
-    ) #[]
-    let (success, blocker) ← checkDQRATE lits
-    if !success then return .Failed lineNum #["RUP", "DQRATE"] #[] blocker
-    let r ← addClause lits
-    if r.isNone then return .Verified lineNum
-    checkActions rest
 
 -- ─── Proof processor ───────────────────────────────────────────────────────
 
