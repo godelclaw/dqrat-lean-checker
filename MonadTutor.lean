@@ -255,6 +255,89 @@ example (n : Nat) :
   mvcgen
   grind
 
+-- ─── §2.4  Combining specs: `Triple.and` and `Triple.mp` ─────────────────────
+/-!
+## §2.4  Combining Specs: `Triple.and` and `Triple.mp`
+
+Sometimes you prove two separate Hoare triples for the **same program** and want
+to merge them into one triple that asserts both postconditions simultaneously.
+`Std.Do` provides two combinators for this:
+
+```
+Triple.and (x : m α) :
+    ⦃P₁⦄ x ⦃Q₁⦄ → ⦃P₂⦄ x ⦃Q₂⦄ → ⦃P₁ ∧ P₂⦄ x ⦃Q₁ ∧ₚ Q₂⦄
+
+Triple.mp (x : m α) :
+    ⦃P₁⦄ x ⦃Q₁⦄ → ⦃P₂⦄ x ⦃Q₁ →ₚ Q₂⦄ → ⦃P₁ ∧ P₂⦄ x ⦃Q₁ ∧ₚ Q₂⦄
+```
+
+`∧ₚ` (`PostCond.and`) conjoins two postconditions pointwise.
+`→ₚ` (`PostCond.imp`) is pointwise implication: `(Q₁ →ₚ Q₂)` holds after `x`
+when every outcome satisfying `Q₁` also satisfies `Q₂`.
+
+**`Triple.and`** is the direct combinator: if you can separately establish two
+properties of the same program, conjoin them.
+
+**`Triple.mp`** is the *strengthening* combinator: you already have a spec
+establishing `Q₁`, and you can separately show that after running `x`, `Q₁`
+implies `Q₂` (typically a pure consequence). `Triple.mp` then gives you both.
+The `→ₚ` spec is proved by `mintro` + `mspec` (applying the existing spec) +
+`mleave` + pure reasoning, as shown below.
+
+These combinators are especially useful before registering a combined spec with
+`@[spec]` (see §3), because `mvcgen` applies **at most one** `@[spec]` per call
+site.  If multiple specs are tagged for the same function, only one is applied per
+occurrence — the others are silently ignored.  The fix is to merge what you need
+into a single triple with `Triple.and` or `Triple.mp` and register that one.
+-/
+
+-- ── §2.4.1  Triple.and ────────────────────────────────────────────────────────
+
+-- Two separate specs for `newDecisionLevel`:
+private theorem ndl_trail (n : Nat) :
+    ⦃fun s => ⌜s.trail.size = n⌝⦄
+    (newDecisionLevel : CheckM Unit)
+    ⦃⇓ _ s' => ⌜s'.trail.size = n + 1⌝⦄ := by
+  mvcgen [newDecisionLevel]; grind
+
+private theorem ndl_isAssigned (m : Nat) :
+    ⦃fun s => ⌜s.isAssigned.size = m⌝⦄
+    (newDecisionLevel : CheckM Unit)
+    ⦃⇓ _ s' => ⌜s'.isAssigned.size = m⌝⦄ := by
+  mvcgen [newDecisionLevel]
+
+-- `Triple.and` produces a combined triple asserting both simultaneously.
+-- The resulting pre/postconditions use `∧` on `Assertion`s and `∧ₚ` on `PostCond`s.
+example (n m : Nat) :
+    ⦃(fun s => ⌜s.trail.size = n⌝) ∧ (fun s => ⌜s.isAssigned.size = m⌝)⦄
+    (newDecisionLevel : CheckM Unit)
+    ⦃(⇓ _ s' => ⌜s'.trail.size = n + 1⌝) ∧ₚ (⇓ _ s' => ⌜s'.isAssigned.size = m⌝)⦄ :=
+  Triple.and _ (ndl_trail n) (ndl_isAssigned m)
+
+-- ── §2.4.2  Triple.mp ────────────────────────────────────────────────────────
+
+-- `Triple.mp` strengthens a known spec with a pure consequence.
+-- Step 1: the base spec establishes Q₁ = "trail grew to n+1".
+-- Step 2: prove a conditional spec "if trail.size = n+1, then trail.size > n".
+--   Use `mintro` to open the precondition, `mspec` to apply the base spec, then
+--   `mleave` to discharge the remaining pure VC.
+-- Step 3: `Triple.mp` combines them, giving Q₁ ∧ₚ Q₂ simultaneously.
+
+private theorem trail_size_gt (n : Nat) :
+    ⦃fun s => ⌜s.trail.size = n⌝⦄
+    (newDecisionLevel : CheckM Unit)
+    ⦃(⇓ _ s' => ⌜s'.trail.size = n + 1⌝) →ₚ (⇓ _ s' => ⌜s'.trail.size > n⌝)⦄ := by
+  mintro h
+  mspec ndl_trail  -- apply the base spec; VC becomes: trail.size = n+1 → trail.size > n
+  mleave
+  intro s h1 h2; omega
+
+example (n : Nat) :
+    ⦃(fun s => ⌜s.trail.size = n⌝) ∧ (fun s => ⌜s.trail.size = n⌝)⦄
+    (newDecisionLevel : CheckM Unit)
+    ⦃(⇓ _ s' => ⌜s'.trail.size = n + 1⌝) ∧ₚ (⇓ _ s' => ⌜s'.trail.size > n⌝)⦄ :=
+  Triple.mp _ (ndl_trail n) (trail_size_gt n)
+
 -- ─── §3  Registering specs with `@[spec]` ───────────────────────────────────
 /-!
 ## §3  Registering Specs
