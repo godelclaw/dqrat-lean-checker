@@ -185,6 +185,107 @@ where
     have hisac : s₁.isAssigned.count false = st.isAssigned.count false := rfl
     omega
 
+-- ─── Formula/clauses preservation lemmas ─────────────────────────────────────
+
+/-- `enqueue` never modifies `formula` or `clauses`. -/
+theorem enqueue_fc (f : DQBF) (c : ClauseStore) (l : Literal) :
+    ⦃fun s => ⌜s.formula = f ∧ s.clauses = c⌝⦄
+    (enqueue l : CheckM Unit)
+    ⦃⇓ _ s' => ⌜s'.formula = f ∧ s'.clauses = c⌝⦄ := by
+  intro s ⟨hf, hc⟩; unfold enqueue; mvcgen
+
+/-- `propagateOne` never modifies `formula` or `clauses`. -/
+theorem propagateOne_fc (f : DQBF) (c : ClauseStore) (l : Literal) :
+    ⦃fun s => ⌜s.formula = f ∧ s.clauses = c⌝⦄
+    (propagateOne l : CheckM (Option CRef))
+    ⦃⇓? _ s' => ⌜s'.formula = f ∧ s'.clauses = c⌝⦄ := by
+  intro s ⟨hf, hc⟩; mvcgen [propagateOne, enqueue] invariants
+  · ⇓⟨_, _⟩ s => ⌜s.formula = f ∧ s.clauses = c⌝
+    with all_goals (first | assumption | (intro h₁ h₂; exact ⟨h₁, h₂⟩))
+
+/-- `propagate.aux` preserves `formula` and `clauses`. -/
+theorem propagate_aux_fc (f : DQBF) (c : ClauseStore) :
+    ∀ (n : Nat) (st : CheckState),
+      st.formula = f ∧ st.clauses = c →
+      st.propQueue.size + st.isAssigned.count false ≤ n →
+      ∀ (r : Option CRef) (s' : CheckState),
+      propagate.aux st = .ok r s' →
+      s'.formula = f ∧ s'.clauses = c := by
+  intro n
+  induction n with
+  | zero =>
+    intro st ⟨hf, hc⟩ hn r s' h
+    have hempty : st.propQueue.isEmpty = true := by
+      simp only [Array.isEmpty_iff_size_eq_zero]; omega
+    simp only [propagate.aux, hempty, ↓reduceIte] at h
+    simp only [EStateM.Result.ok.injEq] at h
+    exact ⟨h.2 ▸ hf, h.2 ▸ hc⟩
+  | succ n ih =>
+    intro st ⟨hf, hc⟩ hn r s' h
+    by_cases hempty : st.propQueue.isEmpty = true
+    · simp only [propagate.aux, hempty, ↓reduceIte] at h
+      simp only [EStateM.Result.ok.injEq] at h
+      exact ⟨h.2 ▸ hf, h.2 ▸ hc⟩
+    · simp only [Bool.not_eq_true] at hempty
+      -- Rewrite h to expose the match on propagateOne's result, then inline let-bindings
+      rw [propagate.aux.eq_def,
+          if_neg (show ¬st.propQueue.isEmpty = true by simp [hempty])] at h
+      dsimp only [] at h  -- inline let-bindings so rw [h₁] can rewrite the match scrutinee
+      -- case split on propagateOne result
+      cases h₁ : (propagateOne (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩))
+                 { st with propQueue := st.propQueue.pop } with
+      | error e se =>
+        rw [h₁] at h
+        -- named-match on a constructor: use `change` (defeq) to reduce it
+        change .error e se = .ok r s' at h
+        simp at h
+      | ok r₂ s₂ =>
+        -- propagateOne_fc gives s₂.formula = f ∧ s₂.clauses = c
+        have hfc₂ : s₂.formula = f ∧ s₂.clauses = c := by
+          have h' := propagateOne_fc f c (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩)
+          specialize h' { st with propQueue := st.propQueue.pop } ⟨hf, hc⟩
+          simp only [WP.wp, PredTrans.apply, EStateM.run, h₁] at h'
+          exact h'
+        rw [h₁] at h
+        cases r₂ with
+        | some cref =>
+          -- h (after rw+cases r₂): match reduces to .ok (some cref) s₂
+          change .ok (some cref) s₂ = .ok r s' at h
+          simp only [EStateM.Result.ok.injEq] at h
+          exact ⟨h.2 ▸ hfc₂.1, h.2 ▸ hfc₂.2⟩
+        | none =>
+          -- h (after rw+cases r₂): match reduces to propagate.aux s₂
+          change propagate.aux s₂ = .ok r s' at h
+          have hmeas := propagateOne_measure_spec
+              (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩)
+              ({ st with propQueue := st.propQueue.pop }.propQueue.size +
+               { st with propQueue := st.propQueue.pop }.isAssigned.count false)
+          specialize hmeas { st with propQueue := st.propQueue.pop } rfl
+          simp only [WP.wp, PredTrans.apply, EStateM.run, h₁] at hmeas
+          have hpos : 0 < st.propQueue.size := by
+            have hne : ¬st.propQueue.isEmpty = true := by simp [hempty]
+            simp only [Array.isEmpty_iff_size_eq_zero] at hne
+            omega
+          have hn₂ : s₂.propQueue.size + s₂.isAssigned.count false ≤ n := by
+            have hpop : st.propQueue.pop.size = st.propQueue.size - 1 := Array.size_pop
+            simp only [hpop] at hmeas
+            omega
+          exact ih s₂ hfc₂ hn₂ r s' h
+
+/-- `propagate` preserves `formula` and `clauses`. -/
+theorem propagate_fc (f : DQBF) (c : ClauseStore) :
+    ⦃fun s => ⌜s.formula = f ∧ s.clauses = c⌝⦄
+    (propagate : CheckM (Option CRef))
+    ⦃⇓? _ s' => ⌜s'.formula = f ∧ s'.clauses = c⌝⦄ := by
+  intro s ⟨hf, hc⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run, propagate]
+  cases h : propagate.aux s with
+  | error e s' => trivial
+  | ok r s' =>
+    simp only []
+    exact propagate_aux_fc f c (s.propQueue.size + s.isAssigned.count false) s ⟨hf, hc⟩
+        (Nat.le_refl _) r s' h
+
 -- ─── BFS reachability for D^∀-pure dep scheme ─────────────────────────────
 
 -- Compute reachable literals starting from literal l (for universal l).
