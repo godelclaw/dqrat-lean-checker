@@ -6,4 +6,4 @@ import DqratLean.CheckState
 import DqratLean.Checker
 import DqratLean.Parser
 import DqratLean.Semantics
--- import DqratLean.Soundness
+import DqratLean.Soundness
