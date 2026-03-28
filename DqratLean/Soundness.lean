@@ -155,6 +155,29 @@ theorem matrixValue_addClause_of_both
       rw [heq]; exact ClauseStore.getClause_addClause_new cs lits hpos]
     simpa
 
+theorem matrixValue_addClause_false_of_old_false
+    (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hold : cs.matrixValue f σ sk = false) :
+    (cs.addClause lits).1.matrixValue f σ sk = false := by
+  cases h : (cs.addClause lits).1.matrixValue f σ sk <;> simp [h]
+  have hmono := matrixValue_addClause_mono f cs lits σ sk h
+  simp [hold] at hmono
+
+theorem matrixValue_addClause_false_of_new_false
+    (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hpos : 0 < cs.clauses.size)
+    (hnew : f.clauseValue σ sk lits = false) :
+    (cs.addClause lits).1.matrixValue f σ sk = false := by
+  cases h : (cs.addClause lits).1.matrixValue f σ sk <;> simp [h]
+  have hget :=
+    ClauseStore.getClause_addClause_new cs lits hpos
+  have hclause :=
+    clauseValue_of_matrixValue f (cs.addClause lits).1 σ sk cs.clauses.size
+      { lits := lits, deleted := false } h hget
+  simp [hnew] at hclause
+
 -- Literal arithmetic: if l.x / 2 = p.x / 2 and l.x ≠ p.x, then l.x = p.x ^^^ 1
 theorem lit_raw (lx px : Nat)
     (hvar : lx / 2 = px / 2) (hne : lx ≠ px) : lx = px ^^^ 1 := by
@@ -347,6 +370,66 @@ def ClausesWellFormed (f : DQBF) (cs : ClauseStore) : Prop :=
   ∀ cref c, cs.getClause cref = some c →
     ∀ l ∈ c.lits.toList, 0 < l.var ∧ l.var ≤ f.maxVar
 
+/-- Well-formedness of a clause literal array against a formula. -/
+def ClauseLitsWellFormed (f : DQBF) (lits : Array Literal) : Prop :=
+  ∀ l ∈ lits.toList, 0 < l.var ∧ l.var ≤ f.maxVar
+
+theorem ClausesWellFormed.addClause
+    {f : DQBF} {cs : ClauseStore} {lits : Array Literal}
+    (hwf : ClausesWellFormed f cs)
+    (hlits : ClauseLitsWellFormed f lits) :
+    ClausesWellFormed f (cs.addClause lits).1 := by
+  intro cref c hget l hl
+  by_cases hlt : cref < cs.clauses.size
+  · rw [ClauseStore.getClause_addClause_lt cs lits cref hlt] at hget
+    exact hwf cref c hget l hl
+  · have hsize : cref < (cs.addClause lits).1.clauses.size :=
+      ClauseStore.getClause_some_imp_lt (cs := (cs.addClause lits).1) cref c hget
+    have hcref : cref = cs.clauses.size := by
+      simp [ClauseStore.addClause] at hsize
+      exact Nat.eq_of_lt_succ_of_not_lt hsize hlt
+    subst hcref
+    have hne : cs.clauses.size ≠ CRef_Undef := by
+      exact ClauseStore.getClause_some_imp_ne_undef (cs := (cs.addClause lits).1) _ _ hget
+    have hpos : 0 < cs.clauses.size := Nat.pos_iff_ne_zero.mpr hne
+    rw [ClauseStore.getClause_addClause_new cs lits hpos] at hget
+    cases hget
+    exact hlits l hl
+
+theorem DQBFFalse.of_sound_extension
+    {f₀ f₁ : DQBF} {cs₀ cs₁ : ClauseStore}
+    (hsem : DQBFTrue f₀ cs₀ → DQBFTrue f₁ cs₁)
+    (hfalse : DQBFFalse f₁ cs₁) :
+    DQBFFalse f₀ cs₀ := by
+  classical
+  intro sk
+  by_cases hex : ∃ σ, cs₀.matrixValue f₀ σ sk = false
+  · exact hex
+  · refine False.elim ?_
+    have hall : ∀ σ, cs₀.matrixValue f₀ σ sk = true := by
+      intro σ
+      cases h : cs₀.matrixValue f₀ σ sk <;> simp at h ⊢
+      exact False.elim (hex ⟨σ, h⟩)
+    rcases hsem ⟨sk, hall⟩ with ⟨sk', htrue₁⟩
+    rcases hfalse sk' with ⟨σ, hfalse₁⟩
+    rw [htrue₁ σ] at hfalse₁
+    simp at hfalse₁
+
+theorem DQBFFalse.of_not_true
+    {f : DQBF} {cs : ClauseStore}
+    (hnot : ¬ DQBFTrue f cs) :
+    DQBFFalse f cs := by
+  classical
+  intro sk
+  by_cases hex : ∃ σ, cs.matrixValue f σ sk = false
+  · exact hex
+  · exfalso
+    apply hnot
+    refine ⟨sk, ?_⟩
+    intro σ
+    cases h : cs.matrixValue f σ sk <;> simp at h ⊢
+    exact False.elim (hex ⟨σ, h⟩)
+
 
 -- ─── Structural invariants ────────────────────────────────────────────────────
 
@@ -366,6 +449,8 @@ structure CheckState.Sound (st : CheckState) : Prop where
   externalName_size  : st.formula.externalName.size  = st.formula.maxVar + 1
   isExistential_size : st.formula.isExistential.size = st.formula.maxVar + 1
   depset_size        : st.formula.depset.size        = st.formula.maxVar + 1
+  /-- Clause store always contains the dummy clause at index 0. -/
+  clauses_nonempty : 0 < st.clauses.clauses.size
   /-- There is always at least one decision level (level 0). -/
   trail_nonempty : 0 < st.trail.size
 
@@ -436,19 +521,174 @@ structure CheckState.ConsistentWith (f : DQBF) (cs : ClauseStore)
 
 /-- A `Correct` state is consistent with any satisfying model of the current formula.
     This is the key bridge between the inter-action invariant (`Correct`) and the
-    propagation-level invariant (`ConsistentWith`) used in soundness proofs. -/
+    propagation-level invariant (`CheckState.ConsistentWith`) used in soundness proofs. -/
 theorem CheckState.Correct.to_consistentWith
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
-    (hcorr : st.Correct dqbf cs)
+    (hcorr : CheckState.Correct dqbf cs st)
     (σ : UnivAssignment) (sk : SkolemAssignment)
     (hmat : st.clauses.matrixValue st.formula σ sk = true) :
-    st.ConsistentWith st.formula st.clauses σ sk :=
+    CheckState.ConsistentWith st.formula st.clauses σ sk st :=
   { toSound      := hcorr.toSound
     formula_eq   := rfl
     clauses_eq   := rfl
     clauses_wf   := hcorr.clauses_wf
     assigned_model := fun v hpos hassign => hcorr.preserves_models v hpos hassign sk σ hmat
     queue_model  := by simp [hcorr.propQueue_empty] }
+
+/-- Updating only the independence caches preserves `Correct` as long as the cache
+    arrays keep the expected `maxVar` length.  None of the semantic fields in `Correct`
+    depends on the cache contents themselves. -/
+theorem CheckState.Correct.withIndepCaches
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (indepKnown : Array Bool) (indepOf : Array (Array Var))
+    (hknown : indepKnown.size = st.formula.maxVar)
+    (hof : indepOf.size = st.formula.maxVar) :
+    CheckState.Correct dqbf cs
+      { st with indepKnown := indepKnown, indepOf := indepOf } := by
+  refine
+    { toSound := ?_
+      propQueue_empty := hcorr.propQueue_empty
+      trail_single_level := hcorr.trail_single_level
+      clauses_wf := hcorr.clauses_wf
+      formula_extends := hcorr.formula_extends
+      preserves_models := hcorr.preserves_models
+      formula_sound := hcorr.formula_sound
+      trail_lits_valid := hcorr.trail_lits_valid
+      assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
+  exact
+    { isAssigned_size := hcorr.toSound.isAssigned_size
+      value_size := hcorr.toSound.value_size
+      indepKnown_size := hknown
+      indepOf_size := hof
+      externalName_size := hcorr.toSound.externalName_size
+      isExistential_size := hcorr.toSound.isExistential_size
+      depset_size := hcorr.toSound.depset_size
+      clauses_nonempty := hcorr.toSound.clauses_nonempty
+      trail_nonempty := hcorr.toSound.trail_nonempty }
+
+@[spec]
+theorem makeIndepUnknown_correct_spec (dqbf : DQBF) (cs : ClauseStore)
+    (u : Var) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    (makeIndepUnknown u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄ := by
+  intro s hcorr
+  simp only [WP.wp, PredTrans.apply, EStateM.run, makeIndepUnknown]
+  by_cases hu : u = 0
+  · simp [hu]
+    exact hcorr
+  · simp [hu]
+    exact CheckState.Correct.withIndepCaches hcorr
+      (s.indepKnown.setIfInBounds (u - 1) false)
+      (s.indepOf.setIfInBounds (u - 1) #[])
+      (by simp [Array.size_setIfInBounds, hcorr.toSound.indepKnown_size])
+      (by simp [Array.size_setIfInBounds, hcorr.toSound.indepOf_size])
+
+@[spec]
+theorem invalidateDepCaches_correct_spec (dqbf : DQBF) (cs : ClauseStore)
+    (lits : Array Literal) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    (invalidateDepCaches lits : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄ := by
+  intro s hcorr
+  have hfor :
+      ⦃fun s' => ⌜CheckState.Correct dqbf cs s'⌝⦄
+      (forIn lits.toList PUnit.unit (fun l _ => do
+        let v := l.var
+        if v > 0 && s.formula.isVarExistential v then
+          let _ ← forIn (s.formula.depset.getD v #[]).toList PUnit.unit (fun u _ => do
+            makeIndepUnknown u
+            pure (ForInStep.yield PUnit.unit))
+          pure (ForInStep.yield PUnit.unit)
+        else
+          pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+      ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄ := by
+    refine (Spec.forIn_list_const_inv
+      (xs := lits.toList)
+      (init := PUnit.unit)
+      (f := fun l _ => do
+        let v := l.var
+        if v > 0 && s.formula.isVarExistential v then
+          let _ ← forIn (s.formula.depset.getD v #[]).toList PUnit.unit (fun u _ => do
+            makeIndepUnknown u
+            pure (ForInStep.yield PUnit.unit))
+          pure (ForInStep.yield PUnit.unit)
+        else
+          pure (ForInStep.yield PUnit.unit))
+      (inv := (⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝))
+      ?_)
+    intro l b
+    cases b
+    mvcgen [makeIndepUnknown_correct_spec] invariants
+    · ⇓⟨xs, ()⟩ s' => ⌜CheckState.Correct dqbf cs s'⌝
+      with all_goals first | assumption | exact ‹CheckState.Correct dqbf cs _›
+  simpa [invalidateDepCaches, Array.forIn_toList] using hfor s hcorr
+
+theorem invalidateDepCaches_correct_sameFC_spec
+    (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) (s₀ : CheckState) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄
+    (invalidateDepCaches lits : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ SameFC s₀ s'⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hcorr, hsame⟩
+  have hcorr' := invalidateDepCaches_correct_spec dqbf cs lits s hcorr
+  have hsame' := invalidateDepCaches_sameFC_spec lits s₀ s hsame
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hcorr' hsame' ⊢
+  cases hrun : invalidateDepCaches lits s with
+  | error e s' =>
+    rw [hrun] at hcorr'
+    exact hcorr'.elim
+  | ok _ s' =>
+    rw [hrun] at hcorr' hsame'
+    exact ⟨hcorr', hsame'⟩
+
+theorem clauseLitsWellFormed_of_sameFC
+    {s₀ s₁ : CheckState} {lits : Array Literal}
+    (hsame : SameFC s₀ s₁)
+    (hwf : ClauseLitsWellFormed s₀.formula lits) :
+    ClauseLitsWellFormed s₁.formula lits := by
+  rcases hsame with ⟨hformula, _⟩
+  simpa [hformula] using hwf
+
+theorem addClause_semantics_of_sameFC
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s₀ s₁ : CheckState} {lits : Array Literal}
+    (hsame : SameFC s₀ s₁)
+    (hsem : DQBFTrue dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1) :
+    DQBFTrue dqbf cs → DQBFTrue s₁.formula (s₁.clauses.addClause lits).1 := by
+  rcases hsame with ⟨hformula, hclauses⟩
+  simpa [hformula, hclauses] using hsem
+
+theorem CheckState.Correct.withAddClause
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {lits : Array Literal}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (hlits : ClauseLitsWellFormed st.formula lits)
+    (hsem : DQBFTrue dqbf cs → DQBFTrue st.formula (st.clauses.addClause lits).1) :
+    CheckState.Correct dqbf cs { st with clauses := (st.clauses.addClause lits).1 } := by
+  refine
+    { toSound := ?_
+      propQueue_empty := hcorr.propQueue_empty
+      trail_single_level := hcorr.trail_single_level
+      clauses_wf := hcorr.clauses_wf.addClause hlits
+      formula_extends := hcorr.formula_extends
+      preserves_models := ?_
+      formula_sound := hsem
+      trail_lits_valid := hcorr.trail_lits_valid
+      assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
+  · exact
+      { isAssigned_size := hcorr.toSound.isAssigned_size
+        value_size := hcorr.toSound.value_size
+        indepKnown_size := hcorr.toSound.indepKnown_size
+        indepOf_size := hcorr.toSound.indepOf_size
+        externalName_size := hcorr.toSound.externalName_size
+        isExistential_size := hcorr.toSound.isExistential_size
+        depset_size := hcorr.toSound.depset_size
+        clauses_nonempty := by simpa [ClauseStore.addClause] using Nat.succ_pos st.clauses.clauses.size
+        trail_nonempty := hcorr.toSound.trail_nonempty }
+  · intro v hpos hassign sk σ hmat
+    exact hcorr.preserves_models v hpos hassign sk σ
+      (matrixValue_addClause_mono st.formula st.clauses lits σ sk hmat)
 
 -- ─── Key lemma (sorry'd) ──────────────────────────────────────────────────────
 
@@ -564,12 +804,17 @@ theorem litValue_negate (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
 -- If a literal is model-false and the state is consistent, then `satisfied st l = false`.
 theorem satisfied_false_of_model_false
     {f : DQBF} {cs : ClauseStore} {σ : UnivAssignment} {sk : SkolemAssignment} {st : CheckState}
-    (h_con : st.ConsistentWith f cs σ sk)
+    (h_con : CheckState.ConsistentWith f cs σ sk st)
     (l : Literal) (hl : f.litValue σ sk l = false) :
     satisfied st l = false := by
   cases h : satisfied st l
   · rfl
   · exact absurd (litValue_of_satisfied' f σ sk st h_con.assigned_model l h) (by simp [hl])
+
+-- PropInv: state maintains model-consistency including formula/clauses identity
+abbrev PropInv (f : DQBF) (cs : ClauseStore)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (st : CheckState) : Prop :=
+  CheckState.ConsistentWith f cs σ sk st
 
 -- Helper for setIfInBounds getD (positive case)
 theorem arraySafeSet_getD_eq' (a : Array Bool) (i : Nat) (v : Bool) (h : i < a.size) :
@@ -591,18 +836,18 @@ theorem arraySafeSet_getD_ne' (a : Array Bool) (i j : Nat) (v : Bool) (hij : i �
 
 -- ─── Hoare-triple specs for propagation primitives ────────────────────────────
 
-/-- `@[spec]` for `enqueue`: preserves `ConsistentWith` when the literal is
+/-- `@[spec]` for `enqueue`: preserves `CheckState.ConsistentWith` when the literal is
     model-true. Because `ConsistentWith` extends `Sound`, this also guarantees all
     structural invariants are preserved. The `isAssigned_size` field inherited from
     `Sound` ensures `setIfInBounds` on `value` is in-bounds whenever the `isAssigned`
     bounds-check passes. -/
 @[spec]
-theorem enqueue_spec
+theorem enqueue_consistent_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (l : Literal) (hl : f.litValue σ sk l = true) :
-    ⦃fun s => ⌜s.ConsistentWith f cs σ sk⌝⦄
+    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
     (enqueue l : CheckM Unit)
-    ⦃⇓ _ s' => ⌜s'.ConsistentWith f cs σ sk⌝⦄ := by
+    ⦃⇓ _ s' => ⌜CheckState.ConsistentWith f cs σ sk s'⌝⦄ := by
   unfold enqueue; mvcgen
   -- mvcgen generates one VC: case vc4.isFalse.isFalse.isFalse
   -- Inaccessible hypotheses (9, in order):
@@ -624,13 +869,13 @@ theorem enqueue_spec
     rcases Bool.eq_false_or_eq_true l.isPos with h | h <;>
       simp only [h] at hl ⊢ <;> simpa using hl
   -- New state: formula/clauses unchanged; isAssigned/value set at (v_var - 1); propQueue pushed
-  -- Provide toSound (all 8 structural fields), then the 5 ConsistentWith-specific fields.
+  -- Provide toSound (all 9 structural fields), then the 5 ConsistentWith-specific fields.
   refine ⟨?_, h_con.formula_eq, h_con.clauses_eq, h_con.clauses_wf, ?_, ?_⟩
   · -- toSound: isAssigned/value sizes change via setIfInBounds (size-preserving);
     --          all other Sound fields are unchanged.
     refine ⟨?_, ?_, h_con.toSound.indepKnown_size, h_con.toSound.indepOf_size,
               h_con.toSound.externalName_size, h_con.toSound.isExistential_size,
-              h_con.toSound.depset_size,
+              h_con.toSound.depset_size, h_con.toSound.clauses_nonempty,
               by rw [Array.size_setIfInBounds]; exact h_con.toSound.trail_nonempty⟩
     · simp [Array.size_setIfInBounds, h_con.toSound.isAssigned_size]
     · simp [Array.size_setIfInBounds, h_con.toSound.value_size]
@@ -657,7 +902,7 @@ theorem enqueue_spec
     · exact h_con.queue_model l' hl'
     · exact hl
 
-/-- `@[spec]` for `propagateOne`: preserves `ConsistentWith` (hence also
+/-- `@[spec]` for `propagateOne`: preserves `CheckState.ConsistentWith` (hence also
     `Sound`) and always returns `none` (no conflict) when the model satisfies all clauses.
     The conflict branch (`unassigned.isEmpty`) is unreachable: if all literals are
     assigned, at least one must be model-true (since the clause is model-true), and
@@ -667,11 +912,11 @@ theorem enqueue_spec
 theorem propagateOne_consistent_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hmat : cs.matrixValue f σ sk = true) (l : Literal) :
-    ⦃fun s => ⌜s.ConsistentWith f cs σ sk⌝⦄
+    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
     (propagateOne l : CheckM (Option CRef))
-    ⦃⇓ r s' => ⌜s'.ConsistentWith f cs σ sk ∧ r = none⌝⦄ := by
-  mvcgen [propagateOne] invariants
-  · ⇓⟨_, acc⟩ s => ⌜s.ConsistentWith f cs σ sk ∧ acc = none⌝
+    ⦃⇓ r s' => ⌜CheckState.ConsistentWith f cs σ sk s' ∧ r = none⌝⦄ := by
+  mvcgen [propagateOne, enqueue_consistent_spec] invariants
+  · ⇓⟨_, acc⟩ s => ⌜CheckState.ConsistentWith f cs σ sk s ∧ acc = none⌝
     with
   case vc4.step.h_2.h_2.isFalse.isTrue =>
     -- Conflict branch: all lits assigned, sat = false, but clause is model-true → False.
@@ -754,10 +999,10 @@ private theorem propagate_aux_consistent
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hmat : cs.matrixValue f σ sk = true) :
     ∀ (n : Nat) (st : CheckState),
-      st.ConsistentWith f cs σ sk →
+      CheckState.ConsistentWith f cs σ sk st →
       st.propQueue.size + st.isAssigned.count false ≤ n →
       ∃ st', propagate.aux st = .ok none st' ∧
-             st'.ConsistentWith f cs σ sk := by
+             CheckState.ConsistentWith f cs σ sk st' := by
   intro n
   induction n with
   | zero =>
@@ -772,7 +1017,8 @@ private theorem propagate_aux_consistent
     · -- Queue non-empty: pop one literal
       simp only [Bool.not_eq_true] at hempty
       -- s₁ (with popped queue) satisfies ConsistentWith
-      have h_con₁ : { st with propQueue := st.propQueue.pop }.ConsistentWith f cs σ sk :=
+      have h_con₁ : CheckState.ConsistentWith f cs σ sk
+          { st with propQueue := st.propQueue.pop } :=
         { h_con with
           queue_model := fun l' hl' => h_con.queue_model l' (by
             rw [Array.toList_pop] at hl'
@@ -824,17 +1070,17 @@ private theorem propagate_aux_consistent
         rw [he]
         exact haux'
 
-/-- `@[spec]` for `propagate`: preserves `ConsistentWith` and always returns
+/-- `@[spec]` for `propagate`: preserves `CheckState.ConsistentWith` and always returns
     `none` (no conflict) when the model satisfies all clauses.
     Proved by well-founded induction on the propagation measure via
     `propagateOne_consistent_spec`. -/
 @[spec]
-theorem propagate_spec
+theorem propagate_consistent_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hmat : cs.matrixValue f σ sk = true) :
-    ⦃fun s => ⌜s.ConsistentWith f cs σ sk⌝⦄
+    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
     (propagate : CheckM (Option CRef))
-    ⦃⇓ r s' => ⌜s'.ConsistentWith f cs σ sk ∧ r = none⌝⦄ := by
+    ⦃⇓ r s' => ⌜CheckState.ConsistentWith f cs σ sk s' ∧ r = none⌝⦄ := by
   intro s h_con
   obtain ⟨st', haux, h_con'⟩ := propagate_aux_consistent f cs σ sk hmat
       (s.propQueue.size + s.isAssigned.count false) s h_con (Nat.le_refl _)
@@ -842,11 +1088,11 @@ theorem propagate_spec
   exact ⟨h_con', trivial⟩
 
 @[spec]
-theorem newDecisionLevel_spec
+theorem newDecisionLevel_consistent_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment) :
-    ⦃fun s => ⌜s.ConsistentWith f cs σ sk⌝⦄
+    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
     (newDecisionLevel : CheckM Unit)
-    ⦃⇓ _ s' => ⌜s'.ConsistentWith f cs σ sk⌝⦄ := by
+    ⦃⇓ _ s' => ⌜CheckState.ConsistentWith f cs σ sk s'⌝⦄ := by
   intro s h_con
   simp only [WP.wp, PredTrans.apply, EStateM.run, newDecisionLevel, EStateM.modifyGet,
              EStateM.set]
@@ -855,21 +1101,21 @@ theorem newDecisionLevel_spec
   exact ⟨h_con.toSound.isAssigned_size, h_con.toSound.value_size,
          h_con.toSound.indepKnown_size, h_con.toSound.indepOf_size,
          h_con.toSound.externalName_size, h_con.toSound.isExistential_size,
-         h_con.toSound.depset_size,
+         h_con.toSound.depset_size, h_con.toSound.clauses_nonempty,
          by simp [Array.size_push]⟩
 
 /-- `negateAndPropagate lits (fun _ => true)` returns `false` (no conflict) from a
-    `ConsistentWith` state when all lits are model-false: each negated literal
+    `CheckState.ConsistentWith` state when all lits are model-false: each negated literal
     is model-true, so `enqueue` + `propagate` find no conflict. -/
-theorem negateAndPropagate_spec
+theorem negateAndPropagate_consistent_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hmat : cs.matrixValue f σ sk = true)
     (lits : Array Literal) (hlits_false : ∀ l ∈ lits.toList, f.litValue σ sk l = false) :
-    ⦃fun s => ⌜s.ConsistentWith f cs σ sk⌝⦄
+    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
     (negateAndPropagate lits (fun _ => true) : CheckM Bool)
-    ⦃⇓ r s' => ⌜s'.ConsistentWith f cs σ sk ∧ r = false⌝⦄ := by
+    ⦃⇓ r s' => ⌜CheckState.ConsistentWith f cs σ sk s' ∧ r = false⌝⦄ := by
   mvcgen [negateAndPropagate] invariants
-  · ⇓⟨_xs, b⟩ s => ⌜b = false ∧ s.ConsistentWith f cs σ sk⌝
+  · ⇓⟨_xs, b⟩ s => ⌜b = false ∧ CheckState.ConsistentWith f cs σ sk s⌝
     with simp_all [litValue_negate, satisfied_false_of_model_false,
                    List.mem_append, List.mem_cons]
   -- vc12: satisfied cur = true — contradiction (cur is model-false under ConsistentWith)
@@ -878,9 +1124,19 @@ theorem negateAndPropagate_spec
     simp [satisfied_false_of_model_false h_inv.2 cur
             (hlits_false cur (Or.inr (Or.inl rfl)))] at h_sat
 
-/-
+-- ─── Main theorem ────────────────────────────────────────────────────────────
+
+/-- **RUP soundness**: if `negateAndPropagate lits (fun _ => true)` detects a conflict
+    (returns `true`) from a valid state, then adding `lits` to a true formula preserves truth.
+
+    The hypothesis `hrup` is a Hoare triple: starting from state `st`, the computation
+    returns `true`. This avoids referencing `EStateM.run` directly.
+
+    Proof: by contradiction against `negateAndPropagate_consistent_spec`. If `lits` were
+    false under some model (sk, σ) satisfying the matrix, build `ConsistentWith` and apply
+    the spec: it says the computation returns `false`. But `hrup` says `true`. Contradiction. -/
 theorem RUP_soundness (st : CheckState) (lits : Array Literal)
-    (hsound : st.Sound st)
+    (hsound : CheckState.Sound st)
     (hvalid : StatePreservesModels st)
     (hwf : ClausesWellFormed st.formula st.clauses)
     (hpq : st.propQueue = #[])
@@ -907,7 +1163,7 @@ theorem RUP_soundness (st : CheckState) (lits : Array Literal)
         rw [hclause_true] at h_false; exact absurd h_false (by decide)
       · exact hl_false
     -- Build ConsistentWith from the validity hypotheses
-    have hcon : st.ConsistentWith st.formula st.clauses σ sk st :=
+    have hcon : CheckState.ConsistentWith st.formula st.clauses σ sk st :=
       { toSound      := hsound
         formula_eq   := rfl
         clauses_eq   := rfl
@@ -915,7 +1171,7 @@ theorem RUP_soundness (st : CheckState) (lits : Array Literal)
         assigned_model := fun v hpos hassign => hvalid v hpos hassign sk σ hmat
         queue_model  := by simp [hpq] }
     -- negateAndPropagate_consistent_spec (⇓): from ConsistentWith, returns false
-    have hspec := negateAndPropagate_spec
+    have hspec := negateAndPropagate_consistent_spec
         st.formula st.clauses σ sk hmat lits hlits_false
     specialize hspec st hcon
     simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
@@ -928,7 +1184,6 @@ theorem RUP_soundness (st : CheckState) (lits : Array Literal)
     | ok r s    =>
       rw [hr] at hspec; rw [hr] at hrup
       exact absurd (hrup.symm.trans hspec.2) (by decide)
--/
 
 /-- The outer clause of clause `D` with respect to existential literal `y`:
     all literals `l ∈ D` such that `l.var` is an outer variable of `y.var`. -/
@@ -963,20 +1218,26 @@ theorem DQRATU_soundness (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
 
 -- ─── Section 7: Overall Checker Soundness Stub ───────────────────────────────
 
+/-- **Main soundness theorem** (sorry'd):
+    If `processProof` returns `.Verified`, then the input formula is false.
+
+    This connects the imperative checker (`CheckState`, `processProof`) to the
+    semantic definitions (`DQBFFalse`, `DQBFTrue`).
+
+    The full proof would proceed by induction on the proof steps and appeal to:
+    - `DQBFTrue.delete_clause` for DEL steps
+    - `UR_soundness` for UR steps
+    - `DQRATE_soundness` / `DQRATU_soundness` for DQRATE / DQRATU steps
+    - `DQBFFalse.of_empty_clause` for the final refutation step. -/
+theorem processProof_sound (st : CheckState) (proofContent : String) (n : Nat) :
+    processProof st proofContent = .Verified n →
+    DQBFFalse st.formula st.clauses := by
+  sorry
+
 -- ─── Checker soundness theorems ───────────────────────────────────────────────
 
-abbrev CheckerState.PostShape := PostShape.except ProofResult (PostShape.arg CheckState PostShape.pure)
-abbrev mayFail {α : Type} (p : α → Assertion CheckerState.PostShape) :
-    PostCond α CheckerState.PostShape := (p, (fun e ↦ ⌜e.isFailed⌝, ()))
-abbrev mayVerify {α : Type} (p : α → Assertion CheckerState.PostShape) :
-    PostCond α CheckerState.PostShape := (p, (fun e ↦ ⌜e.isVerified⌝, ()))
-abbrev CheckerState.CorrectPost {α : Type} (dqbf : DQBF) (cs : ClauseStore)
-    (p : α → Assertion CheckerState.PostShape := fun _ s ↦ ⌜s.Correct dqbf cs⌝) :
-    PostCond α CheckerState.PostShape :=
-  (p, (fun e ↦ ⌜e.isVerified → DQBFFalse dqbf cs⌝, ()))
-
 /-- **Single-action soundness** (sorry'd):
-    `checkAction` preserves `Correct` and, when it returns `verified`, witnesses
+    `checkAction` preserves `Correct` and, when it returns `Verified`, witnesses
     that the current formula is unsatisfiable.
 
     Proof plan: case-split on the constructor of `action`; for each case:
@@ -984,48 +1245,423 @@ abbrev CheckerState.CorrectPost {α : Type} (dqbf : DQBF) (cs : ClauseStore)
     - `formula_sound` follows from the appropriate soundness theorem
       (DEL: `DQBFTrue.delete_clause`; RUP: `RUP_soundness`; UR: `DQRATU_soundness`;
        DQRATE: `DQRATE_soundness`).
-    - `verified` is only returned when `addClause` detects an empty clause by UP,
+    - `Verified` is only returned when `addClause` detects an empty clause by UP,
       giving `DQBFFalse` via `DQBFFalse.of_empty_clause`. -/
 theorem checkAction_sound (dqbf : DQBF) (cs : ClauseStore) (action : DQRatAction) :
-    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
     checkAction action
-    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
+    ⦃⇓ res s' => ⌜CheckState.Correct dqbf cs s' ∧
+                  ((∃ n, res = some (.Verified n)) → DQBFFalse s'.formula s'.clauses)⌝⦄ := by
   sorry
 
 /-- **Action-list soundness** (sorry'd):
     `checkActions` preserves `Correct` by induction on the action list,
-    with the `verified` case propagating `DQBFFalse` from `checkAction_sound`. -/
+    with the `Verified` case propagating `DQBFFalse` from `checkAction_sound`. -/
 theorem checkActions_sound (dqbf : DQBF) (cs : ClauseStore) (actions : List DQRatAction) :
-    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
     checkActions actions
-    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
+    ⦃⇓ r s' => ⌜CheckState.Correct dqbf cs s' ∧
+                (∃ n, r = .Verified n → DQBFFalse s'.formula s'.clauses)⌝⦄ := by
   sorry
 
 /-- **Initial state is Correct** (sorry'd):
     The `CheckState` returned by `parseDQDIMACS` satisfies `Correct` with respect
     to its own formula and clauses, whenever parsing succeeds (no UP conflict). -/
-theorem parseDQDIMACS_correct (content : String) :
-    ⦃fun s => ⌜s = {}⌝⦄
-    (parseDQDIMACS content)
-    ⦃⇓ _ s => ⌜s.Correct s.formula s.clauses⌝⦄ := by
+theorem parseDQDIMACS_correct (content : String) (st : CheckState)
+    (h : parseDQDIMACS content = .ok (some st)) :
+    CheckState.Correct st.formula st.clauses st := by
+  sorry
+
+/-- **Improved main soundness theorem** (sorry'd):
+    If the checker verifies a proof, the input formula is unsatisfiable.
+
+    This now follows from `checkActions_sound` + `parseDQDIMACS_correct`:
+    1. `parseDQDIMACS` gives `Correct st.formula st.clauses st`.
+    2. `checkActions_sound` shows `Correct` is maintained and `Verified` → `DQBFFalse`.
+    3. `DQBFFalse st.formula st.clauses` is the desired conclusion. -/
+theorem processProof_sound' (content formulaContent : String) (n : Nat)
+    (st : CheckState) (hparse : parseDQDIMACS formulaContent = .ok (some st))
+    (hverify : processProof st content = .Verified n) :
+    DQBFFalse st.formula st.clauses := by
   sorry
 
 -- ─── Section 8: Soundness of `checkActionsBasic` ─────────────────────────────
 
 /-!
 ## Section 8: Soundness of `checkActionsBasic` (RUP + simple UR only)
+
+Proves `checkActionsBasic` sound via Hoare triples maintaining `CheckState.Correct`
+as the loop invariant. The main theorem is `checkActionsBasic_sound`.
+
+Proof architecture (two-level invariant):
+- **Inter-action**: `CheckState.Correct dqbf cs st` — maintained at entry/exit of each action
+- **Intra-action**: `CheckState.ConsistentWith f cs σ sk st` — used inside `addClause` to
+  show UP cannot conflict when the model satisfies all clauses.
+
+Key helper specs:
+- **H1** `negateAndPropagate_rup_spec`: RUP soundness as `@[spec]`
+- **H2** `negateAndPropagate_backtrack_correct`: after `negateAndPropagate + backtrackBefore 1`,
+  `Correct` is restored
+- **H3** `ConsistentWith.of_addClause_lits`: `ConsistentWith` preserved when adding a
+  model-true clause
+- **H4** `addClause_sound_spec`: result-dependent soundness for `addClause`
 -/
 
 -- ─── Formula/clauses preservation lemmas ─────────────────────────────────────
 
--- ─── H4: addClause maintains Correct and none → DQBFFalse ────────────────────
+-- ─── H3: ConsistentWith preserved when adding a model-true clause ─────────────
 
-/-- **H4**: `addClause lits` maintains `Correct dqbf cs` and returns `none` only if
-    the original formula is false.
+/-- **H3**: Extending the clause store with a clause that the model satisfies
+    preserves `ConsistentWith`.
+
+    When `addClause` modifies `st.clauses` to `(cs.addClause lits).1`, if the model
+    `(σ, sk)` satisfies `lits` (i.e., `f.clauseValue σ sk lits = true`), then the
+    new state is consistent with `(σ, sk)` for the extended clause store.
+
+    Proof: straightforward from `ConsistentWith` fields.
+    - `formula_eq`, `clauses_eq`, `assigned_model`, `queue_model` are transferred directly.
+    - `clauses_eq` becomes `st.clauses = (cs.addClause lits).1` by assumption.
+    - The matrix value for the extended store holds because old clauses are satisfied
+      (by `hcon.clauses_eq ▸ hmat`) and the new clause is satisfied (`hclause`). -/
+theorem CheckState.ConsistentWith.of_addClause_lits
+    (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hclause : f.clauseValue σ sk lits = true)
+    (hwf : ClausesWellFormed f (cs.addClause lits).1)
+    (hcon : CheckState.ConsistentWith f cs σ sk st) :
+    CheckState.ConsistentWith f (cs.addClause lits).1 σ sk
+      { st with clauses := (cs.addClause lits).1 } := by
+  refine ⟨?_, hcon.formula_eq, rfl, hwf, hcon.assigned_model, hcon.queue_model⟩
+  exact { isAssigned_size := hcon.toSound.isAssigned_size, value_size := hcon.toSound.value_size,
+          indepKnown_size := hcon.toSound.indepKnown_size, indepOf_size := hcon.toSound.indepOf_size,
+          externalName_size := hcon.toSound.externalName_size,
+          isExistential_size := hcon.toSound.isExistential_size,
+          depset_size := hcon.toSound.depset_size,
+          clauses_nonempty := by simpa [ClauseStore.addClause] using Nat.succ_pos cs.clauses.size,
+          trail_nonempty := hcon.toSound.trail_nonempty }
+
+-- ─── H4: result-dependent soundness specs for the basic checker ──────────────
+
+/-- Postcondition for `addClause`: a successful insertion returns to the
+    action-boundary invariant, while `none` means the original formula is false. -/
+def AddClausePost (dqbf : DQBF) (cs : ClauseStore)
+    (r : Option CRef) (s' : CheckState) : Prop :=
+  match r with
+  | some _ => CheckState.Correct dqbf cs s'
+  | none   => DQBFFalse dqbf cs
+
+@[simp] theorem addClausePost_some
+    (dqbf : DQBF) (cs : ClauseStore) (cref : CRef) (s' : CheckState) :
+    AddClausePost dqbf cs (some cref) s' ↔ CheckState.Correct dqbf cs s' := by
+  rfl
+
+@[simp] theorem addClausePost_none
+    (dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) :
+    AddClausePost dqbf cs none s' ↔ DQBFFalse dqbf cs := by
+  rfl
+
+theorem addClausePost_of_empty_sameFC
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s₀ s₁ : CheckState} {lits : Array Literal}
+    (hcorr : CheckState.Correct dqbf cs s₁)
+    (hsame : SameFC s₀ s₁)
+    (hsem : DQBFTrue dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1)
+    (hempty : lits.isEmpty = true) :
+    AddClausePost dqbf cs none { s₁ with clauses := (s₁.clauses.addClause lits).1 } := by
+  rw [addClausePost_none]
+  apply DQBFFalse.of_sound_extension (addClause_semantics_of_sameFC hsame hsem)
+  have hpos : 1 ≤ s₁.clauses.clauses.size :=
+    Nat.succ_le_of_lt hcorr.toSound.clauses_nonempty
+  have hsize : s₁.clauses.clauses.size < (s₁.clauses.addClause lits).1.clauses.size := by
+    simp [ClauseStore.addClause]
+  have hget :=
+    ClauseStore.getClause_addClause_new s₁.clauses lits hcorr.toSound.clauses_nonempty
+  have hlits_empty : lits = #[] := Array.isEmpty_iff.mp hempty
+  refine DQBFFalse.of_empty_clause s₁.formula (s₁.clauses.addClause lits).1
+    s₁.clauses.clauses.size hpos hsize ?_
+  refine ⟨{ lits := lits, deleted := false }, hget, ?_⟩
+  simpa [hlits_empty]
+
+theorem addClausePost_of_store_only_sameFC
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s₀ s₁ : CheckState} {lits : Array Literal} {cref : CRef}
+    (hcorr : CheckState.Correct dqbf cs s₁)
+    (hsame : SameFC s₀ s₁)
+    (hlits : ClauseLitsWellFormed s₀.formula lits)
+    (hsem : DQBFTrue dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1) :
+    AddClausePost dqbf cs (some cref) { s₁ with clauses := (s₁.clauses.addClause lits).1 } := by
+  rw [addClausePost_some]
+  refine CheckState.Correct.withAddClause hcorr
+    (clauseLitsWellFormed_of_sameFC hsame hlits)
+    (addClause_semantics_of_sameFC hsame hsem)
+
+theorem clauseValue_false_of_sat_false_unassigned_empty
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {lits : Array Literal} {σ : UnivAssignment} {sk : SkolemAssignment}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (hwf : ClauseLitsWellFormed st.formula lits)
+    (hsat_false : lits.any (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ st.formula.maxVar &&
+        st.isAssigned.getD (v - 1) false &&
+        (st.value.getD (v - 1) false == lit.isPos)) = false)
+    (hunassigned_empty : (lits.filter fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ st.formula.maxVar &&
+        !st.isAssigned.getD (v - 1) false).isEmpty = true)
+    (hmat : st.clauses.matrixValue st.formula σ sk = true) :
+    st.formula.clauseValue σ sk lits = false := by
+  by_cases hclause : st.formula.clauseValue σ sk lits = false
+  · exact hclause
+  · exfalso
+    have hclause_true : st.formula.clauseValue σ sk lits = true := by
+      cases hcv : st.formula.clauseValue σ sk lits <;> simp [hcv] at hclause ⊢
+    have htrue : lits.any (st.formula.litValue σ sk) = true := by
+      simpa [DQBF.clauseValue] using hclause_true
+    simp only [Array.any_eq_true] at htrue
+    obtain ⟨i, hi, hlit_true⟩ := htrue
+    have hwfl := hwf _ (Array.mem_toList_iff.mpr (Array.getElem_mem hi))
+    have hassigned : st.isAssigned.getD (lits[i].var - 1) false = true := by
+      rcases Bool.eq_false_or_eq_true (st.isAssigned.getD (lits[i].var - 1) false) with
+          hassign | hassign
+      · exact hassign
+      · exfalso
+        have hmem : lits[i] ∈ lits.filter (fun lit =>
+            let v := lit.var
+            v > 0 && v ≤ st.formula.maxVar &&
+            !st.isAssigned.getD (v - 1) false) := by
+          exact Array.mem_filter.mpr
+            ⟨Array.getElem_mem hi, by simp [hwfl.1, hwfl.2, hassign]⟩
+        have hempty : lits.filter (fun lit =>
+            let v := lit.var
+            v > 0 && v ≤ st.formula.maxVar &&
+            !st.isAssigned.getD (v - 1) false) = #[] :=
+          Array.isEmpty_iff.mp hunassigned_empty
+        rw [hempty] at hmem
+        simp at hmem
+    have hmodel := hcorr.preserves_models lits[i].var hwfl.1 hassigned sk σ hmat
+    have hvarval : st.formula.varValue σ sk lits[i].var = lits[i].isPos := by
+      rcases Bool.eq_false_or_eq_true lits[i].isPos with hpos | hpos <;>
+        simp [DQBF.litValue, hpos] at hlit_true ⊢ <;> exact hlit_true
+    have hval_eq : st.value.getD (lits[i].var - 1) false = lits[i].isPos :=
+      hmodel.symm.trans hvarval
+    have hsat_one : (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ st.formula.maxVar &&
+        st.isAssigned.getD (v - 1) false &&
+        (st.value.getD (v - 1) false == lit.isPos)) lits[i] = true := by
+      simp [hwfl.1, hwfl.2, hassigned, hval_eq]
+    have hany : lits.any (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ st.formula.maxVar &&
+        st.isAssigned.getD (v - 1) false &&
+        (st.value.getD (v - 1) false == lit.isPos)) = true :=
+      Array.any_eq_true.mpr ⟨i, hi, hsat_one⟩
+    rw [hany] at hsat_false
+    cases hsat_false
+
+theorem addClausePost_of_all_false_sameFC
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s₀ s₁ : CheckState} {lits : Array Literal}
+    (hcorr : CheckState.Correct dqbf cs s₁)
+    (hsame : SameFC s₀ s₁)
+    (hlits : ClauseLitsWellFormed s₀.formula lits)
+    (hsem : DQBFTrue dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1)
+    (hsat_false : lits.any (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ s₁.formula.maxVar &&
+        s₁.isAssigned.getD (v - 1) false &&
+        (s₁.value.getD (v - 1) false == lit.isPos)) = false)
+    (hunassigned_empty : (lits.filter fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ s₁.formula.maxVar &&
+        !s₁.isAssigned.getD (v - 1) false).isEmpty = true) :
+    AddClausePost dqbf cs none { s₁ with clauses := (s₁.clauses.addClause lits).1 } := by
+  rw [addClausePost_none]
+  apply DQBFFalse.of_sound_extension (addClause_semantics_of_sameFC hsame hsem)
+  intro sk
+  by_cases hex : ∃ σ, s₁.clauses.matrixValue s₁.formula σ sk = false
+  · rcases hex with ⟨σ, hσ⟩
+    exact ⟨σ, matrixValue_addClause_false_of_old_false s₁.formula s₁.clauses lits σ sk hσ⟩
+  · have hall : ∀ σ, s₁.clauses.matrixValue s₁.formula σ sk = true := by
+      intro σ
+      cases h : s₁.clauses.matrixValue s₁.formula σ sk <;> simp at h ⊢
+      exact False.elim (hex ⟨σ, h⟩)
+    let σ : UnivAssignment := fun _ => true
+    have hclause_false : s₁.formula.clauseValue σ sk lits = false :=
+      clauseValue_false_of_sat_false_unassigned_empty hcorr
+        (clauseLitsWellFormed_of_sameFC hsame hlits)
+        hsat_false hunassigned_empty (hall σ)
+    refine ⟨σ, matrixValue_addClause_false_of_new_false
+      s₁.formula s₁.clauses lits σ sk hcorr.toSound.clauses_nonempty hclause_false⟩
+
+theorem addClausePost_of_unit_conflict_sameFC
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s₀ s₁ s_enq s₂ : CheckState} {lits unassigned : Array Literal} {conflict : CRef}
+    (hcorr : CheckState.Correct dqbf cs s₁)
+    (hsame : SameFC s₀ s₁)
+    (hlits : ClauseLitsWellFormed s₀.formula lits)
+    (hsem : DQBFTrue dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1)
+    (hunassigned : unassigned = lits.filter (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ s₁.formula.maxVar &&
+        !s₁.isAssigned.getD (v - 1) false))
+    (hsat_false : lits.any (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ s₁.formula.maxVar &&
+        s₁.isAssigned.getD (v - 1) false &&
+        (s₁.value.getD (v - 1) false == lit.isPos)) = false)
+    (hsize1 : unassigned.size = 1)
+    (henq_run :
+      enqueue (unassigned.getD 0 ⟨0⟩)
+        { s₁ with clauses := (s₁.clauses.addClause lits).1 } = .ok () s_enq)
+    (hprop_run : propagate s_enq = .ok (some conflict) s₂) :
+    AddClausePost dqbf cs none s₂ := by
+  rw [addClausePost_none]
+  apply DQBFFalse.of_not_true
+  intro htrue
+  have htrue_ext : DQBFTrue s₁.formula (s₁.clauses.addClause lits).1 :=
+    addClause_semantics_of_sameFC hsame hsem htrue
+  obtain ⟨sk, hsk⟩ := htrue_ext
+  let σ : UnivAssignment := fun _ => true
+  have hmat_added : (s₁.clauses.addClause lits).1.matrixValue s₁.formula σ sk = true := hsk σ
+  have hmat_old : s₁.clauses.matrixValue s₁.formula σ sk = true := by
+    cases h : s₁.clauses.matrixValue s₁.formula σ sk <;> simp at h ⊢
+    have hfalse :=
+      matrixValue_addClause_false_of_old_false s₁.formula s₁.clauses lits σ sk h
+    rw [hmat_added] at hfalse
+    cases hfalse
+  have hget :=
+    ClauseStore.getClause_addClause_new s₁.clauses lits hcorr.toSound.clauses_nonempty
+  have hclause_true :
+      s₁.formula.clauseValue σ sk lits = true :=
+    clauseValue_of_matrixValue s₁.formula (s₁.clauses.addClause lits).1 σ sk
+      s₁.clauses.clauses.size { lits := lits, deleted := false } hmat_added hget
+  have hcon_old : CheckState.ConsistentWith s₁.formula s₁.clauses σ sk s₁ :=
+    hcorr.to_consistentWith σ sk hmat_old
+  have hcon_added :
+      CheckState.ConsistentWith s₁.formula (s₁.clauses.addClause lits).1 σ sk
+        { s₁ with clauses := (s₁.clauses.addClause lits).1 } := by
+    apply CheckState.ConsistentWith.of_addClause_lits s₁.formula s₁.clauses lits σ sk
+      hclause_true
+    exact hcorr.clauses_wf.addClause (clauseLitsWellFormed_of_sameFC hsame hlits)
+    exact hcon_old
+  have hunit_true :
+      s₁.formula.litValue σ sk (unassigned.getD 0 ⟨0⟩) = true := by
+    apply unit_lit_model_true s₁.formula σ sk s₁ rfl rfl
+    · intro v hpos hassign
+      exact hcorr.preserves_models v hpos hassign sk σ hmat_old
+    · exact clauseLitsWellFormed_of_sameFC hsame hlits
+    · exact hclause_true
+    · exact hsat_false
+    · exact hunassigned
+    · exact hsize1
+  have henq :=
+    enqueue_consistent_spec s₁.formula (s₁.clauses.addClause lits).1 σ sk
+      (unassigned.getD 0 ⟨0⟩) hunit_true
+  specialize henq { s₁ with clauses := (s₁.clauses.addClause lits).1 } hcon_added
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at henq
+  rw [henq_run] at henq
+  have hprop :=
+    propagate_consistent_spec s₁.formula (s₁.clauses.addClause lits).1 σ sk hmat_added
+  specialize hprop s_enq henq
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hprop
+  rw [hprop_run] at hprop
+  cases hprop.2
+
+theorem addClausePost_of_unit_success_sameFC
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s₀ s₁ s_enq s₂ : CheckState} {lits unassigned : Array Literal} {cref : CRef}
+    (hcorr : CheckState.Correct dqbf cs s₁)
+    (hsame : SameFC s₀ s₁)
+    (hlits : ClauseLitsWellFormed s₀.formula lits)
+    (hsem : DQBFTrue dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1)
+    (hunassigned : unassigned = lits.filter (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ s₁.formula.maxVar &&
+        !s₁.isAssigned.getD (v - 1) false))
+    (hsat_false : lits.any (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ s₁.formula.maxVar &&
+        s₁.isAssigned.getD (v - 1) false &&
+        (s₁.value.getD (v - 1) false == lit.isPos)) = false)
+    (hsize1 : unassigned.size = 1)
+    (henq_run :
+      enqueue (unassigned.getD 0 ⟨0⟩)
+        { s₁ with clauses := (s₁.clauses.addClause lits).1 } = .ok () s_enq)
+    (hprop_run : propagate s_enq = .ok none s₂) :
+    AddClausePost dqbf cs (some cref) s₂ := by
+  rw [addClausePost_some]
+  sorry
+
+/-- Postcondition for a single basic checker step.
+
+    Continuing (`none`) or failing leaves the checker in a boundary state.
+    A `Verified` result establishes falsity of the original formula. -/
+def BasicStepPost (dqbf : DQBF) (cs : ClauseStore)
+    (r : Option ProofResult) (s' : CheckState) : Prop :=
+  match r with
+  | none => CheckState.Correct dqbf cs s'
+  | some (.Verified _) => DQBFFalse dqbf cs
+  | some (.Failed ..)  => CheckState.Correct dqbf cs s'
+  | some .Unknown      => CheckState.Correct dqbf cs s'
+
+@[simp] theorem basicStepPost_none
+    (dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) :
+    BasicStepPost dqbf cs none s' ↔ CheckState.Correct dqbf cs s' := by
+  rfl
+
+@[simp] theorem basicStepPost_verified
+    (dqbf : DQBF) (cs : ClauseStore) (n : Nat) (s' : CheckState) :
+    BasicStepPost dqbf cs (some (.Verified n)) s' ↔ DQBFFalse dqbf cs := by
+  rfl
+
+@[simp] theorem basicStepPost_failed
+    (dqbf : DQBF) (cs : ClauseStore)
+    (line : Nat) (rules : Array String) (info : Array Int) (blocker : Option CRef)
+    (s' : CheckState) :
+    BasicStepPost dqbf cs (some (.Failed line rules info blocker)) s' ↔
+      CheckState.Correct dqbf cs s' := by
+  rfl
+
+@[simp] theorem basicStepPost_unknown
+    (dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) :
+    BasicStepPost dqbf cs (some .Unknown) s' ↔ CheckState.Correct dqbf cs s' := by
+  rfl
+
+/-- Postcondition for the basic action-list runner. -/
+def BasicRunPost (dqbf : DQBF) (cs : ClauseStore)
+    (r : ProofResult) (s' : CheckState) : Prop :=
+  match r with
+  | .Unknown      => CheckState.Correct dqbf cs s'
+  | .Verified _   => DQBFFalse dqbf cs
+  | .Failed ..    => CheckState.Correct dqbf cs s'
+
+@[simp] theorem basicRunPost_unknown
+    (dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) :
+    BasicRunPost dqbf cs .Unknown s' ↔ CheckState.Correct dqbf cs s' := by
+  rfl
+
+@[simp] theorem basicRunPost_verified
+    (dqbf : DQBF) (cs : ClauseStore) (n : Nat) (s' : CheckState) :
+    BasicRunPost dqbf cs (.Verified n) s' ↔ DQBFFalse dqbf cs := by
+  rfl
+
+@[simp] theorem basicRunPost_failed
+    (dqbf : DQBF) (cs : ClauseStore)
+    (line : Nat) (rules : Array String) (info : Array Int) (blocker : Option CRef)
+    (s' : CheckState) :
+    BasicRunPost dqbf cs (.Failed line rules info blocker) s' ↔
+      CheckState.Correct dqbf cs s' := by
+  rfl
+
+/-- **H4**: `addClause lits` has a result-dependent postcondition.
 
     The precondition bundles:
     1. `Correct dqbf cs s` — the invariant holds
-    2. `DQBFTrue dqbf cs → DQBFTrue s.formula (s.clauses.addClause lits).1` — the
+    2. `ClauseLitsWellFormed s.formula lits` — the inserted clause mentions only
+       valid variables of the current formula
+    3. `DQBFTrue dqbf cs → DQBFTrue s.formula (s.clauses.addClause lits).1` — the
        semantic precondition that adding `lits` preserves truth (the RUP/UR condition)
 
     When `addClause` returns `none`, one of these cases arose (all contradicting the
@@ -1045,19 +1681,43 @@ theorem parseDQDIMACS_correct (content : String) :
       `trail_single_level`, `propQueue_empty` are preserved.
     - `preserves_models`: newly enqueued unit literal is model-forced (all other lits
       in the clause are false under model-forced assignment → only this can satisfy it). -/
-@[spec]
-theorem addClause_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
+theorem addClauseAfterCache_sound_spec
+    (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) (s₀ : CheckState) :
     ⦃fun s =>
-      ⌜s.Correct dqbf cs ∧
+      ⌜CheckState.Correct dqbf cs s ∧
+       SameFC s₀ s ∧
+       ClauseLitsWellFormed s₀.formula lits ∧
+       (DQBFTrue dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1)⌝⦄
+    (addClauseAfterCache lits : CheckM (Option CRef))
+    ⦃⇓? r s' => ⌜AddClausePost dqbf cs r s'⌝⦄ := by
+  /-
+  Planned structure:
+  - `lits.isEmpty`: `addClausePost_of_empty_sameFC`
+  - `sat = true`: `addClausePost_of_store_only_sameFC`
+  - `unassigned.isEmpty`: `addClausePost_of_all_false_sameFC`
+  - unit conflict: `addClausePost_of_unit_conflict_sameFC`
+  - unit success: `addClausePost_of_unit_success_sameFC`
+
+  Current proof blocker:
+  after unfolding `addClauseAfterCache`, Lean normalizes the branch conditions into
+  existential / universal / `find?` forms that do not line up directly with the
+  executable `any` / `filter.isEmpty` / `filter.getD` branch lemmas above.
+  -/
+  sorry
+
+theorem addClause_sound_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
+    ⦃fun s =>
+      ⌜CheckState.Correct dqbf cs s ∧
+       ClauseLitsWellFormed s.formula lits ∧
        (DQBFTrue dqbf cs → DQBFTrue s.formula (s.clauses.addClause lits).1)⌝⦄
     (addClause lits : CheckM (Option CRef))
-    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
+    ⦃⇓? r s' => ⌜AddClausePost dqbf cs r s'⌝⦄ := by
   sorry
 
 -- ─── Checker function soundness theorems ──────────────────────────────────────
 
-/-- **RUP step soundness**: `checkRatClauseBasic` preserves `Correct` and, when it
-    returns `verified`, the original formula is `DQBFFalse`.
+/-- **RUP step soundness**: `checkRatClauseBasic` has a result-dependent basic-step
+    postcondition.
 
     Proof sketch:
     1. Translate external literals to internal (no state change).
@@ -1065,19 +1725,19 @@ theorem addClause_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
        capture: `r = true → DQBFTrue dqbf cs → DQBFTrue s.formula (s.clauses.addClause lits).1`
     3. Run `backtrackBefore 1` — apply `negateAndPropagate_backtrack_correct` to
        recover `Correct dqbf cs` for the restored state.
-    4. If `!isRup`: return `failed` (no semantic obligation; `Correct` already holds).
+    4. If `!isRup`: return `Failed` (no semantic obligation; `Correct` already holds).
     5. Run `addClause lits` — apply `addClause_sound_spec` with the semantic precondition
        from step 2. Yields: `Correct dqbf cs s'` and `(r = none → DQBFFalse dqbf cs)`.
-    6. If `r.isNone`: return `verified` and produce `DQBFFalse dqbf cs` from step 5. -/
+    6. If `r.isNone`: return `Verified` and produce `DQBFFalse dqbf cs` from step 5. -/
 theorem checkRatClauseBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extLits : List Int) :
-    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
     checkRatClauseBasic lineNum extLits
-    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
+    ⦃⇓? r s' => ⌜BasicStepPost dqbf cs r s'⌝⦄ := by
   sorry
 
-/-- **UR step soundness**: `checkUniversalReductionBasic` preserves `Correct` and,
-    when it returns `verified`, the original formula is `DQBFFalse`.
+/-- **UR step soundness**: `checkUniversalReductionBasic` has a result-dependent
+    basic-step postcondition.
 
     Proof sketch:
     1. Translate literals (no state change).
@@ -1088,50 +1748,47 @@ theorem checkRatClauseBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     4. `addClause` returning `none` gives `DQBFFalse dqbf cs` from `addClause_sound_spec`. -/
 theorem checkUniversalReductionBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extLits : List Int) :
-    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
     checkUniversalReductionBasic lineNum extLits
-    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
+    ⦃⇓? r s' => ⌜BasicStepPost dqbf cs r s'⌝⦄ := by
   sorry
 
-/-- **Single basic action soundness**: `checkActionBasic` preserves `Correct` and,
-    when it returns `verified`, the original formula is `DQBFFalse`.
+/-- **Single basic action soundness**: `checkActionBasic` has a result-dependent
+    basic-step postcondition.
 
     Proof: immediate case split on the action constructor:
     - `AddUniversal`, `ModifyExistential`, `DeleteClause`: `throw` in basic mode;
       the postcondition for error states is vacuously true via `⇓?`.
     - `UniversalReduction`: apply `checkUniversalReductionBasic_sound`.
     - `RatClause`: apply `checkRatClauseBasic_sound`. -/
-@[spec]
-theorem checkActionBasic_spec (dqbf : DQBF) (cs : ClauseStore)
+theorem checkActionBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     (action : DQRatAction) :
-    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
     checkActionBasic action
-    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
+    ⦃⇓? r s' => ⌜BasicStepPost dqbf cs r s'⌝⦄ := by
   sorry
 
-/-- **Action-list soundness** (main theorem): `checkActionsBasic` preserves `Correct`
-    and, when it returns `verified`, the original formula is `DQBFFalse`.
+/-- **Action-list soundness** (main theorem): `checkActionsBasic` has a
+    result-dependent run postcondition.
 
-    Proof: induction on `actions`. Base case: `checkActionsBasic [] = return .unknown`,
-    trivially satisfies the spec. Inductive step: head action may return `verified`
+    Proof: induction on `actions`. Base case: `checkActionsBasic [] = return .Unknown`,
+    trivially satisfies the spec. Inductive step: head action may return `Verified`
     (delegate to `checkActionBasic_sound`) or `none` (continue; apply IH on tail). -/
-theorem checkActionsBasic_spec (dqbf : DQBF) (cs : ClauseStore)
+theorem checkActionsBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     (actions : List DQRatAction) :
-    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
     checkActionsBasic actions
-    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
-  mvcgen [checkActionsBasic] invariants
-  · CheckerState.CorrectPost dqbf cs
-  simp
+    ⦃⇓? r s' => ⌜BasicRunPost dqbf cs r s'⌝⦄ := by
+  sorry
 
 /-- **Top-level soundness for basic checker**: if `checkActionsBasic` on parsed proof
-    actions returns `verified`, the input formula is `DQBFFalse`.
+    actions returns `Verified`, the input formula is `DQBFFalse`.
 
     Follows from `checkActionsBasic_sound` plus the fact that `Correct` holds initially
     (here taken as a hypothesis; see `parseDQDIMACS_correct` for the full checker). -/
-theorem checkActionsBasic_sound (st : CheckState) (proofContent : String) (n : Nat)
-    (hcorrect : st.Correct st.formula st.clauses)
+theorem processProofBasic_sound (st : CheckState) (proofContent : String) (n : Nat)
+    (hcorrect : CheckState.Correct st.formula st.clauses st)
     (hverify : ∃ st', (checkActionsBasic (parseProofActions proofContent)).run st
-               = .error (.verified n) st') :
+               = .ok (.Verified n) st') :
     DQBFFalse st.formula st.clauses := by
   sorry

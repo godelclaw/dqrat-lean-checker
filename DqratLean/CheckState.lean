@@ -6,11 +6,11 @@ open Std.Do
 
 -- Combined checker state
 structure CheckState where
-  formula    : DQBF := {}
-  clauses    : ClauseStore := {}
+  formula    : DQBF
+  clauses    : ClauseStore
   -- Assignment arrays indexed by (var - 1)
-  isAssigned : Array Bool := #[]  -- is variable assigned?
-  value      : Array Bool := #[]  -- assigned value (meaningful if isAssigned)
+  isAssigned : Array Bool         -- is variable assigned?
+  value      : Array Bool         -- assigned value (meaningful if isAssigned)
   -- Trail: decision levels; each level is a list of literals assigned at that level
   trail      : Array (Array Literal) := #[#[]]  -- start with level 0
   -- Propagation queue (LIFO)
@@ -19,20 +19,7 @@ structure CheckState where
   indepKnown : Array Bool := #[]
   indepOf    : Array (Array Var) := #[]   -- existential vars independent of this univar
 
--- ─── Proof result ──────────────────────────────────────────────────────────
-
-inductive ProofResult where
-  | verified (line : Nat)
-  | failed   (line : Nat) (rules : Array String) (info : Array Int) (blocker : Option CRef)
-
-def ProofResult.isVerified : ProofResult → Prop
-  | verified _ => True
-  | _ => False
-def ProofResult.isFailed : ProofResult → Prop
-  | failed _ _ _ _ => True
-  | _ => False
-
-abbrev CheckM := EStateM ProofResult CheckState
+abbrev CheckM := EStateM String CheckState
 
 -- ─── Assignment helpers ────────────────────────────────────────────────────
 
@@ -154,7 +141,7 @@ def propagateOne (l : Literal) : CheckM (Option CRef) := do
 theorem propagateOne_measure_spec (l : Literal) (m : Nat) :
     ⦃fun s => ⌜s.propQueue.size + s.isAssigned.count false = m⌝⦄
     (propagateOne l : CheckM (Option CRef))
-    ⦃⇓ _ s' => ⌜s'.propQueue.size + s'.isAssigned.count false = m⌝⦄ := by
+    ⦃⇓? _ s' => ⌜s'.propQueue.size + s'.isAssigned.count false = m⌝⦄ := by
   mvcgen [propagateOne, enqueue_measure_spec] invariants
   · ⇓⟨_, _⟩ s => ⌜s.propQueue.size + s.isAssigned.count false = m⌝
     with all_goals (first | assumption | omega | (intro; assumption))
@@ -164,7 +151,7 @@ theorem propagateOne_measure_spec (l : Literal) (m : Nat) :
 -- the measure, so propQueue.size + isAssigned.count false decreases by exactly 1.
 def propagate : CheckM (Option CRef) := fun st => aux st
 where
-  aux (st : CheckState) : EStateM.Result ProofResult CheckState (Option CRef) :=
+  aux (st : CheckState) : EStateM.Result String CheckState (Option CRef) :=
     if st.propQueue.isEmpty then .ok none st
     else
       let l  := st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩
@@ -332,6 +319,65 @@ def invalidateDepCaches (lits : Array Literal) : CheckM Unit := do
       for u in deps do
         makeIndepUnknown u
 
+/-- `SameFC s₀ s₁` means `s₁` has the same formula and clause store as `s₀`. -/
+def SameFC (s₀ s₁ : CheckState) : Prop :=
+  s₁.formula = s₀.formula ∧ s₁.clauses = s₀.clauses
+
+theorem sameFC_trans {s₀ s₁ s₂ : CheckState}
+    (h₀₁ : SameFC s₀ s₁) (h₁₂ : SameFC s₁ s₂) : SameFC s₀ s₂ := by
+  rcases h₀₁ with ⟨hformula₀₁, hclauses₀₁⟩
+  rcases h₁₂ with ⟨hformula₁₂, hclauses₁₂⟩
+  exact ⟨hformula₁₂.trans hformula₀₁, hclauses₁₂.trans hclauses₀₁⟩
+
+theorem makeIndepUnknown_sameFC_spec (u : Var) (s₀ : CheckState) :
+    ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (makeIndepUnknown u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄ := by
+  intro s hsame
+  rcases hsame with ⟨hformula, hclauses⟩
+  unfold makeIndepUnknown
+  by_cases hu : u = 0
+  · simp [hu, SameFC, hformula, hclauses]
+  · simp [hu, SameFC, hformula, hclauses]
+
+theorem invalidateDepCaches_sameFC_spec (lits : Array Literal) (s₀ : CheckState) :
+    ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (invalidateDepCaches lits : CheckM Unit)
+    ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄ := by
+  intro s hsame
+  have hfor :
+      ⦃fun s' => ⌜SameFC s₀ s'⌝⦄
+      (forIn lits.toList PUnit.unit (fun l _ => do
+        let v := l.var
+        if v > 0 && s.formula.isVarExistential v then
+          let _ ← forIn (s.formula.depset.getD v #[]).toList PUnit.unit (fun u _ => do
+            makeIndepUnknown u
+            pure (ForInStep.yield PUnit.unit))
+          pure (ForInStep.yield PUnit.unit)
+        else
+          pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+      ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄ := by
+    refine (Spec.forIn_list_const_inv
+      (xs := lits.toList)
+      (init := PUnit.unit)
+      (f := fun l _ => do
+        let v := l.var
+        if v > 0 && s.formula.isVarExistential v then
+          let _ ← forIn (s.formula.depset.getD v #[]).toList PUnit.unit (fun u _ => do
+            makeIndepUnknown u
+            pure (ForInStep.yield PUnit.unit))
+          pure (ForInStep.yield PUnit.unit)
+        else
+          pure (ForInStep.yield PUnit.unit))
+      (inv := (⇓ _ s' => ⌜SameFC s₀ s'⌝))
+      ?_)
+    intro l b
+    cases b
+    mvcgen [makeIndepUnknown_sameFC_spec] invariants
+    · ⇓⟨xs, ()⟩ s' => ⌜SameFC s₀ s'⌝
+      with all_goals first | assumption | exact sameFC_trans ‹_› ‹_› | exact ‹_›
+  simpa [invalidateDepCaches, Array.forIn_toList] using hfor s hsame
+
 -- ─── Variable addition (updates all state arrays) ─────────────────────────
 
 def addVarForall (ext : Nat) : CheckM Var := do
@@ -404,3 +450,16 @@ def delDependency (of_ on_ : Var) : CheckM Bool := do
     return true
   else
     return false
+
+-- ─── Initial CheckState ────────────────────────────────────────────────────
+
+def CheckState.empty : CheckState :=
+  { formula    := {}
+    clauses    := {}
+    isAssigned := #[]
+    value      := #[]
+    trail      := #[#[]]
+    propQueue  := #[]
+    indepKnown := #[]
+    indepOf    := #[]
+  }
