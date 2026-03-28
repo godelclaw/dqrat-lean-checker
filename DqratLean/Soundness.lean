@@ -486,6 +486,20 @@ structure CheckState.Correct (dqbf : DQBF) (cs : ClauseStore) (st : CheckState) 
       (st.isAssigned.getD (v - 1) false = true ↔
        ∃ i, i < st.trail.size ∧ ∃ l ∈ st.trail.getD i #[], l.var = v)
 
+/-- The non-semantic action-boundary invariant needed through propagation.
+
+This is the structural part of `Correct` that survives `enqueue` / `propagate`,
+without requiring the propagation queue to already be empty. -/
+structure CheckState.PropStruct (st : CheckState) : Prop
+    extends Sound st where
+  clauses_wf : ClausesWellFormed st.formula st.clauses
+  trail_single_level : st.trail.size = 1
+  trail_lits_valid : ∀ i, i < st.trail.size →
+      ∀ l ∈ st.trail.getD i #[], 0 < l.var ∧ l.var ≤ st.formula.maxVar
+  assigned_iff_in_trail : ∀ v : Var, 0 < v → v ≤ st.formula.maxVar →
+      (st.isAssigned.getD (v - 1) false = true ↔
+       ∃ i, i < st.trail.size ∧ ∃ l ∈ st.trail.getD i #[], l.var = v)
+
 -- ─── Model consistency predicate ─────────────────────────────────────────────
 
 /-- The checker state is *consistent* with a satisfying assignment `(σ, sk)` for `(f, cs)`.
@@ -534,6 +548,16 @@ theorem CheckState.Correct.to_consistentWith
     clauses_wf   := hcorr.clauses_wf
     assigned_model := fun v hpos hassign => hcorr.preserves_models v hpos hassign sk σ hmat
     queue_model  := by simp [hcorr.propQueue_empty] }
+
+theorem CheckState.Correct.toPropStruct
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hcorr : CheckState.Correct dqbf cs st) :
+    CheckState.PropStruct st :=
+  { toSound := hcorr.toSound
+    clauses_wf := hcorr.clauses_wf
+    trail_single_level := hcorr.trail_single_level
+    trail_lits_valid := hcorr.trail_lits_valid
+    assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
 
 /-- Updating only the independence caches preserves `Correct` as long as the cache
     arrays keep the expected `maxVar` length.  None of the semantic fields in `Correct`
@@ -690,6 +714,28 @@ theorem CheckState.Correct.withAddClause
     exact hcorr.preserves_models v hpos hassign sk σ
       (matrixValue_addClause_mono st.formula st.clauses lits σ sk hmat)
 
+theorem CheckState.PropStruct.withAddClause
+    {st : CheckState} {lits : Array Literal}
+    (hprop : CheckState.PropStruct st)
+    (hlits : ClauseLitsWellFormed st.formula lits) :
+    CheckState.PropStruct { st with clauses := (st.clauses.addClause lits).1 } := by
+  refine
+    { toSound := ?_
+      clauses_wf := hprop.clauses_wf.addClause hlits
+      trail_single_level := hprop.trail_single_level
+      trail_lits_valid := hprop.trail_lits_valid
+      assigned_iff_in_trail := hprop.assigned_iff_in_trail }
+  exact
+    { isAssigned_size := hprop.toSound.isAssigned_size
+      value_size := hprop.toSound.value_size
+      indepKnown_size := hprop.toSound.indepKnown_size
+      indepOf_size := hprop.toSound.indepOf_size
+      externalName_size := hprop.toSound.externalName_size
+      isExistential_size := hprop.toSound.isExistential_size
+      depset_size := hprop.toSound.depset_size
+      clauses_nonempty := by simpa [ClauseStore.addClause] using Nat.succ_pos st.clauses.clauses.size
+      trail_nonempty := hprop.toSound.trail_nonempty }
+
 -- ─── Key lemma (sorry'd) ──────────────────────────────────────────────────────
 
 /-- If `negateAndPropagate lits (fun _ => true)` is called from a state
@@ -834,7 +880,195 @@ theorem arraySafeSet_getD_ne' (a : Array Bool) (i j : Nat) (v : Bool) (hij : i �
   · have hjlt' : ¬(j < a.size) := Nat.not_lt.mpr hjlt
     rw [dif_neg (hsize ▸ hjlt'), dif_neg hjlt']
 
+theorem arraySetIfInBounds_getD_eq
+    {α : Type} (a : Array α) (i : Nat) (v fallback : α) (h : i < a.size) :
+    (a.setIfInBounds i v).getD i fallback = v := by
+  have hsize : (a.setIfInBounds i v).size = a.size := Array.size_setIfInBounds
+  simp only [Array.getD, dif_pos (hsize ▸ h)]
+  simp [Array.getElem_setIfInBounds h]
+
+theorem arraySetIfInBounds_getD_ne
+    {α : Type} (a : Array α) (i j : Nat) (v fallback : α) (hij : i ≠ j) :
+    (a.setIfInBounds i v).getD j fallback = a.getD j fallback := by
+  have hsize : (a.setIfInBounds i v).size = a.size := Array.size_setIfInBounds
+  simp only [Array.getD]
+  rcases Nat.lt_or_ge j a.size with hjlt | hjlt
+  · rw [dif_pos (hsize ▸ hjlt), dif_pos hjlt]
+    exact Array.getElem_setIfInBounds_ne hjlt hij
+  · have hjlt' : ¬(j < a.size) := Nat.not_lt.mpr hjlt
+    rw [dif_neg (hsize ▸ hjlt'), dif_neg hjlt']
+
+theorem enqueue_propStruct_spec
+    (l : Literal) :
+    ⦃fun s => ⌜CheckState.PropStruct s⌝⦄
+    (enqueue l : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.PropStruct s'⌝⦄ := by
+  unfold enqueue
+  mvcgen
+  rename_i s_state hprop v_var _ h_valid h_in_bounds h_unassigned lastIdx lastLevel
+  have htrail_size : s_state.trail.size = 1 := hprop.trail_single_level
+  have hlastIdx : lastIdx = 0 := by
+    simp [lastIdx, htrail_size]
+  have hlast_lt : lastIdx < s_state.trail.size := by
+    rw [hlastIdx, htrail_size]
+    decide
+  have hv_pos : 0 < v_var := by
+    cases Nat.eq_zero_or_pos v_var with
+    | inl hv0 =>
+      simp [hv0] at h_valid
+    | inr hv_pos =>
+      exact hv_pos
+  have hv_le : v_var ≤ s_state.formula.maxVar := by
+    exact Nat.le_of_not_gt (by
+      intro hgt
+      simp [hgt] at h_valid)
+  have hlt : v_var - 1 < s_state.isAssigned.size := Nat.lt_of_not_le h_in_bounds
+  have hlt_val : v_var - 1 < s_state.value.size :=
+    hprop.toSound.value_size.symm ▸ hprop.toSound.isAssigned_size ▸ hlt
+  refine
+    { toSound := ?_
+      clauses_wf := hprop.clauses_wf
+      trail_single_level := by simp [Array.size_setIfInBounds, htrail_size]
+      trail_lits_valid := ?_
+      assigned_iff_in_trail := ?_ }
+  · refine ⟨?_, ?_, hprop.toSound.indepKnown_size, hprop.toSound.indepOf_size,
+      hprop.toSound.externalName_size, hprop.toSound.isExistential_size,
+      hprop.toSound.depset_size, hprop.toSound.clauses_nonempty, ?_⟩
+    · simp [Array.size_setIfInBounds, hprop.toSound.isAssigned_size]
+    · simp [Array.size_setIfInBounds, hprop.toSound.value_size]
+    · simp [Array.size_setIfInBounds, hprop.toSound.trail_nonempty]
+  · intro i hi l' hl'
+    have hi0 : i = 0 := by
+      rw [show (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).size = 1 by
+        simp [Array.size_setIfInBounds, htrail_size]] at hi
+      exact Nat.lt_one_iff.mp hi
+    subst hi0
+    have hget0 :
+        (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).getD 0 #[] =
+          lastLevel.push l := by
+      simpa [hlastIdx] using
+        arraySetIfInBounds_getD_eq s_state.trail lastIdx (lastLevel.push l) #[] hlast_lt
+    rw [hget0] at hl'
+    have hl'' : l' ∈ lastLevel ∨ l' = l := by
+      simpa using (Array.mem_push.mp hl')
+    rcases hl'' with hl' | rfl
+    · have hlastLevel : lastLevel = s_state.trail.getD 0 #[] := by
+        simp [lastLevel, hlastIdx]
+      have hl_old : l' ∈ s_state.trail.getD 0 #[] := by
+        rw [← hlastLevel]
+        exact hl'
+      exact hprop.trail_lits_valid 0 (by simpa [htrail_size]) l' hl_old
+    · exact ⟨hv_pos, hv_le⟩
+  · intro v' hpos' hle'
+    constructor
+    · intro hass'
+      by_cases hveq : v' = v_var
+      · refine ⟨0, by simpa [Array.size_setIfInBounds, htrail_size], l, ?_, hveq.symm⟩
+        have hget0 :
+            (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).getD 0 #[] =
+              lastLevel.push l := by
+          simpa [hlastIdx] using
+            arraySetIfInBounds_getD_eq s_state.trail lastIdx (lastLevel.push l) #[] hlast_lt
+        rw [hget0]
+        exact Array.mem_push_self
+      · have hne : v_var - 1 ≠ v' - 1 := by
+          intro heq
+          apply hveq
+          have h := congrArg (· + 1) heq
+          simp only [Nat.sub_add_cancel hv_pos, Nat.sub_add_cancel hpos'] at h
+          exact h.symm
+        rw [arraySafeSet_getD_ne' _ _ _ _ hne] at hass'
+        obtain ⟨i, hi, l'', hl'', hlvar⟩ := (hprop.assigned_iff_in_trail v' hpos' hle').mp hass'
+        have hi0 : i = 0 := by
+          rw [htrail_size] at hi
+          exact Nat.lt_one_iff.mp hi
+        subst hi0
+        refine ⟨0, by simpa [Array.size_setIfInBounds, htrail_size], l'', ?_, hlvar⟩
+        have hget0 :
+            (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).getD 0 #[] =
+              lastLevel.push l := by
+          simpa [hlastIdx] using
+            arraySetIfInBounds_getD_eq s_state.trail lastIdx (lastLevel.push l) #[] hlast_lt
+        rw [hget0]
+        have hlastLevel : lastLevel = s_state.trail.getD 0 #[] := by
+          simp [lastLevel, hlastIdx]
+        rw [hlastLevel]
+        exact Array.mem_push.mpr (Or.inl hl'')
+    · intro hmem
+      rcases hmem with ⟨i, hi, l', hl', hlvar⟩
+      have hi0 : i = 0 := by
+        rw [show (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).size = 1 by
+          simp [Array.size_setIfInBounds, htrail_size]] at hi
+        exact Nat.lt_one_iff.mp hi
+      subst hi0
+      have hget0 :
+          (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).getD 0 #[] =
+            lastLevel.push l := by
+        simpa [hlastIdx] using
+          arraySetIfInBounds_getD_eq s_state.trail lastIdx (lastLevel.push l) #[] hlast_lt
+      rw [hget0] at hl'
+      have hl'' : l' ∈ lastLevel ∨ l' = l := by
+        simpa using (Array.mem_push.mp hl')
+      rcases hl'' with hl' | hnew
+      · have hass_old := (hprop.assigned_iff_in_trail v' hpos' hle').mpr
+          (by
+            have hlastLevel : lastLevel = s_state.trail.getD 0 #[] := by
+              simp [lastLevel, hlastIdx]
+            refine ⟨0, by simpa [htrail_size], l', ?_, hlvar⟩
+            rw [← hlastLevel]
+            exact hl')
+        by_cases hveq : v' = v_var
+        · subst hveq
+          exact arraySafeSet_getD_eq' _ _ _ hlt
+        · have hne : v_var - 1 ≠ v' - 1 := by
+            intro heq
+            apply hveq
+            have h := congrArg (· + 1) heq
+            simp only [Nat.sub_add_cancel hv_pos, Nat.sub_add_cancel hpos'] at h
+            exact h.symm
+          rw [arraySafeSet_getD_ne' _ _ _ _ hne]
+          exact hass_old
+      · have : v' = v_var := by simpa [hlvar] using congrArg Literal.var hnew
+        subst this
+        exact arraySafeSet_getD_eq' _ _ _ hlt
+
+theorem enqueue_sameFC_spec (l : Literal) (s₀ : CheckState) :
+    ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (enqueue l : CheckM Unit)
+    ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄ := by
+  mvcgen [enqueue]
+
 -- ─── Hoare-triple specs for propagation primitives ────────────────────────────
+
+section PropStructProof
+attribute [local spec] enqueue_propStruct_spec
+
+/-- `propagateOne` preserves `PropStruct`.  No model witness needed.
+    Placed before `enqueue_consistent_spec` so mvcgen sees only the structural
+    `@[spec] enqueue_propStruct_spec`, not the semantic one. -/
+theorem propagateOne_propStruct_spec (l : Literal) :
+    ⦃fun s => ⌜CheckState.PropStruct s⌝⦄
+    (propagateOne l : CheckM (Option CRef))
+    ⦃⇓ _ s' => ⌜CheckState.PropStruct s'⌝⦄ := by
+  mvcgen [propagateOne, enqueue_propStruct_spec] invariants
+  · ⇓⟨_, acc⟩ s => ⌜CheckState.PropStruct s⌝
+    with
+  case vc9.post.success => exact id
+
+end PropStructProof
+
+section SameFCProof
+attribute [local spec] enqueue_sameFC_spec
+
+theorem propagateOne_sameFC_spec (l : Literal) (s₀ : CheckState) :
+    ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (propagateOne l : CheckM (Option CRef))
+    ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄ := by
+  mvcgen [propagateOne, enqueue_sameFC_spec] invariants
+  · ⇓⟨_, acc⟩ s => ⌜SameFC s₀ s⌝
+    with all_goals first | assumption | exact sameFC_trans ‹_› ‹_› | exact id
+
+end SameFCProof
 
 /-- `@[spec]` for `enqueue`: preserves `CheckState.ConsistentWith` when the literal is
     model-true. Because `ConsistentWith` extends `Sound`, this also guarantees all
@@ -1069,6 +1303,229 @@ private theorem propagate_aux_consistent
         simp only []  -- zeta/iota reduction for have l := ...; have s₁ := ...
         rw [he]
         exact haux'
+
+private theorem propagate_aux_none_queue_empty :
+    ∀ (n : Nat) (st st' : CheckState),
+      st.propQueue.size + st.isAssigned.count false ≤ n →
+      propagate.aux st = .ok none st' →
+      st'.propQueue = #[] := by
+  intro n
+  induction n with
+  | zero =>
+    intro st st' hn hrun
+    have hcount : 0 ≤ st.isAssigned.count false := Nat.zero_le _
+    have hsize : st.propQueue.size = 0 := by omega
+    have hempty : st.propQueue.isEmpty = true := by
+      simpa [Array.isEmpty_iff_size_eq_zero] using hsize
+    rw [propagate.aux.eq_def, if_pos hempty] at hrun
+    cases hrun
+    simpa [Array.isEmpty_iff_size_eq_zero] using hempty
+  | succ n ih =>
+    intro st st' hn hrun
+    by_cases hempty : st.propQueue.isEmpty = true
+    · rw [propagate.aux.eq_def, if_pos hempty] at hrun
+      cases hrun
+      simpa [Array.isEmpty_iff_size_eq_zero] using hempty
+    · rw [propagate.aux.eq_def,
+        if_neg (show ¬ st.propQueue.isEmpty = true by simpa using hempty)] at hrun
+      simp only [] at hrun
+      cases he : (propagateOne (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩))
+          { st with propQueue := st.propQueue.pop } with
+      | error e s =>
+        rw [he] at hrun
+        cases hrun
+      | ok r s =>
+        cases r with
+        | some cref =>
+          rw [he] at hrun
+          cases hrun
+        | none =>
+          rw [he] at hrun
+          have hmeas := propagateOne_measure_spec
+              (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩)
+              ({ st with propQueue := st.propQueue.pop }.propQueue.size +
+               { st with propQueue := st.propQueue.pop }.isAssigned.count false)
+          specialize hmeas { st with propQueue := st.propQueue.pop } rfl
+          simp only [WP.wp, PredTrans.apply, EStateM.run] at hmeas
+          simp only [he] at hmeas
+          have hn₂ : s.propQueue.size + s.isAssigned.count false ≤ n := by
+            have hne : st.propQueue.size ≠ 0 :=
+              fun h =>
+                let hq : st.propQueue = #[] := Array.eq_empty_of_size_eq_zero h
+                hempty (by simp [hq])
+            have hpos : 0 < st.propQueue.size := Nat.pos_iff_ne_zero.mpr hne
+            have hmeas_eq : s.propQueue.size + Array.count false s.isAssigned =
+                st.propQueue.pop.size + Array.count false st.isAssigned := hmeas
+            have hpop : st.propQueue.pop.size = st.propQueue.size - 1 := by
+              simp [Array.size_pop]
+            omega
+          exact ih s st' hn₂ hrun
+
+theorem propagate_none_queue_empty {st st' : CheckState}
+    (hrun : propagate st = .ok none st') :
+    st'.propQueue = #[] := by
+  exact propagate_aux_none_queue_empty
+    (st.propQueue.size + st.isAssigned.count false) st st' (Nat.le_refl _) hrun
+
+private theorem propagate_aux_propStruct :
+    ∀ (n : Nat) (st st' : CheckState),
+      CheckState.PropStruct st →
+      st.propQueue.size + st.isAssigned.count false ≤ n →
+      propagate.aux st = .ok none st' →
+      CheckState.PropStruct st' := by
+  intro n
+  induction n with
+  | zero =>
+    intro st st' hprop hn hrun
+    have hempty : st.propQueue.isEmpty = true := by
+      simp only [Array.isEmpty_iff_size_eq_zero]
+      omega
+    rw [propagate.aux.eq_def, if_pos hempty] at hrun
+    cases hrun
+    exact hprop
+  | succ n ih =>
+    intro st st' hprop hn hrun
+    by_cases hempty : st.propQueue.isEmpty = true
+    · rw [propagate.aux.eq_def, if_pos hempty] at hrun
+      cases hrun
+      exact hprop
+    · rw [propagate.aux.eq_def,
+        if_neg (show ¬ st.propQueue.isEmpty = true by simpa using hempty)] at hrun
+      simp only [] at hrun
+      have hprop₁ : CheckState.PropStruct { st with propQueue := st.propQueue.pop } := by
+        refine
+          { toSound :=
+              { isAssigned_size := hprop.toSound.isAssigned_size
+                value_size := hprop.toSound.value_size
+                indepKnown_size := hprop.toSound.indepKnown_size
+                indepOf_size := hprop.toSound.indepOf_size
+                externalName_size := hprop.toSound.externalName_size
+                isExistential_size := hprop.toSound.isExistential_size
+                depset_size := hprop.toSound.depset_size
+                clauses_nonempty := hprop.toSound.clauses_nonempty
+                trail_nonempty := hprop.toSound.trail_nonempty }
+            clauses_wf := hprop.clauses_wf
+            trail_single_level := hprop.trail_single_level
+            trail_lits_valid := hprop.trail_lits_valid
+            assigned_iff_in_trail := hprop.assigned_iff_in_trail }
+      have hspec := propagateOne_propStruct_spec
+          (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩)
+      specialize hspec { st with propQueue := st.propQueue.pop } hprop₁
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
+      cases he : (propagateOne (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩))
+          { st with propQueue := st.propQueue.pop } with
+      | error e s =>
+        rw [he] at hspec
+        exact hspec.elim
+      | ok r s =>
+        rw [he] at hspec
+        cases r with
+        | some cref =>
+          rw [he] at hrun
+          cases hrun
+        | none =>
+          rw [he] at hrun
+          simp only [] at hrun
+          have hn₂ : s.propQueue.size + s.isAssigned.count false ≤ n := by
+            have hmeas := propagateOne_measure_spec
+                (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩)
+                ({ st with propQueue := st.propQueue.pop }.propQueue.size +
+                 { st with propQueue := st.propQueue.pop }.isAssigned.count false)
+            specialize hmeas { st with propQueue := st.propQueue.pop } rfl
+            simp only [WP.wp, PredTrans.apply, EStateM.run] at hmeas
+            simp only [he] at hmeas
+            have hne : st.propQueue.size ≠ 0 :=
+              fun h =>
+                let hq : st.propQueue = #[] := Array.eq_empty_of_size_eq_zero h
+                hempty (by simp [hq])
+            have hpos : 0 < st.propQueue.size := Nat.pos_iff_ne_zero.mpr hne
+            have hmeas_eq : s.propQueue.size + Array.count false s.isAssigned =
+                st.propQueue.pop.size + Array.count false st.isAssigned := hmeas
+            have hpop : st.propQueue.pop.size = st.propQueue.size - 1 := by
+              simp [Array.size_pop]
+            omega
+          exact ih s st' hspec hn₂ hrun
+
+theorem propagate_none_propStruct {st st' : CheckState}
+    (hprop : CheckState.PropStruct st)
+    (hrun : propagate st = .ok none st') :
+    CheckState.PropStruct st' := by
+  exact propagate_aux_propStruct
+    (st.propQueue.size + st.isAssigned.count false) st st' hprop (Nat.le_refl _) hrun
+
+private theorem propagate_aux_sameFC :
+    ∀ (n : Nat) (s₀ st st' : CheckState),
+      SameFC s₀ st →
+      st.propQueue.size + st.isAssigned.count false ≤ n →
+      propagate.aux st = .ok none st' →
+      SameFC s₀ st' := by
+  intro n
+  induction n with
+  | zero =>
+    intro s₀ st st' hsame hn hrun
+    have hempty : st.propQueue.isEmpty = true := by
+      simp only [Array.isEmpty_iff_size_eq_zero]
+      omega
+    rw [propagate.aux.eq_def, if_pos hempty] at hrun
+    cases hrun
+    exact hsame
+  | succ n ih =>
+    intro s₀ st st' hsame hn hrun
+    by_cases hempty : st.propQueue.isEmpty = true
+    · rw [propagate.aux.eq_def, if_pos hempty] at hrun
+      cases hrun
+      exact hsame
+    · rw [propagate.aux.eq_def,
+        if_neg (show ¬ st.propQueue.isEmpty = true by simpa using hempty)] at hrun
+      simp only [] at hrun
+      have hsame₁ : SameFC s₀ { st with propQueue := st.propQueue.pop } := by
+        simpa [SameFC] using hsame
+      have hspec := propagateOne_sameFC_spec
+          (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩) s₀
+      specialize hspec { st with propQueue := st.propQueue.pop } hsame₁
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
+      cases he : (propagateOne (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩))
+          { st with propQueue := st.propQueue.pop } with
+      | error e s =>
+        rw [he] at hspec
+        exact hspec.elim
+      | ok r s =>
+        rw [he] at hspec
+        cases r with
+        | some cref =>
+          rw [he] at hrun
+          cases hrun
+        | none =>
+          rw [he] at hrun
+          simp only [] at hrun
+          have hn₂ : s.propQueue.size + s.isAssigned.count false ≤ n := by
+            have hmeas := propagateOne_measure_spec
+                (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩)
+                ({ st with propQueue := st.propQueue.pop }.propQueue.size +
+                 { st with propQueue := st.propQueue.pop }.isAssigned.count false)
+            specialize hmeas { st with propQueue := st.propQueue.pop } rfl
+            simp only [WP.wp, PredTrans.apply, EStateM.run] at hmeas
+            simp only [he] at hmeas
+            have hne : st.propQueue.size ≠ 0 :=
+              fun h =>
+                let hq : st.propQueue = #[] := Array.eq_empty_of_size_eq_zero h
+                hempty (by simp [hq])
+            have hpos : 0 < st.propQueue.size := Nat.pos_iff_ne_zero.mpr hne
+            have hmeas_eq : s.propQueue.size + Array.count false s.isAssigned =
+                st.propQueue.pop.size + Array.count false st.isAssigned := hmeas
+            have hpop : st.propQueue.pop.size = st.propQueue.size - 1 := by
+              simp [Array.size_pop]
+            omega
+          exact ih s₀ s st' hspec hn₂ hrun
+
+theorem propagate_none_sameFC {s₀ st st' : CheckState}
+    (hsame : SameFC s₀ st)
+    (hrun : propagate st = .ok none st') :
+    SameFC s₀ st' := by
+  exact propagate_aux_sameFC
+    (st.propQueue.size + st.isAssigned.count false) s₀ st st' hsame (Nat.le_refl _) hrun
+
+
 
 /-- `@[spec]` for `propagate`: preserves `CheckState.ConsistentWith` and always returns
     `none` (no conflict) when the model satisfies all clauses.
@@ -1592,7 +2049,86 @@ theorem addClausePost_of_unit_success_sameFC
     (hprop_run : propagate s_enq = .ok none s₂) :
     AddClausePost dqbf cs (some cref) s₂ := by
   rw [addClausePost_some]
-  sorry
+  let s_added : CheckState := { s₁ with clauses := (s₁.clauses.addClause lits).1 }
+  have hprop_added : CheckState.PropStruct s_added := by
+    dsimp [s_added]
+    exact CheckState.PropStruct.withAddClause hcorr.toPropStruct
+      (clauseLitsWellFormed_of_sameFC hsame hlits)
+  have henq_prop := enqueue_propStruct_spec (unassigned.getD 0 ⟨0⟩)
+  specialize henq_prop s_added hprop_added
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at henq_prop
+  rw [henq_run] at henq_prop
+  have hprop₂ : CheckState.PropStruct s₂ :=
+    propagate_none_propStruct henq_prop hprop_run
+  have henq_same := enqueue_sameFC_spec (unassigned.getD 0 ⟨0⟩) s_added
+  specialize henq_same s_added (by exact ⟨rfl, rfl⟩)
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at henq_same
+  rw [henq_run] at henq_same
+  have hsame₂ : SameFC s_added s₂ :=
+    propagate_none_sameFC henq_same hprop_run
+  rcases hsame₂ with ⟨hformula₂, hclauses₂⟩
+  refine
+    { toSound := hprop₂.toSound
+      propQueue_empty := propagate_none_queue_empty hprop_run
+      trail_single_level := hprop₂.trail_single_level
+      clauses_wf := hprop₂.clauses_wf
+      formula_extends := by
+        simpa [s_added, hformula₂] using hcorr.formula_extends
+      preserves_models := ?_
+      formula_sound := ?_
+      trail_lits_valid := hprop₂.trail_lits_valid
+      assigned_iff_in_trail := hprop₂.assigned_iff_in_trail }
+  · intro v hpos hassign sk σ hmat₂
+    have hmat_added : (s₁.clauses.addClause lits).1.matrixValue s₁.formula σ sk = true := by
+      simpa [s_added, hformula₂, hclauses₂] using hmat₂
+    have hmat_old : s₁.clauses.matrixValue s₁.formula σ sk = true := by
+      cases h : s₁.clauses.matrixValue s₁.formula σ sk <;> simp at h ⊢
+      have hfalse :=
+        matrixValue_addClause_false_of_old_false s₁.formula s₁.clauses lits σ sk h
+      rw [hmat_added] at hfalse
+      cases hfalse
+    have hget :=
+      ClauseStore.getClause_addClause_new s₁.clauses lits hcorr.toSound.clauses_nonempty
+    have hclause_true :
+        s₁.formula.clauseValue σ sk lits = true :=
+      clauseValue_of_matrixValue s₁.formula (s₁.clauses.addClause lits).1 σ sk
+        s₁.clauses.clauses.size { lits := lits, deleted := false } hmat_added hget
+    have hcon_old : CheckState.ConsistentWith s₁.formula s₁.clauses σ sk s₁ :=
+      hcorr.to_consistentWith σ sk hmat_old
+    have hcon_added :
+        CheckState.ConsistentWith s₁.formula (s₁.clauses.addClause lits).1 σ sk s_added := by
+      dsimp [s_added]
+      apply CheckState.ConsistentWith.of_addClause_lits s₁.formula s₁.clauses lits σ sk
+        hclause_true
+      · exact hcorr.clauses_wf.addClause (clauseLitsWellFormed_of_sameFC hsame hlits)
+      · exact hcon_old
+    have hunit_true :
+        s₁.formula.litValue σ sk (unassigned.getD 0 ⟨0⟩) = true := by
+      apply unit_lit_model_true s₁.formula σ sk s₁ rfl rfl
+      · intro w hwpos hassign'
+        exact hcorr.preserves_models w hwpos hassign' sk σ hmat_old
+      · exact clauseLitsWellFormed_of_sameFC hsame hlits
+      · exact hclause_true
+      · exact hsat_false
+      · exact hunassigned
+      · exact hsize1
+    have henq :=
+      enqueue_consistent_spec s₁.formula (s₁.clauses.addClause lits).1 σ sk
+        (unassigned.getD 0 ⟨0⟩) hunit_true
+    specialize henq s_added hcon_added
+    simp only [WP.wp, PredTrans.apply, EStateM.run] at henq
+    rw [henq_run] at henq
+    have hprop :=
+      propagate_consistent_spec s₁.formula (s₁.clauses.addClause lits).1 σ sk hmat_added
+    specialize hprop s_enq henq
+    simp only [WP.wp, PredTrans.apply, EStateM.run] at hprop
+    rw [hprop_run] at hprop
+    rcases hprop with ⟨hcon₂, _⟩
+    simpa [hcon₂.formula_eq] using hcon₂.assigned_model v hpos hassign
+  · intro htrue
+    have htrue_added : DQBFTrue s₁.formula (s₁.clauses.addClause lits).1 :=
+      addClause_semantics_of_sameFC hsame hsem htrue
+    simpa [s_added, hformula₂, hclauses₂] using htrue_added
 
 /-- Postcondition for a single basic checker step.
 

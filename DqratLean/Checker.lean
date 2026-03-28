@@ -26,35 +26,37 @@ def negateAndPropagate (lits : Array Literal) (which : Literal → Bool) : Check
 
 -- Returns None if UP detects UNSAT (= proof verified), Some cref otherwise.
 -- Assumes independence caches have already been invalidated for `lits`.
-def addClauseAfterCache (lits : Array Literal) : CheckM (Option CRef) := do
-  -- Add to clause store
-  modify fun st =>
-    let (cs', _) := st.clauses.addClause lits
-    { st with clauses := cs' }
-  let st ← get
+def addClauseAfterCache (lits : Array Literal) : CheckM (Option CRef) := fun st0 =>
+  let st := { st0 with clauses := (st0.clauses.addClause lits).1 }
   let cref := st.clauses.clauses.size - 1  -- just-added clause index
-  -- Handle empty clause
-  if lits.isEmpty then return none
-  -- Check under current assignment
-  let sat := lits.any fun l =>
-    let v := l.var
-    v > 0 && v <= st.formula.maxVar &&
-    st.isAssigned.getD (v - 1) false &&
-    (st.value.getD (v - 1) false == l.isPos)
-  if sat then return some cref
-  let unassigned := lits.filter fun l =>
-    let v := l.var
-    v > 0 && v <= st.formula.maxVar &&
-    !st.isAssigned.getD (v - 1) false
-  if unassigned.isEmpty then
-    return none  -- all literals false = conflict
-  else if unassigned.size = 1 then
-    enqueue (unassigned.getD 0 ⟨0⟩)
-    let conflict ← propagate
-    if conflict.isSome then return none
-    else return some cref
+  if lits.isEmpty then
+    .ok none st
   else
-    return some cref
+    let sat := lits.any fun l =>
+      let v := l.var
+      v > 0 && v <= st.formula.maxVar &&
+      st.isAssigned.getD (v - 1) false &&
+      (st.value.getD (v - 1) false == l.isPos)
+    if sat then
+      .ok (some cref) st
+    else
+      let unassigned := lits.filter fun l =>
+        let v := l.var
+        v > 0 && v <= st.formula.maxVar &&
+        !st.isAssigned.getD (v - 1) false
+      if unassigned.isEmpty then
+        .ok none st  -- all literals false = conflict
+      else if unassigned.size = 1 then
+        match enqueue (unassigned.getD 0 ⟨0⟩) st with
+        | .error e s => .error e s
+        | .ok _ s =>
+            match propagate s with
+            | .error e s' => .error e s'
+            | .ok conflict s' =>
+                if conflict.isSome then .ok none s'
+                else .ok (some cref) s'
+      else
+        .ok (some cref) st
 
 -- Returns None if UP detects UNSAT (= proof verified), Some cref otherwise.
 def addClause (lits : Array Literal) : CheckM (Option CRef) := do
