@@ -38,7 +38,7 @@ def readUniVarsM (toks : Array String) (start : Nat) (acc : Array Var) :
     | none   | some 0 => return (⟨start + 1, Nat.le_succ _⟩, acc)
     | some extVar =>
       let f ← (·.formula) <$> get
-      if f.externalVarExists extVar then throw s!"Dup var {extVar}"
+      if f.externalVarExists extVar then throwString s!"Dup var {extVar}"
       let v ← addVarForall extVar
       let (⟨p', hge⟩, acc') ← readUniVarsM toks (start + 1) (acc.push v)
       return (⟨p', Nat.le_trans (Nat.le_succ _) hge⟩, acc')
@@ -52,7 +52,7 @@ def readExiVarsM (toks : Array String) (allUnivs : Array Var) (start : Nat) :
     | none   | some 0 => return ⟨start + 1, Nat.le_succ _⟩
     | some extExi =>
       let f ← (·.formula) <$> get
-      if f.externalVarExists extExi then throw s!"Dup var {extExi}"
+      if f.externalVarExists extExi then throwString s!"Dup var {extExi}"
       let _ ← addVarExists extExi allUnivs
       let ⟨p', hge⟩ ← readExiVarsM toks allUnivs (start + 1)
       return ⟨p', Nat.le_trans (Nat.le_succ _) hge⟩
@@ -70,7 +70,7 @@ def readDepsM (toks : Array String) (start : Nat) (acc : Array Var) :
       let iv ←
         if !f.externalVarExists extDep then addVarForall extDep
         else match f.lookupInternal extDep with
-          | none   => throw s!"Dep var {extDep} not found"
+          | none   => throwString s!"Dep var {extDep} not found"
           | some v => pure v
       let (⟨p', hge⟩, acc') ← readDepsM toks (start + 1) (acc.push iv)
       return (⟨p', Nat.le_trans (Nat.le_succ _) hge⟩, acc')
@@ -91,13 +91,13 @@ def readPrefixM (toks : Array String) (pos : Nat) (univs : Array Var) :
       readPrefixM toks pos' univs
     else if tok = "d" then do
       match (toks.getD (pos + 1) "").toNat? with
-      | none => throw "Expected exi var in 'd' line"
+      | none => throwString "Expected exi var in 'd' line"
       | some extExi =>
         let f ← (·.formula) <$> get
         let iv ←
           if !f.externalVarExists extExi then addVarExists extExi #[]
           else match f.lookupInternal extExi with
-            | none   => throw s!"Var {extExi} not found"
+            | none   => throwString s!"Var {extExi} not found"
             | some v => pure v
         let (⟨pos', _hge⟩, deps) ← readDepsM toks (pos + 2) #[]
         modify fun st =>
@@ -113,8 +113,8 @@ termination_by toks.size - pos
 
 /-- Read matrix clauses; returns `true` if UNSAT by UP, else `false`. -/
 def readMatrixM (toks : Array String) (pos : Nat) (curLits : Array Literal) :
-    CheckM Bool := do
-  if pos >= toks.size then return false
+    CheckM Unit := do
+  if pos >= toks.size then return
   else
     let tok := toks.getD pos ""
     if tok = "c" then
@@ -128,32 +128,26 @@ def readMatrixM (toks : Array String) (pos : Nat) (curLits : Array Literal) :
             sorted.getD i ⟨0⟩ == (sorted.getD (i + 1) ⟨0⟩).negate
         if !isTauto then
           let r ← addClause sorted
-          if r.isNone then return true
+          if r.isNone then throw (.verified 0)
         readMatrixM toks (pos + 1) #[]
       | some lit =>
         let extVar := lit.natAbs
         let f ← (·.formula) <$> get
         match f.lookupInternal extVar with
-        | none    => throw s!"Unknown var {extVar} in matrix"
+        | none    => throwString s!"Unknown var {extVar} in matrix"
         | some iv => readMatrixM toks (pos + 1) (curLits.push (mkLit iv (lit > 0)))
 termination_by toks.size - pos
 
 -- ─── DQDIMACS parser ───────────────────────────────────────────────────────
 
-/-- Parse formula file. Returns None if formula UNSAT by UP (= already verified),
-    or Some state if proof is needed. -/
-def parseDQDIMACS (content : String) : Except String (Option CheckState) := do
+/-- Parse formula file. Can already return a `Verified` state. -/
+def parseDQDIMACS (content : String) : CheckM Unit := do
   let allToks := tokenize content
   let pIdx    := allToks.findIdx? (· == "p") |>.getD 0
   if pIdx >= allToks.size || allToks.getD (pIdx + 1) "" != "cnf" then
-    throw "Expected 'p cnf <maxVar> <numClauses>'"
-  let innerOp : CheckM Bool := do
-    let (matrixStart, _) ← readPrefixM allToks (pIdx + 4) #[]
-    readMatrixM allToks matrixStart #[]
-  match innerOp.run CheckState.empty with
-  | .error e _   => throw e
-  | .ok true _   => return none
-  | .ok false st => return some st
+    throwString "Expected 'p cnf <maxVar> <numClauses>'"
+  let (matrixStart, _) ← readPrefixM allToks (pIdx + 4) #[]
+  readMatrixM allToks matrixStart #[]
 
 -- ─── Proof action parser ───────────────────────────────────────────────────
 
@@ -196,10 +190,3 @@ def parseProofActions (content : String) : List DQRatAction :=
           go pos'' ln (.RatClause ln extLits :: acc)
   termination_by n - pos
   go 0 0 []
-
--- ─── Proof processor ───────────────────────────────────────────────────────
-
-def processProof (st : CheckState) (content : String) : ProofResult :=
-  match (checkActions (parseProofActions content)).run st with
-  | .error e _ => .Failed 0 #[e] #[] none
-  | .ok r _    => r

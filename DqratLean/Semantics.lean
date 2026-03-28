@@ -83,20 +83,16 @@ end DQBF
 
 -- ─── Matrix evaluation ─────────────────────────────────────────────────────
 
-namespace ClauseStore
-
 /-- Value of the CNF matrix — a **conjunction** of clauses — under `σ` and `sk`.
 
     Index 0 is the dummy CRef_Undef sentinel and is skipped.
     Deleted clauses are vacuously `true` (they have been removed from the formula). -/
-def matrixValue (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment) :
+def ClauseStore.matrixValue (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment) :
     Bool :=
   (List.range (cs.clauses.size - 1)).all fun i =>
     match cs.getClause (i + 1) with   -- real clauses: indices 1 … size-1
     | none   => true                  -- deleted; no constraint
     | some c => f.clauseValue σ sk c.lits
-
-end ClauseStore
 
 -- ─── Validity of Skolem functions ──────────────────────────────────────────
 

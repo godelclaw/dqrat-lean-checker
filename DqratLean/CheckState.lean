@@ -6,11 +6,11 @@ open Std.Do
 
 -- Combined checker state
 structure CheckState where
-  formula    : DQBF
-  clauses    : ClauseStore
+  formula    : DQBF := {}
+  clauses    : ClauseStore := {}
   -- Assignment arrays indexed by (var - 1)
-  isAssigned : Array Bool         -- is variable assigned?
-  value      : Array Bool         -- assigned value (meaningful if isAssigned)
+  isAssigned : Array Bool := #[]  -- is variable assigned?
+  value      : Array Bool := #[]  -- assigned value (meaningful if isAssigned)
   -- Trail: decision levels; each level is a list of literals assigned at that level
   trail      : Array (Array Literal) := #[#[]]  -- start with level 0
   -- Propagation queue (LIFO)
@@ -19,7 +19,20 @@ structure CheckState where
   indepKnown : Array Bool := #[]
   indepOf    : Array (Array Var) := #[]   -- existential vars independent of this univar
 
-abbrev CheckM := EStateM String CheckState
+-- ─── Proof result ──────────────────────────────────────────────────────────
+
+inductive ProofResult where
+  | verified (line : Nat)
+  | failed   (line : Nat) (rules : Array String) (info : Array Int) (blocker : Option CRef)
+
+def ProofResult.isVerified : ProofResult → Prop
+  | verified _ => True
+  | _ => False
+def ProofResult.isFailed : ProofResult → Prop
+  | failed _ _ _ _ => True
+  | _ => False
+
+abbrev CheckM := EStateM ProofResult CheckState
 
 -- ─── Assignment helpers ────────────────────────────────────────────────────
 
@@ -141,7 +154,7 @@ def propagateOne (l : Literal) : CheckM (Option CRef) := do
 theorem propagateOne_measure_spec (l : Literal) (m : Nat) :
     ⦃fun s => ⌜s.propQueue.size + s.isAssigned.count false = m⌝⦄
     (propagateOne l : CheckM (Option CRef))
-    ⦃⇓? _ s' => ⌜s'.propQueue.size + s'.isAssigned.count false = m⌝⦄ := by
+    ⦃⇓ _ s' => ⌜s'.propQueue.size + s'.isAssigned.count false = m⌝⦄ := by
   mvcgen [propagateOne, enqueue_measure_spec] invariants
   · ⇓⟨_, _⟩ s => ⌜s.propQueue.size + s.isAssigned.count false = m⌝
     with all_goals (first | assumption | omega | (intro; assumption))
@@ -151,7 +164,7 @@ theorem propagateOne_measure_spec (l : Literal) (m : Nat) :
 -- the measure, so propQueue.size + isAssigned.count false decreases by exactly 1.
 def propagate : CheckM (Option CRef) := fun st => aux st
 where
-  aux (st : CheckState) : EStateM.Result String CheckState (Option CRef) :=
+  aux (st : CheckState) : EStateM.Result ProofResult CheckState (Option CRef) :=
     if st.propQueue.isEmpty then .ok none st
     else
       let l  := st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩
@@ -391,16 +404,3 @@ def delDependency (of_ on_ : Var) : CheckM Bool := do
     return true
   else
     return false
-
--- ─── Initial CheckState ────────────────────────────────────────────────────
-
-def CheckState.empty : CheckState :=
-  { formula    := {}
-    clauses    := {}
-    isAssigned := #[]
-    value      := #[]
-    trail      := #[#[]]
-    propQueue  := #[]
-    indepKnown := #[]
-    indepOf    := #[]
-  }

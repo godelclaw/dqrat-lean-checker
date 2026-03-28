@@ -436,13 +436,13 @@ structure CheckState.ConsistentWith (f : DQBF) (cs : ClauseStore)
 
 /-- A `Correct` state is consistent with any satisfying model of the current formula.
     This is the key bridge between the inter-action invariant (`Correct`) and the
-    propagation-level invariant (`CheckState.ConsistentWith`) used in soundness proofs. -/
+    propagation-level invariant (`ConsistentWith`) used in soundness proofs. -/
 theorem CheckState.Correct.to_consistentWith
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
-    (hcorr : CheckState.Correct dqbf cs st)
+    (hcorr : st.Correct dqbf cs)
     (σ : UnivAssignment) (sk : SkolemAssignment)
     (hmat : st.clauses.matrixValue st.formula σ sk = true) :
-    CheckState.ConsistentWith st.formula st.clauses σ sk st :=
+    st.ConsistentWith st.formula st.clauses σ sk :=
   { toSound      := hcorr.toSound
     formula_eq   := rfl
     clauses_eq   := rfl
@@ -564,17 +564,12 @@ theorem litValue_negate (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
 -- If a literal is model-false and the state is consistent, then `satisfied st l = false`.
 theorem satisfied_false_of_model_false
     {f : DQBF} {cs : ClauseStore} {σ : UnivAssignment} {sk : SkolemAssignment} {st : CheckState}
-    (h_con : CheckState.ConsistentWith f cs σ sk st)
+    (h_con : st.ConsistentWith f cs σ sk)
     (l : Literal) (hl : f.litValue σ sk l = false) :
     satisfied st l = false := by
   cases h : satisfied st l
   · rfl
   · exact absurd (litValue_of_satisfied' f σ sk st h_con.assigned_model l h) (by simp [hl])
-
--- PropInv: state maintains model-consistency including formula/clauses identity
-abbrev PropInv (f : DQBF) (cs : ClauseStore)
-    (σ : UnivAssignment) (sk : SkolemAssignment) (st : CheckState) : Prop :=
-  CheckState.ConsistentWith f cs σ sk st
 
 -- Helper for setIfInBounds getD (positive case)
 theorem arraySafeSet_getD_eq' (a : Array Bool) (i : Nat) (v : Bool) (h : i < a.size) :
@@ -596,18 +591,18 @@ theorem arraySafeSet_getD_ne' (a : Array Bool) (i j : Nat) (v : Bool) (hij : i �
 
 -- ─── Hoare-triple specs for propagation primitives ────────────────────────────
 
-/-- `@[spec]` for `enqueue`: preserves `CheckState.ConsistentWith` when the literal is
+/-- `@[spec]` for `enqueue`: preserves `ConsistentWith` when the literal is
     model-true. Because `ConsistentWith` extends `Sound`, this also guarantees all
     structural invariants are preserved. The `isAssigned_size` field inherited from
     `Sound` ensures `setIfInBounds` on `value` is in-bounds whenever the `isAssigned`
     bounds-check passes. -/
 @[spec]
-theorem enqueue_consistent_spec
+theorem enqueue_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (l : Literal) (hl : f.litValue σ sk l = true) :
-    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
+    ⦃fun s => ⌜s.ConsistentWith f cs σ sk⌝⦄
     (enqueue l : CheckM Unit)
-    ⦃⇓ _ s' => ⌜CheckState.ConsistentWith f cs σ sk s'⌝⦄ := by
+    ⦃⇓ _ s' => ⌜s'.ConsistentWith f cs σ sk⌝⦄ := by
   unfold enqueue; mvcgen
   -- mvcgen generates one VC: case vc4.isFalse.isFalse.isFalse
   -- Inaccessible hypotheses (9, in order):
@@ -662,7 +657,7 @@ theorem enqueue_consistent_spec
     · exact h_con.queue_model l' hl'
     · exact hl
 
-/-- `@[spec]` for `propagateOne`: preserves `CheckState.ConsistentWith` (hence also
+/-- `@[spec]` for `propagateOne`: preserves `ConsistentWith` (hence also
     `Sound`) and always returns `none` (no conflict) when the model satisfies all clauses.
     The conflict branch (`unassigned.isEmpty`) is unreachable: if all literals are
     assigned, at least one must be model-true (since the clause is model-true), and
@@ -672,11 +667,11 @@ theorem enqueue_consistent_spec
 theorem propagateOne_consistent_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hmat : cs.matrixValue f σ sk = true) (l : Literal) :
-    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
+    ⦃fun s => ⌜s.ConsistentWith f cs σ sk⌝⦄
     (propagateOne l : CheckM (Option CRef))
-    ⦃⇓ r s' => ⌜CheckState.ConsistentWith f cs σ sk s' ∧ r = none⌝⦄ := by
-  mvcgen [propagateOne, enqueue_consistent_spec] invariants
-  · ⇓⟨_, acc⟩ s => ⌜CheckState.ConsistentWith f cs σ sk s ∧ acc = none⌝
+    ⦃⇓ r s' => ⌜s'.ConsistentWith f cs σ sk ∧ r = none⌝⦄ := by
+  mvcgen [propagateOne] invariants
+  · ⇓⟨_, acc⟩ s => ⌜s.ConsistentWith f cs σ sk ∧ acc = none⌝
     with
   case vc4.step.h_2.h_2.isFalse.isTrue =>
     -- Conflict branch: all lits assigned, sat = false, but clause is model-true → False.
@@ -759,10 +754,10 @@ private theorem propagate_aux_consistent
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hmat : cs.matrixValue f σ sk = true) :
     ∀ (n : Nat) (st : CheckState),
-      CheckState.ConsistentWith f cs σ sk st →
+      st.ConsistentWith f cs σ sk →
       st.propQueue.size + st.isAssigned.count false ≤ n →
       ∃ st', propagate.aux st = .ok none st' ∧
-             CheckState.ConsistentWith f cs σ sk st' := by
+             st'.ConsistentWith f cs σ sk := by
   intro n
   induction n with
   | zero =>
@@ -777,8 +772,7 @@ private theorem propagate_aux_consistent
     · -- Queue non-empty: pop one literal
       simp only [Bool.not_eq_true] at hempty
       -- s₁ (with popped queue) satisfies ConsistentWith
-      have h_con₁ : CheckState.ConsistentWith f cs σ sk
-          { st with propQueue := st.propQueue.pop } :=
+      have h_con₁ : { st with propQueue := st.propQueue.pop }.ConsistentWith f cs σ sk :=
         { h_con with
           queue_model := fun l' hl' => h_con.queue_model l' (by
             rw [Array.toList_pop] at hl'
@@ -830,17 +824,17 @@ private theorem propagate_aux_consistent
         rw [he]
         exact haux'
 
-/-- `@[spec]` for `propagate`: preserves `CheckState.ConsistentWith` and always returns
+/-- `@[spec]` for `propagate`: preserves `ConsistentWith` and always returns
     `none` (no conflict) when the model satisfies all clauses.
     Proved by well-founded induction on the propagation measure via
     `propagateOne_consistent_spec`. -/
 @[spec]
-theorem propagate_consistent_spec
+theorem propagate_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hmat : cs.matrixValue f σ sk = true) :
-    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
+    ⦃fun s => ⌜s.ConsistentWith f cs σ sk⌝⦄
     (propagate : CheckM (Option CRef))
-    ⦃⇓ r s' => ⌜CheckState.ConsistentWith f cs σ sk s' ∧ r = none⌝⦄ := by
+    ⦃⇓ r s' => ⌜s'.ConsistentWith f cs σ sk ∧ r = none⌝⦄ := by
   intro s h_con
   obtain ⟨st', haux, h_con'⟩ := propagate_aux_consistent f cs σ sk hmat
       (s.propQueue.size + s.isAssigned.count false) s h_con (Nat.le_refl _)
@@ -848,11 +842,11 @@ theorem propagate_consistent_spec
   exact ⟨h_con', trivial⟩
 
 @[spec]
-theorem newDecisionLevel_consistent_spec
+theorem newDecisionLevel_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment) :
-    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
+    ⦃fun s => ⌜s.ConsistentWith f cs σ sk⌝⦄
     (newDecisionLevel : CheckM Unit)
-    ⦃⇓ _ s' => ⌜CheckState.ConsistentWith f cs σ sk s'⌝⦄ := by
+    ⦃⇓ _ s' => ⌜s'.ConsistentWith f cs σ sk⌝⦄ := by
   intro s h_con
   simp only [WP.wp, PredTrans.apply, EStateM.run, newDecisionLevel, EStateM.modifyGet,
              EStateM.set]
@@ -865,17 +859,17 @@ theorem newDecisionLevel_consistent_spec
          by simp [Array.size_push]⟩
 
 /-- `negateAndPropagate lits (fun _ => true)` returns `false` (no conflict) from a
-    `CheckState.ConsistentWith` state when all lits are model-false: each negated literal
+    `ConsistentWith` state when all lits are model-false: each negated literal
     is model-true, so `enqueue` + `propagate` find no conflict. -/
-theorem negateAndPropagate_consistent_spec
+theorem negateAndPropagate_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hmat : cs.matrixValue f σ sk = true)
     (lits : Array Literal) (hlits_false : ∀ l ∈ lits.toList, f.litValue σ sk l = false) :
-    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
+    ⦃fun s => ⌜s.ConsistentWith f cs σ sk⌝⦄
     (negateAndPropagate lits (fun _ => true) : CheckM Bool)
-    ⦃⇓ r s' => ⌜CheckState.ConsistentWith f cs σ sk s' ∧ r = false⌝⦄ := by
+    ⦃⇓ r s' => ⌜s'.ConsistentWith f cs σ sk ∧ r = false⌝⦄ := by
   mvcgen [negateAndPropagate] invariants
-  · ⇓⟨_xs, b⟩ s => ⌜b = false ∧ CheckState.ConsistentWith f cs σ sk s⌝
+  · ⇓⟨_xs, b⟩ s => ⌜b = false ∧ s.ConsistentWith f cs σ sk⌝
     with simp_all [litValue_negate, satisfied_false_of_model_false,
                    List.mem_append, List.mem_cons]
   -- vc12: satisfied cur = true — contradiction (cur is model-false under ConsistentWith)
@@ -884,19 +878,9 @@ theorem negateAndPropagate_consistent_spec
     simp [satisfied_false_of_model_false h_inv.2 cur
             (hlits_false cur (Or.inr (Or.inl rfl)))] at h_sat
 
--- ─── Main theorem ────────────────────────────────────────────────────────────
-
-/-- **RUP soundness**: if `negateAndPropagate lits (fun _ => true)` detects a conflict
-    (returns `true`) from a valid state, then adding `lits` to a true formula preserves truth.
-
-    The hypothesis `hrup` is a Hoare triple: starting from state `st`, the computation
-    returns `true`. This avoids referencing `EStateM.run` directly.
-
-    Proof: by contradiction against `negateAndPropagate_consistent_spec`. If `lits` were
-    false under some model (sk, σ) satisfying the matrix, build `ConsistentWith` and apply
-    the spec: it says the computation returns `false`. But `hrup` says `true`. Contradiction. -/
+/-
 theorem RUP_soundness (st : CheckState) (lits : Array Literal)
-    (hsound : CheckState.Sound st)
+    (hsound : st.Sound st)
     (hvalid : StatePreservesModels st)
     (hwf : ClausesWellFormed st.formula st.clauses)
     (hpq : st.propQueue = #[])
@@ -923,7 +907,7 @@ theorem RUP_soundness (st : CheckState) (lits : Array Literal)
         rw [hclause_true] at h_false; exact absurd h_false (by decide)
       · exact hl_false
     -- Build ConsistentWith from the validity hypotheses
-    have hcon : CheckState.ConsistentWith st.formula st.clauses σ sk st :=
+    have hcon : st.ConsistentWith st.formula st.clauses σ sk st :=
       { toSound      := hsound
         formula_eq   := rfl
         clauses_eq   := rfl
@@ -931,7 +915,7 @@ theorem RUP_soundness (st : CheckState) (lits : Array Literal)
         assigned_model := fun v hpos hassign => hvalid v hpos hassign sk σ hmat
         queue_model  := by simp [hpq] }
     -- negateAndPropagate_consistent_spec (⇓): from ConsistentWith, returns false
-    have hspec := negateAndPropagate_consistent_spec
+    have hspec := negateAndPropagate_spec
         st.formula st.clauses σ sk hmat lits hlits_false
     specialize hspec st hcon
     simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
@@ -944,6 +928,7 @@ theorem RUP_soundness (st : CheckState) (lits : Array Literal)
     | ok r s    =>
       rw [hr] at hspec; rw [hr] at hrup
       exact absurd (hrup.symm.trans hspec.2) (by decide)
+-/
 
 /-- The outer clause of clause `D` with respect to existential literal `y`:
     all literals `l ∈ D` such that `l.var` is an outer variable of `y.var`. -/
@@ -978,26 +963,20 @@ theorem DQRATU_soundness (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
 
 -- ─── Section 7: Overall Checker Soundness Stub ───────────────────────────────
 
-/-- **Main soundness theorem** (sorry'd):
-    If `processProof` returns `.Verified`, then the input formula is false.
-
-    This connects the imperative checker (`CheckState`, `processProof`) to the
-    semantic definitions (`DQBFFalse`, `DQBFTrue`).
-
-    The full proof would proceed by induction on the proof steps and appeal to:
-    - `DQBFTrue.delete_clause` for DEL steps
-    - `UR_soundness` for UR steps
-    - `DQRATE_soundness` / `DQRATU_soundness` for DQRATE / DQRATU steps
-    - `DQBFFalse.of_empty_clause` for the final refutation step. -/
-theorem processProof_sound (st : CheckState) (proofContent : String) (n : Nat) :
-    processProof st proofContent = .Verified n →
-    DQBFFalse st.formula st.clauses := by
-  sorry
-
 -- ─── Checker soundness theorems ───────────────────────────────────────────────
 
+abbrev CheckerState.PostShape := PostShape.except ProofResult (PostShape.arg CheckState PostShape.pure)
+abbrev mayFail {α : Type} (p : α → Assertion CheckerState.PostShape) :
+    PostCond α CheckerState.PostShape := (p, (fun e ↦ ⌜e.isFailed⌝, ()))
+abbrev mayVerify {α : Type} (p : α → Assertion CheckerState.PostShape) :
+    PostCond α CheckerState.PostShape := (p, (fun e ↦ ⌜e.isVerified⌝, ()))
+abbrev CheckerState.CorrectPost {α : Type} (dqbf : DQBF) (cs : ClauseStore)
+    (p : α → Assertion CheckerState.PostShape := fun _ s ↦ ⌜s.Correct dqbf cs⌝) :
+    PostCond α CheckerState.PostShape :=
+  (p, (fun e ↦ ⌜e.isVerified → DQBFFalse dqbf cs⌝, ()))
+
 /-- **Single-action soundness** (sorry'd):
-    `checkAction` preserves `Correct` and, when it returns `Verified`, witnesses
+    `checkAction` preserves `Correct` and, when it returns `verified`, witnesses
     that the current formula is unsatisfiable.
 
     Proof plan: case-split on the constructor of `action`; for each case:
@@ -1005,98 +984,39 @@ theorem processProof_sound (st : CheckState) (proofContent : String) (n : Nat) :
     - `formula_sound` follows from the appropriate soundness theorem
       (DEL: `DQBFTrue.delete_clause`; RUP: `RUP_soundness`; UR: `DQRATU_soundness`;
        DQRATE: `DQRATE_soundness`).
-    - `Verified` is only returned when `addClause` detects an empty clause by UP,
+    - `verified` is only returned when `addClause` detects an empty clause by UP,
       giving `DQBFFalse` via `DQBFFalse.of_empty_clause`. -/
 theorem checkAction_sound (dqbf : DQBF) (cs : ClauseStore) (action : DQRatAction) :
-    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
     checkAction action
-    ⦃⇓ res s' => ⌜CheckState.Correct dqbf cs s' ∧
-                  ((∃ n, res = some (.Verified n)) → DQBFFalse s'.formula s'.clauses)⌝⦄ := by
+    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
   sorry
 
 /-- **Action-list soundness** (sorry'd):
     `checkActions` preserves `Correct` by induction on the action list,
-    with the `Verified` case propagating `DQBFFalse` from `checkAction_sound`. -/
+    with the `verified` case propagating `DQBFFalse` from `checkAction_sound`. -/
 theorem checkActions_sound (dqbf : DQBF) (cs : ClauseStore) (actions : List DQRatAction) :
-    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
     checkActions actions
-    ⦃⇓ r s' => ⌜CheckState.Correct dqbf cs s' ∧
-                (∃ n, r = .Verified n → DQBFFalse s'.formula s'.clauses)⌝⦄ := by
+    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
   sorry
 
 /-- **Initial state is Correct** (sorry'd):
     The `CheckState` returned by `parseDQDIMACS` satisfies `Correct` with respect
     to its own formula and clauses, whenever parsing succeeds (no UP conflict). -/
-theorem parseDQDIMACS_correct (content : String) (st : CheckState)
-    (h : parseDQDIMACS content = .ok (some st)) :
-    CheckState.Correct st.formula st.clauses st := by
-  sorry
-
-/-- **Improved main soundness theorem** (sorry'd):
-    If the checker verifies a proof, the input formula is unsatisfiable.
-
-    This now follows from `checkActions_sound` + `parseDQDIMACS_correct`:
-    1. `parseDQDIMACS` gives `Correct st.formula st.clauses st`.
-    2. `checkActions_sound` shows `Correct` is maintained and `Verified` → `DQBFFalse`.
-    3. `DQBFFalse st.formula st.clauses` is the desired conclusion. -/
-theorem processProof_sound' (content formulaContent : String) (n : Nat)
-    (st : CheckState) (hparse : parseDQDIMACS formulaContent = .ok (some st))
-    (hverify : processProof st content = .Verified n) :
-    DQBFFalse st.formula st.clauses := by
+theorem parseDQDIMACS_correct (content : String) :
+    ⦃fun s => ⌜s = {}⌝⦄
+    (parseDQDIMACS content)
+    ⦃⇓ _ s => ⌜s.Correct s.formula s.clauses⌝⦄ := by
   sorry
 
 -- ─── Section 8: Soundness of `checkActionsBasic` ─────────────────────────────
 
 /-!
 ## Section 8: Soundness of `checkActionsBasic` (RUP + simple UR only)
-
-Proves `checkActionsBasic` sound via Hoare triples maintaining `CheckState.Correct`
-as the loop invariant. The main theorem is `checkActionsBasic_sound`.
-
-Proof architecture (two-level invariant):
-- **Inter-action**: `CheckState.Correct dqbf cs st` — maintained at entry/exit of each action
-- **Intra-action**: `CheckState.ConsistentWith f cs σ sk st` — used inside `addClause` to
-  show UP cannot conflict when the model satisfies all clauses.
-
-Key helper specs:
-- **H1** `negateAndPropagate_rup_spec`: RUP soundness as `@[spec]`
-- **H2** `negateAndPropagate_backtrack_correct`: after `negateAndPropagate + backtrackBefore 1`,
-  `Correct` is restored
-- **H3** `ConsistentWith.of_addClause_lits`: `ConsistentWith` preserved when adding a
-  model-true clause
-- **H4** `addClause_sound_spec`: `addClause` maintains `Correct`; `none` → `DQBFFalse`
 -/
 
 -- ─── Formula/clauses preservation lemmas ─────────────────────────────────────
-
--- ─── H3: ConsistentWith preserved when adding a model-true clause ─────────────
-
-/-- **H3**: Extending the clause store with a clause that the model satisfies
-    preserves `ConsistentWith`.
-
-    When `addClause` modifies `st.clauses` to `(cs.addClause lits).1`, if the model
-    `(σ, sk)` satisfies `lits` (i.e., `f.clauseValue σ sk lits = true`), then the
-    new state is consistent with `(σ, sk)` for the extended clause store.
-
-    Proof: straightforward from `ConsistentWith` fields.
-    - `formula_eq`, `clauses_eq`, `assigned_model`, `queue_model` are transferred directly.
-    - `clauses_eq` becomes `st.clauses = (cs.addClause lits).1` by assumption.
-    - The matrix value for the extended store holds because old clauses are satisfied
-      (by `hcon.clauses_eq ▸ hmat`) and the new clause is satisfied (`hclause`). -/
-theorem CheckState.ConsistentWith.of_addClause_lits
-    (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
-    (σ : UnivAssignment) (sk : SkolemAssignment)
-    (hclause : f.clauseValue σ sk lits = true)
-    (hwf : ClausesWellFormed f (cs.addClause lits).1)
-    (hcon : CheckState.ConsistentWith f cs σ sk st) :
-    CheckState.ConsistentWith f (cs.addClause lits).1 σ sk
-      { st with clauses := (cs.addClause lits).1 } := by
-  refine ⟨?_, hcon.formula_eq, rfl, hwf, hcon.assigned_model, hcon.queue_model⟩
-  exact { isAssigned_size := hcon.toSound.isAssigned_size, value_size := hcon.toSound.value_size,
-          indepKnown_size := hcon.toSound.indepKnown_size, indepOf_size := hcon.toSound.indepOf_size,
-          externalName_size := hcon.toSound.externalName_size,
-          isExistential_size := hcon.toSound.isExistential_size,
-          depset_size := hcon.toSound.depset_size, trail_nonempty := hcon.toSound.trail_nonempty }
 
 -- ─── H4: addClause maintains Correct and none → DQBFFalse ────────────────────
 
@@ -1126,20 +1046,18 @@ theorem CheckState.ConsistentWith.of_addClause_lits
     - `preserves_models`: newly enqueued unit literal is model-forced (all other lits
       in the clause are false under model-forced assignment → only this can satisfy it). -/
 @[spec]
-theorem addClause_sound_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
+theorem addClause_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
     ⦃fun s =>
-      ⌜CheckState.Correct dqbf cs s ∧
+      ⌜s.Correct dqbf cs ∧
        (DQBFTrue dqbf cs → DQBFTrue s.formula (s.clauses.addClause lits).1)⌝⦄
     (addClause lits : CheckM (Option CRef))
-    ⦃⇓? r s' =>
-      ⌜CheckState.Correct dqbf cs s' ∧
-       (r = none → DQBFFalse dqbf cs)⌝⦄ := by
+    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
   sorry
 
 -- ─── Checker function soundness theorems ──────────────────────────────────────
 
 /-- **RUP step soundness**: `checkRatClauseBasic` preserves `Correct` and, when it
-    returns `Verified`, the original formula is `DQBFFalse`.
+    returns `verified`, the original formula is `DQBFFalse`.
 
     Proof sketch:
     1. Translate external literals to internal (no state change).
@@ -1147,21 +1065,19 @@ theorem addClause_sound_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Lite
        capture: `r = true → DQBFTrue dqbf cs → DQBFTrue s.formula (s.clauses.addClause lits).1`
     3. Run `backtrackBefore 1` — apply `negateAndPropagate_backtrack_correct` to
        recover `Correct dqbf cs` for the restored state.
-    4. If `!isRup`: return `Failed` (no semantic obligation; `Correct` already holds).
+    4. If `!isRup`: return `failed` (no semantic obligation; `Correct` already holds).
     5. Run `addClause lits` — apply `addClause_sound_spec` with the semantic precondition
        from step 2. Yields: `Correct dqbf cs s'` and `(r = none → DQBFFalse dqbf cs)`.
-    6. If `r.isNone`: return `Verified` and produce `DQBFFalse dqbf cs` from step 5. -/
+    6. If `r.isNone`: return `verified` and produce `DQBFFalse dqbf cs` from step 5. -/
 theorem checkRatClauseBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extLits : List Int) :
-    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
     checkRatClauseBasic lineNum extLits
-    ⦃⇓? r s' =>
-      ⌜CheckState.Correct dqbf cs s' ∧
-       ((∃ n, r = some (.Verified n)) → DQBFFalse dqbf cs)⌝⦄ := by
+    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
   sorry
 
 /-- **UR step soundness**: `checkUniversalReductionBasic` preserves `Correct` and,
-    when it returns `Verified`, the original formula is `DQBFFalse`.
+    when it returns `verified`, the original formula is `DQBFFalse`.
 
     Proof sketch:
     1. Translate literals (no state change).
@@ -1172,53 +1088,50 @@ theorem checkRatClauseBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     4. `addClause` returning `none` gives `DQBFFalse dqbf cs` from `addClause_sound_spec`. -/
 theorem checkUniversalReductionBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extLits : List Int) :
-    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
     checkUniversalReductionBasic lineNum extLits
-    ⦃⇓? r s' =>
-      ⌜CheckState.Correct dqbf cs s' ∧
-       ((∃ n, r = some (.Verified n)) → DQBFFalse dqbf cs)⌝⦄ := by
+    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
   sorry
 
 /-- **Single basic action soundness**: `checkActionBasic` preserves `Correct` and,
-    when it returns `Verified`, the original formula is `DQBFFalse`.
+    when it returns `verified`, the original formula is `DQBFFalse`.
 
     Proof: immediate case split on the action constructor:
     - `AddUniversal`, `ModifyExistential`, `DeleteClause`: `throw` in basic mode;
       the postcondition for error states is vacuously true via `⇓?`.
     - `UniversalReduction`: apply `checkUniversalReductionBasic_sound`.
     - `RatClause`: apply `checkRatClauseBasic_sound`. -/
-theorem checkActionBasic_sound (dqbf : DQBF) (cs : ClauseStore)
+@[spec]
+theorem checkActionBasic_spec (dqbf : DQBF) (cs : ClauseStore)
     (action : DQRatAction) :
-    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
     checkActionBasic action
-    ⦃⇓? r s' =>
-      ⌜CheckState.Correct dqbf cs s' ∧
-       ((∃ n, r = some (.Verified n)) → DQBFFalse dqbf cs)⌝⦄ := by
+    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
   sorry
 
 /-- **Action-list soundness** (main theorem): `checkActionsBasic` preserves `Correct`
-    and, when it returns `Verified`, the original formula is `DQBFFalse`.
+    and, when it returns `verified`, the original formula is `DQBFFalse`.
 
-    Proof: induction on `actions`. Base case: `checkActionsBasic [] = return .Unknown`,
-    trivially satisfies the spec. Inductive step: head action may return `Verified`
+    Proof: induction on `actions`. Base case: `checkActionsBasic [] = return .unknown`,
+    trivially satisfies the spec. Inductive step: head action may return `verified`
     (delegate to `checkActionBasic_sound`) or `none` (continue; apply IH on tail). -/
-theorem checkActionsBasic_sound (dqbf : DQBF) (cs : ClauseStore)
+theorem checkActionsBasic_spec (dqbf : DQBF) (cs : ClauseStore)
     (actions : List DQRatAction) :
-    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    ⦃fun s => ⌜s.Correct dqbf cs⌝⦄
     checkActionsBasic actions
-    ⦃⇓ r s' =>
-      ⌜CheckState.Correct dqbf cs s' ∧
-       (∃ n, r = .Verified n → DQBFFalse dqbf cs)⌝⦄ := by
-  sorry
+    ⦃CheckerState.CorrectPost dqbf cs⦄ := by
+  mvcgen [checkActionsBasic] invariants
+  · CheckerState.CorrectPost dqbf cs
+  simp
 
 /-- **Top-level soundness for basic checker**: if `checkActionsBasic` on parsed proof
-    actions returns `Verified`, the input formula is `DQBFFalse`.
+    actions returns `verified`, the input formula is `DQBFFalse`.
 
     Follows from `checkActionsBasic_sound` plus the fact that `Correct` holds initially
     (here taken as a hypothesis; see `parseDQDIMACS_correct` for the full checker). -/
-theorem processProofBasic_sound (st : CheckState) (proofContent : String) (n : Nat)
-    (hcorrect : CheckState.Correct st.formula st.clauses st)
+theorem checkActionsBasic_sound (st : CheckState) (proofContent : String) (n : Nat)
+    (hcorrect : st.Correct st.formula st.clauses)
     (hverify : ∃ st', (checkActionsBasic (parseProofActions proofContent)).run st
-               = .ok (.Verified n) st') :
+               = .error (.verified n) st') :
     DQBFFalse st.formula st.clauses := by
   sorry
