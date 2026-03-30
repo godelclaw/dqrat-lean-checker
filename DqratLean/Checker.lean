@@ -342,19 +342,41 @@ def checkUniversalReduction (lineNum : Nat) (extLits : List Int) : CheckM (Optio
       if r.isNone then return some (.Verified lineNum)
     return none
 
-/-- Full DQRATE step: RUP first, then RAT with existential pivot. -/
-def checkRatClause (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofResult) := do
-  let lits ← extLits.foldlM (fun acc lit => do
+/-- Translate already-existing external literals to internal literals.
+    Missing variables are skipped. -/
+def translateExistingLits (extLits : List Int) : CheckM (Array Literal) := do
+  let mut acc := #[]
+  for lit in extLits do
+    let f ← (·.formula) <$> get
+    match f.lookupInternal lit.natAbs with
+    | none    => pure ()
+    | some iv => acc := acc.push (mkLit iv (lit > 0))
+  pure acc
+
+/-- Translate RAT/RUP literals, creating fresh existential extension variables for
+    missing external names using all current universal variables as the initial dep set. -/
+def translateRatLitsBasic (extLits : List Int) : CheckM (Array Literal) := do
+  let mut acc := #[]
+  for lit in extLits do
     let extVar := lit.natAbs
     let f ← (·.formula) <$> get
-    -- QRAT compat: create extension var with all univars as deps
     if !f.externalVarExists extVar then
       let _ ← addVarExists extVar f.univars
     let f2 ← (·.formula) <$> get
     match f2.lookupInternal extVar with
-    | none    => return acc
-    | some iv => return (acc.push (mkLit iv (lit > 0)))
-  ) #[]
+    | none    => pure ()
+    | some iv => acc := acc.push (mkLit iv (lit > 0))
+  pure acc
+
+/-- Run the basic RUP trial and restore the action-boundary state before returning. -/
+def runRupTrial (lits : Array Literal) : CheckM Bool := do
+  let isRup ← negateAndPropagate lits (fun _ => true)
+  backtrackBefore 1
+  pure isRup
+
+/-- Full DQRATE step: RUP first, then RAT with existential pivot. -/
+def checkRatClause (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofResult) := do
+  let lits ← translateRatLitsBasic extLits
   let (success, blocker) ← checkDQRATE lits
   if !success then return some (.Failed lineNum #["RUP", "DQRATE"] #[] blocker)
   let r ← addClause lits
@@ -364,12 +386,7 @@ def checkRatClause (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofRe
 /-- UR step for the basic checker: only handles the `pivotReducible` case (simple UR).
     When the non-trivial branch (DQRATU) would be needed, fails immediately. -/
 def checkUniversalReductionBasic (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofResult) := do
-  let lits ← extLits.foldlM (fun acc lit => do
-    let f ← (·.formula) <$> get
-    match f.lookupInternal lit.natAbs with
-    | none    => return acc
-    | some iv => return (acc.push (mkLit iv (lit > 0)))
-  ) #[]
+  let lits ← translateExistingLits extLits
   if lits.isEmpty then return some (.Failed lineNum #["UR"] #[] none)
   let pivot := lits.getD 0 ⟨0⟩
   let f ← (·.formula) <$> get
@@ -392,18 +409,8 @@ def checkUniversalReductionBasic (lineNum : Nat) (extLits : List Int) : CheckM (
 
 /-- RUP-only step: no RAT fallback. Fails immediately if unit propagation finds no conflict. -/
 def checkRatClauseBasic (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofResult) := do
-  let lits ← extLits.foldlM (fun acc lit => do
-    let extVar := lit.natAbs
-    let f ← (·.formula) <$> get
-    if !f.externalVarExists extVar then
-      let _ ← addVarExists extVar f.univars
-    let f2 ← (·.formula) <$> get
-    match f2.lookupInternal extVar with
-    | none    => return acc
-    | some iv => return (acc.push (mkLit iv (lit > 0)))
-  ) #[]
-  let isRup ← negateAndPropagate lits (fun _ => true)
-  backtrackBefore 1
+  let lits ← translateRatLitsBasic extLits
+  let isRup ← runRupTrial lits
   if !isRup then return some (.Failed lineNum #["RUP"] #[] none)
   let r ← addClause lits
   if r.isNone then return some (.Verified lineNum)

@@ -383,6 +383,16 @@ theorem ClauseLitsWellFormed.mono
   rcases hwf l hl with ⟨hpos, hle⟩
   exact ⟨hpos, Nat.le_trans hle hmax⟩
 
+theorem ClauseLitsWellFormed.push
+    {f : DQBF} {lits : Array Literal} {l : Literal}
+    (hwf : ClauseLitsWellFormed f lits)
+    (hl : 0 < l.var ∧ l.var ≤ f.maxVar) :
+    ClauseLitsWellFormed f (lits.push l) := by
+  intro l' hl'
+  rcases Array.mem_push.mp (Array.mem_toList_iff.mp hl') with hl' | rfl
+  · exact hwf l' (Array.mem_toList_iff.mpr hl')
+  · exact hl
+
 theorem ClausesWellFormed.mono
     {f g : DQBF} {cs : ClauseStore}
     (hwf : ClausesWellFormed f cs)
@@ -931,6 +941,33 @@ theorem makeIndepUnknown_correct_lookup_spec
     exact ⟨hcorr', by simpa [hformula] using hlookup⟩
 
 @[spec]
+theorem makeIndepUnknown_correct_lookup_wf_spec
+    (dqbf : DQBF) (cs : ClauseStore) (u : Var)
+    (acc : Array Literal) (ext : Nat) (v : Var) :
+    ⦃fun s =>
+      ⌜CheckState.Correct dqbf cs s ∧
+       ClauseLitsWellFormed s.formula acc ∧
+       s.formula.lookupInternal ext = some v⌝⦄
+    (makeIndepUnknown u : CheckM Unit)
+    ⦃⇓ _ s' =>
+      ⌜CheckState.Correct dqbf cs s' ∧
+       ClauseLitsWellFormed s'.formula acc ∧
+       s'.formula.lookupInternal ext = some v⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hcorr, hacc, hlookup⟩
+  have hspec := makeIndepUnknown_correct_sameFC_spec dqbf cs u s s ⟨hcorr, ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec ⊢
+  cases hrun : makeIndepUnknown u s with
+  | error e s' =>
+    rw [hrun] at hspec
+    exact hspec.elim
+  | ok _ s' =>
+    rw [hrun] at hspec
+    rcases hspec with ⟨hcorr', hsame⟩
+    rcases hsame with ⟨hformula, _⟩
+    exact ⟨hcorr', by simpa [hformula] using hacc, by simpa [hformula] using hlookup⟩
+
+@[spec]
 theorem addVarExists_loop_spec
     (dqbf : DQBF) (cs : ClauseStore) (deps : Array Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
@@ -957,6 +994,51 @@ theorem addVarExists_loop_spec
       cases b
       mintro hpre
       mspec (makeIndepUnknown_correct_lookup_spec dqbf cs u ext v)
+      mleave)
+
+@[spec]
+theorem addVarExists_loop_wf_spec
+    (dqbf : DQBF) (cs : ClauseStore) (deps : Array Var)
+    (acc : Array Literal) (ext : Nat) (v : Var) :
+    ⦃fun s =>
+      ⌜CheckState.Correct dqbf cs s ∧
+       ClauseLitsWellFormed s.formula acc ∧
+       s.formula.lookupInternal ext = some v⌝⦄
+    (forIn deps PUnit.unit (fun u _ => do
+      makeIndepUnknown u
+      pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+    ⦃⇓ _ s' =>
+      ⌜CheckState.Correct dqbf cs s' ∧
+       ClauseLitsWellFormed s'.formula acc ∧
+       s'.formula.lookupInternal ext = some v⌝⦄ := by
+  simpa [Array.forIn_toList] using
+    (show
+      ⦃fun s =>
+        ⌜CheckState.Correct dqbf cs s ∧
+         ClauseLitsWellFormed s.formula acc ∧
+         s.formula.lookupInternal ext = some v⌝⦄
+      (forIn deps.toList PUnit.unit (fun u _ => do
+        makeIndepUnknown u
+        pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+      ⦃⇓ _ s' =>
+        ⌜CheckState.Correct dqbf cs s' ∧
+         ClauseLitsWellFormed s'.formula acc ∧
+         s'.formula.lookupInternal ext = some v⌝⦄ from by
+      refine (Spec.forIn_list_const_inv
+        (xs := deps.toList)
+        (init := PUnit.unit)
+        (f := fun u _ => do
+          makeIndepUnknown u
+          pure (ForInStep.yield PUnit.unit))
+        (inv := (⇓ _ s' =>
+          ⌜CheckState.Correct dqbf cs s' ∧
+           ClauseLitsWellFormed s'.formula acc ∧
+           s'.formula.lookupInternal ext = some v⌝))
+        ?_)
+      intro u b
+      cases b
+      mintro hpre
+      mspec (makeIndepUnknown_correct_lookup_wf_spec dqbf cs u acc ext v)
       mleave)
 
 @[spec]
@@ -1020,6 +1102,141 @@ theorem addVarExists_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     mspec (addVarExists_loop_spec dqbf cs deps ext v)
     mleave
   simpa [addVarExists] using hbody
+
+@[spec]
+theorem addVarExists_correct_wf_spec (dqbf : DQBF) (cs : ClauseStore)
+    (ext : Nat) (deps : Array Var) (acc : Array Literal) :
+    ⦃fun s =>
+      ⌜CheckState.Correct dqbf cs s ∧
+       ClauseLitsWellFormed s.formula acc ∧
+       s.formula.externalVarExists ext = false⌝⦄
+    (addVarExists ext deps : CheckM Var)
+    ⦃⇓ v s' =>
+      ⌜CheckState.Correct dqbf cs s' ∧
+       ClauseLitsWellFormed s'.formula acc ∧
+       s'.formula.lookupInternal ext = some v⌝⦄ := by
+  have hprefix :
+      ⦃fun s =>
+        ⌜CheckState.Correct dqbf cs s ∧
+         ClauseLitsWellFormed s.formula acc ∧
+         s.formula.externalVarExists ext = false⌝⦄
+      ((do
+        let st ← get
+        let v := st.formula.maxVar + 1
+        let f := { st.formula with
+          maxVar        := v
+          internalName  := st.formula.internalName.push (ext, v)
+          externalName  := st.formula.externalName.push ext
+          isExistential := st.formula.isExistential.push true
+          exivars       := st.formula.exivars.push v
+          depset        := st.formula.depset.push deps }
+        set { st with
+          formula    := f
+          isAssigned := st.isAssigned.push false
+          value      := st.value.push false
+          indepKnown := st.indepKnown.push false
+          indepOf    := st.indepOf.push #[] }
+        pure v) : CheckM Var)
+      ⦃⇓ v s' =>
+        ⌜CheckState.Correct dqbf cs s' ∧
+         ClauseLitsWellFormed s'.formula acc ∧
+         s'.formula.lookupInternal ext = some v⌝⦄ := by
+    mvcgen
+    rename_i s hs v f
+    rcases hs with ⟨hcorr, hacc, hfresh⟩
+    have hcorr' : CheckState.Correct dqbf cs
+        { s with
+          formula := f
+          isAssigned := s.isAssigned.push false
+          value := s.value.push false
+          indepKnown := s.indepKnown.push false
+          indepOf := s.indepOf.push #[] } :=
+      CheckState.Correct.withAddVarExists hcorr ext deps hfresh
+    have hgrow : s.formula.maxVar ≤
+        ({ s.formula with
+          maxVar        := v
+          internalName  := s.formula.internalName.push (ext, v)
+          externalName  := s.formula.externalName.push ext
+          isExistential := s.formula.isExistential.push true
+          exivars       := s.formula.exivars.push v
+          depset        := s.formula.depset.push deps }).maxVar := by
+      simp [v]
+    refine ⟨hcorr', ClauseLitsWellFormed.mono hacc hgrow, ?_⟩
+    simpa [f, v] using lookupInternal_addExistsFormula_self s.formula ext deps hfresh
+  have hbody :
+      ⦃fun s =>
+        ⌜CheckState.Correct dqbf cs s ∧
+         ClauseLitsWellFormed s.formula acc ∧
+         s.formula.externalVarExists ext = false⌝⦄
+      ((do
+          let v ← ((do
+            let st ← get
+            let v := st.formula.maxVar + 1
+            let f := { st.formula with
+              maxVar        := v
+              internalName  := st.formula.internalName.push (ext, v)
+              externalName  := st.formula.externalName.push ext
+              isExistential := st.formula.isExistential.push true
+              exivars       := st.formula.exivars.push v
+              depset        := st.formula.depset.push deps }
+            set { st with
+              formula    := f
+              isAssigned := st.isAssigned.push false
+              value      := st.value.push false
+              indepKnown := st.indepKnown.push false
+              indepOf    := st.indepOf.push #[] }
+            pure v) : CheckM Var)
+          for u in deps do
+            makeIndepUnknown u
+          pure v) : CheckM Var)
+      ⦃⇓ v s' =>
+        ⌜CheckState.Correct dqbf cs s' ∧
+         ClauseLitsWellFormed s'.formula acc ∧
+         s'.formula.lookupInternal ext = some v⌝⦄ := by
+    mintro hs
+    mspec hprefix
+    rename_i v
+    mspec (addVarExists_loop_wf_spec dqbf cs deps acc ext v)
+    mleave
+  simpa [addVarExists] using hbody
+
+@[spec]
+theorem translateExistingLits_spec
+    (dqbf : DQBF) (cs : ClauseStore) (extLits : List Int) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    (translateExistingLits extLits : CheckM (Array Literal))
+    ⦃⇓ lits s' =>
+      ⌜CheckState.Correct dqbf cs s' ∧
+       ClauseLitsWellFormed s'.formula lits⌝⦄ := by
+  mvcgen [translateExistingLits] invariants
+  · ⇓⟨_, acc⟩ s => ⌜CheckState.Correct dqbf cs s ∧ ClauseLitsWellFormed s.formula acc⌝
+    with
+  case vc2.pre =>
+    rename_i acc s hcorr
+    subst acc
+    exact ⟨hcorr, by simpa [ClauseLitsWellFormed]⟩
+  case vc1.step =>
+    rename_i _ _ _ cur _ _ acc s hs
+    rcases hs with ⟨hcorr, hacc⟩
+    cases hlookup : s.formula.lookupInternal cur.natAbs with
+    | none =>
+        simpa [WP.wp, PredTrans.apply, EStateM.run, hlookup] using
+          (show CheckState.Correct dqbf cs s ∧ ClauseLitsWellFormed s.formula acc from
+            ⟨hcorr, hacc⟩)
+    | some iv =>
+        rcases hcorr.lookupInternal_sound cur.natAbs iv hlookup with ⟨hpos, hle⟩
+        have hmk : (mkLit iv (cur > 0)).var = iv := by
+          unfold Literal.var mkLit
+          by_cases hsign : cur > 0
+          · simp [hsign]
+            rw [Nat.add_comm (iv * 2) 1]
+            rw [Nat.add_mul_div_right 1 iv (by decide)]
+            simp
+          · simp [hsign]
+        simpa [WP.wp, PredTrans.apply, EStateM.run, hlookup] using
+          (show CheckState.Correct dqbf cs s ∧
+              ClauseLitsWellFormed s.formula (acc.push (mkLit iv (cur > 0))) from
+            ⟨hcorr, ClauseLitsWellFormed.push hacc (by simpa [hmk] using (show 0 < iv ∧ iv ≤ s.formula.maxVar from ⟨hpos, hle⟩))⟩)
 
 theorem lookupInternal_some_of_externalVarExists
     (f : DQBF) (ext : Nat) (hex : f.externalVarExists ext = true) :
