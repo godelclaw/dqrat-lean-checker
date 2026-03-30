@@ -368,6 +368,14 @@ structure CheckState.Sound (st : CheckState) : Prop where
   depset_size        : st.formula.depset.size        = st.formula.maxVar + 1
   /-- There is always at least one decision level (level 0). -/
   trail_nonempty : 0 < st.trail.size
+  /-- Every literal recorded in the trail refers to a valid variable. -/
+  trail_lits_valid : ∀ i, i < st.trail.size →
+      ∀ l ∈ st.trail.getD i #[], 0 < l.var ∧ l.var ≤ st.formula.maxVar
+  /-- A variable is assigned iff it appears in some trail level.
+      This is the key invariant that makes `backtrackBefore` correct. -/
+  assigned_iff_in_trail : ∀ v : Var, 0 < v → v ≤ st.formula.maxVar →
+      (st.isAssigned.getD (v - 1) false = true ↔
+       ∃ i, i < st.trail.size ∧ ∃ l ∈ st.trail.getD i #[], l.var = v)
 
 /-- High-level invariant of the checker state at action boundaries.
 
@@ -390,16 +398,6 @@ structure CheckState.Correct (dqbf : DQBF) (cs : ClauseStore) (st : CheckState) 
   preserves_models : StatePreservesModels st
   /-- Semantic soundness: proof steps never introduce falsity. -/
   formula_sound : DQBFTrue dqbf cs → DQBFTrue st.formula st.clauses
-  /-- Every literal recorded in the trail refers to a valid variable.
-      (Moved here from `Sound`: only needed at action boundaries for `backtrackBefore`.) -/
-  trail_lits_valid : ∀ i, i < st.trail.size →
-      ∀ l ∈ st.trail.getD i #[], 0 < l.var ∧ l.var ≤ st.formula.maxVar
-  /-- A variable is assigned iff it appears in some trail level.
-      This is the key invariant that makes `backtrackBefore` correct.
-      (Moved here from `Sound`: only needed at action boundaries.) -/
-  assigned_iff_in_trail : ∀ v : Var, 0 < v → v ≤ st.formula.maxVar →
-      (st.isAssigned.getD (v - 1) false = true ↔
-       ∃ i, i < st.trail.size ∧ ∃ l ∈ st.trail.getD i #[], l.var = v)
 
 -- ─── Model consistency predicate ─────────────────────────────────────────────
 
@@ -631,9 +629,68 @@ theorem enqueue_spec
     refine ⟨?_, ?_, h_con.toSound.indepKnown_size, h_con.toSound.indepOf_size,
               h_con.toSound.externalName_size, h_con.toSound.isExistential_size,
               h_con.toSound.depset_size,
-              by rw [Array.size_setIfInBounds]; exact h_con.toSound.trail_nonempty⟩
+              by rw [Array.size_setIfInBounds]; exact h_con.toSound.trail_nonempty,
+              ?_, ?_⟩
     · simp [Array.size_setIfInBounds, h_con.toSound.isAssigned_size]
     · simp [Array.size_setIfInBounds, h_con.toSound.value_size]
+    · simp
+      intro i hi lit hlit
+      have := h_con.trail_lits_valid i (by lia) lit
+      by_cases eq : lastIdx = i
+      · rw [← eq] at hlit
+        simp [Array.getElem?_setIfInBounds_self] at hlit
+        have lt : lastIdx < s_state.trail.size := by
+          unfold lastIdx
+          have := h_con.trail_nonempty
+          lia
+        simp only [lt, ↓reduceIte, Option.getD_some, Array.mem_push] at hlit
+        cases hlit with
+        | inl hin =>
+          unfold lastLevel at hin
+          rw [eq] at hin
+          exact this hin
+        | inr liteq =>
+          subst liteq
+          lia
+      · rw [Array.getElem?_setIfInBounds_ne eq] at hlit
+        simp at this
+        exact this hlit
+    · simp
+      intro v hv1 hv2
+      have := h_con.assigned_iff_in_trail v hv1 hv2
+      simp at this
+      by_cases eq : v = v_var
+      · subst eq
+        constructor
+        · intro
+          have lt : lastIdx < s_state.trail.size := by unfold lastIdx; have := h_con.trail_nonempty; lia
+          refine ⟨lastIdx, lt, l, ?_, rfl⟩
+          rw [Array.getElem?_setIfInBounds_self, if_pos lt, Option.getD_some]
+          exact Array.mem_push.mpr (Or.inr rfl)
+        · intro _
+          rw [Array.getElem?_setIfInBounds_self, if_pos hlt, Option.getD_some]
+      · have neq : v_var-1 ≠ v - 1 := by lia
+        rw [Array.getElem?_setIfInBounds_ne neq]
+        rw [this]
+        constructor
+        · rintro ⟨i, hi, lit, lit_in, lit_eq⟩
+          exists i, hi, lit
+          refine ⟨?_, lit_eq⟩
+          by_cases hli : lastIdx = i
+          · have lt : lastIdx < s_state.trail.size := hli ▸ hi
+            rw [← hli, Array.getElem?_setIfInBounds_self, if_pos lt, Option.getD_some]
+            apply Array.mem_push.mpr; left; simpa [lastLevel, Array.getD] using hli ▸ lit_in
+          · rw [Array.getElem?_setIfInBounds_ne hli]; exact lit_in
+        · rintro ⟨i, hi, lit, lit_in, lit_eq⟩
+          refine ⟨i, hi, lit, ?_, lit_eq⟩
+          by_cases hli : lastIdx = i
+          · have lt : lastIdx < s_state.trail.size := hli ▸ hi
+            rw [← hli, Array.getElem?_setIfInBounds_self, if_pos lt, Option.getD_some] at lit_in
+            rcases Array.mem_push.mp lit_in with h | rfl
+            · simpa [lastLevel, hli] using h
+            · exact absurd lit_eq.symm eq
+          · rwa [Array.getElem?_setIfInBounds_ne hli] at lit_in
+      done
   · -- Assignment consistency
     intro v' hpos' hass'
     by_cases hveq : v' = v_var
@@ -852,11 +909,48 @@ theorem newDecisionLevel_spec
              EStateM.set]
   refine ⟨?_, h_con.formula_eq, h_con.clauses_eq, h_con.clauses_wf, h_con.assigned_model,
             h_con.queue_model⟩
-  exact ⟨h_con.toSound.isAssigned_size, h_con.toSound.value_size,
+  refine ⟨h_con.toSound.isAssigned_size, h_con.toSound.value_size,
          h_con.toSound.indepKnown_size, h_con.toSound.indepOf_size,
          h_con.toSound.externalName_size, h_con.toSound.isExistential_size,
          h_con.toSound.depset_size,
-         by simp [Array.size_push]⟩
+         by simp [Array.size_push], ?_, ?_⟩
+  · simp
+    intro i hi lit hlit
+    by_cases eq : i = s.trail.size
+    · simp [eq] at hlit
+    · have := h_con.trail_lits_valid i (by lia) lit
+      rw [Array.getElem?_push_lt (by lia), Option.getD_some] at hlit
+      rw [← Array.getElem_eq_getD] at this
+      · exact this hlit
+      · lia
+  · simp
+    intro v hv1 hv2
+    have := h_con.assigned_iff_in_trail v hv1 hv2
+    simp at this
+    rw [this]
+    constructor
+    · rintro ⟨i, hi, l, hl1, hl2⟩
+      exists i
+      constructor
+      · lia
+      · exists l
+        rw [Array.getElem?_push_lt (by lia)]
+        simp
+        rw [← Array.getD_eq_getD_getElem?, ← Array.getElem_eq_getD] at hl1
+        · exact ⟨hl1, hl2⟩
+        · lia
+    · rintro ⟨i, hi, l, hl1, hl2⟩
+      by_cases eq : i = s.trail.size
+      · simp [eq] at hl1
+      · rw [Array.getElem?_push_lt (by lia)] at hl1
+        simp at hl1
+        exists i
+        constructor
+        · lia
+        · exists l
+          rw [Array.getElem?_eq_getElem (by lia)]
+          simp
+          exact ⟨hl1, hl2⟩
 
 /-- `negateAndPropagate lits (fun _ => true)` returns `false` (no conflict) from a
     `ConsistentWith` state when all lits are model-false: each negated literal
@@ -1046,11 +1140,11 @@ theorem parseDQDIMACS_correct (content : String) :
     - `preserves_models`: newly enqueued unit literal is model-forced (all other lits
       in the clause are false under model-forced assignment → only this can satisfy it). -/
 @[spec]
-theorem addClause_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
+theorem addClause_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) (lineNum : Nat) :
     ⦃fun s =>
       ⌜s.Correct dqbf cs ∧
        (DQBFTrue dqbf cs → DQBFTrue s.formula (s.clauses.addClause lits).1)⌝⦄
-    (addClause lits : CheckM (Option CRef))
+    addClause lits lineNum
     ⦃CheckerState.CorrectPost dqbf cs⦄ := by
   sorry
 

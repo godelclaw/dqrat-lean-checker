@@ -127,8 +127,7 @@ def readMatrixM (toks : Array String) (pos : Nat) (curLits : Array Literal) :
           (List.range (if sorted.size > 0 then sorted.size - 1 else 0)).any fun i =>
             sorted.getD i ⟨0⟩ == (sorted.getD (i + 1) ⟨0⟩).negate
         if !isTauto then
-          let r ← addClause sorted
-          if r.isNone then throw (.verified 0)
+          addClause sorted 0
         readMatrixM toks (pos + 1) #[]
       | some lit =>
         let extVar := lit.natAbs

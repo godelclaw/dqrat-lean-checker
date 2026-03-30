@@ -25,7 +25,7 @@ def negateAndPropagate (lits : Array Literal) (which : Literal → Bool) : Check
 -- ─── Add clause to state (with UP) ────────────────────────────────────────
 
 /-- Returns None if UP detects UNSAT (= proof verified), Some cref otherwise. -/
-def addClause (lits : Array Literal) : CheckM (Option CRef) := do
+def addClause (lits : Array Literal) (lineNo : Nat) : CheckM Unit := do
   -- Invalidate independence caches for universals appearing in dep-sets of existentials
   invalidateDepCaches lits
   -- Add to clause store
@@ -33,29 +33,28 @@ def addClause (lits : Array Literal) : CheckM (Option CRef) := do
     let (cs', _) := st.clauses.addClause lits
     { st with clauses := cs' }
   let st ← get
-  let cref := st.clauses.clauses.size - 1  -- just-added clause index
   -- Handle empty clause
-  if lits.isEmpty then return none
+  if lits.isEmpty then
+    throw (.verified lineNo)
   -- Check under current assignment
   let sat := lits.any fun l =>
     let v := l.var
     v > 0 && v <= st.formula.maxVar &&
     st.isAssigned.getD (v - 1) false &&
     (st.value.getD (v - 1) false == l.isPos)
-  if sat then return some cref
+  if sat then return
   let unassigned := lits.filter fun l =>
     let v := l.var
     v > 0 && v <= st.formula.maxVar &&
     !st.isAssigned.getD (v - 1) false
   if unassigned.isEmpty then
-    return none  -- all literals false = conflict
+    throw (.verified lineNo)  -- all literals false = conflict
   else if unassigned.size = 1 then
     enqueue (unassigned.getD 0 ⟨0⟩)
     let conflict ← propagate
-    if conflict.isSome then return none
-    else return some cref
-  else
-    return some cref
+    if conflict.isSome then
+      throw (.verified lineNo)
+    else return
 
 -- ─── DQRATE check ─────────────────────────────────────────────────────────
 
@@ -317,13 +316,11 @@ def checkUniversalReduction (lineNum : Nat) (extLits : List Int) : CheckM Unit :
     let pivotReducible := !lits.any (· = pivot.negate) && lits.all fun l =>
       !f2.isVarExistential l.var || !f2.isVarOuterOfExivar pivot.var l.var
     if pivotReducible then
-      let r ← addClause (lits.filter (· ≠ pivot))
-      if r.isNone then throw (.verified lineNum)
+      addClause (lits.filter (· ≠ pivot)) lineNum
     else
       let ok ← checkDQRATU lits pivot
       if !ok then throw (.failed lineNum #["UR", "DQRATU"] #[] none)
-      let r ← addClause lits
-      if r.isNone then throw (.verified lineNum)
+      addClause lits lineNum
     return
 
 /-- Full DQRATE step: RUP first, then RAT with existential pivot. -/
@@ -341,8 +338,7 @@ def checkRatClause (lineNum : Nat) (extLits : List Int) : CheckM Unit := do
   ) #[]
   let (success, blocker) ← checkDQRATE lits
   if !success then throw (.failed lineNum #["RUP", "DQRATE"] #[] blocker)
-  let r ← addClause lits
-  if r.isNone then throw (.verified lineNum)
+  addClause lits lineNum
   return
 
 /-- UR step for the basic checker: only handles the `pivotReducible` case (simple UR).
@@ -367,8 +363,7 @@ def checkUniversalReductionBasic (lineNum : Nat) (extLits : List Int) : CheckM U
     let pivotReducible := !lits.any (· = pivot.negate) && lits.all fun l =>
       !f2.isVarExistential l.var || !f2.isVarOuterOfExivar pivot.var l.var
     if pivotReducible then
-      let r ← addClause (lits.filter (· ≠ pivot))
-      if r.isNone then throw (.verified lineNum)
+      addClause (lits.filter (· ≠ pivot)) lineNum
     else
       -- DQRATU not supported in basic mode
       throw (.failed lineNum #["UR"] #[] none)
@@ -389,8 +384,7 @@ def checkRatClauseBasic (lineNum : Nat) (extLits : List Int) : CheckM Unit := do
   let isRup ← negateAndPropagate lits (fun _ => true)
   backtrackBefore 1
   if !isRup then throw (.failed lineNum #["RUP"] #[] none)
-  let r ← addClause lits
-  if r.isNone then throw (.verified lineNum)
+  addClause lits lineNum
   return
 
 -- ─── Single-action checker ─────────────────────────────────────────────────
