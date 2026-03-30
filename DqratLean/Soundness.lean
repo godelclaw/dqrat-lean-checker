@@ -374,6 +374,24 @@ def ClausesWellFormed (f : DQBF) (cs : ClauseStore) : Prop :=
 def ClauseLitsWellFormed (f : DQBF) (lits : Array Literal) : Prop :=
   ∀ l ∈ lits.toList, 0 < l.var ∧ l.var ≤ f.maxVar
 
+theorem ClauseLitsWellFormed.mono
+    {f g : DQBF} {lits : Array Literal}
+    (hwf : ClauseLitsWellFormed f lits)
+    (hmax : f.maxVar ≤ g.maxVar) :
+    ClauseLitsWellFormed g lits := by
+  intro l hl
+  rcases hwf l hl with ⟨hpos, hle⟩
+  exact ⟨hpos, Nat.le_trans hle hmax⟩
+
+theorem ClausesWellFormed.mono
+    {f g : DQBF} {cs : ClauseStore}
+    (hwf : ClausesWellFormed f cs)
+    (hmax : f.maxVar ≤ g.maxVar) :
+    ClausesWellFormed g cs := by
+  intro cref c hget l hl
+  rcases hwf cref c hget l hl with ⟨hpos, hle⟩
+  exact ⟨hpos, Nat.le_trans hle hmax⟩
+
 theorem ClausesWellFormed.addClause
     {f : DQBF} {cs : ClauseStore} {lits : Array Literal}
     (hwf : ClausesWellFormed f cs)
@@ -430,6 +448,135 @@ theorem DQBFFalse.of_not_true
     cases h : cs.matrixValue f σ sk <;> simp at h ⊢
     exact False.elim (hex ⟨σ, h⟩)
 
+def addExistsFormula (f : DQBF) (ext : Nat) (deps : Array Var) : DQBF :=
+  let v := f.maxVar + 1
+  { f with
+    maxVar := v
+    internalName := f.internalName.push (ext, v)
+    externalName := f.externalName.push ext
+    isExistential := f.isExistential.push true
+    exivars := f.exivars.push v
+    depset := f.depset.push deps }
+
+theorem arrayGetD_push_lt {α : Type} (a : Array α) (x fallback : α) {i : Nat}
+    (hi : i < a.size) :
+    (a.push x).getD i fallback = a.getD i fallback := by
+  simp [Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt hi]
+
+theorem arrayGetD_push_eq {α : Type} (a : Array α) (x fallback : α) :
+    (a.push x).getD a.size fallback = x := by
+  simp [Array.getD, Array.getElem_push_eq]
+
+theorem arrayGetD_true_imp_lt (a : Array Bool) {i : Nat}
+    (h : a.getD i false = true) :
+    i < a.size := by
+  by_cases hi : i < a.size
+  · exact hi
+  · simp [Array.getD, hi] at h
+
+theorem lookupInternal_addExistsFormula_self
+    (f : DQBF) (ext : Nat) (deps : Array Var)
+    (hfresh : f.externalVarExists ext = false) :
+    (addExistsFormula f ext deps).lookupInternal ext = some (f.maxVar + 1) := by
+  rw [addExistsFormula, DQBF.lookupInternal, Array.findSome?_eq_some_iff]
+  refine ⟨f.internalName, (ext, f.maxVar + 1), #[], ?_, by simp, ?_⟩
+  · simp
+  · intro x hx
+    have hneq : x.fst ≠ ext := by
+      intro hxe
+      have ⟨j, hj, hji⟩ := Array.mem_iff_getElem.mp hx
+      have hany : f.internalName.any (fun p => p.fst = ext) = true :=
+        Array.any_eq_true.mpr ⟨j, hj, by simpa [hji, hxe]⟩
+      rw [DQBF.externalVarExists, hany] at hfresh
+      cases hfresh
+    simp [hneq]
+
+theorem lookupInternal_addExistsFormula_ne
+    (f : DQBF) (ext ext' : Nat) (deps : Array Var)
+    (hne : ext' ≠ ext) :
+    (addExistsFormula f ext deps).lookupInternal ext' = f.lookupInternal ext' := by
+  unfold addExistsFormula DQBF.lookupInternal
+  have hif : (if ext = ext' then some (f.maxVar + 1) else none) = none := by
+    simp [hne.symm]
+  simp [hif]
+
+theorem varValue_addExistsFormula_old
+    (f : DQBF) (ext : Nat) (deps : Array Var) (σ : UnivAssignment) (sk : SkolemAssignment)
+    {v : Var}
+    (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hle : v ≤ f.maxVar) :
+    (addExistsFormula f ext deps).varValue σ sk v = f.varValue σ sk v := by
+  unfold DQBF.varValue DQBF.exiValue addExistsFormula
+  have hvis : v < f.isExistential.size := by
+    simpa [his] using Nat.lt_succ_of_le hle
+  have hvdeps : v < f.depset.size := by
+    simpa [hdeps] using Nat.lt_succ_of_le hle
+  have his' : (f.isExistential.push true).getD v false = f.isExistential.getD v false :=
+    arrayGetD_push_lt f.isExistential true false hvis
+  have hdeps' : (f.depset.push deps).getD v #[] = f.depset.getD v #[] :=
+    arrayGetD_push_lt f.depset deps #[] hvdeps
+  simp [DQBF.isVarExistential, his', hdeps']
+
+theorem litValue_addExistsFormula_old
+    (f : DQBF) (ext : Nat) (deps : Array Var) (σ : UnivAssignment) (sk : SkolemAssignment)
+    {l : Literal}
+    (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hwf : 0 < l.var ∧ l.var ≤ f.maxVar) :
+    (addExistsFormula f ext deps).litValue σ sk l = f.litValue σ sk l := by
+  unfold DQBF.litValue
+  simpa using congrArg (fun b => if l.isPos then b else !b)
+    (varValue_addExistsFormula_old f ext deps σ sk his hdeps hwf.2)
+
+theorem clauseValue_addExistsFormula_old
+    (f : DQBF) (ext : Nat) (deps : Array Var) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (lits : Array Literal)
+    (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hwf : ∀ l ∈ lits.toList, 0 < l.var ∧ l.var ≤ f.maxVar) :
+    (addExistsFormula f ext deps).clauseValue σ sk lits = f.clauseValue σ sk lits := by
+  unfold DQBF.clauseValue
+  apply Bool.eq_iff_iff.mpr
+  constructor <;> intro htrue <;> simp only [Array.any_eq_true] at htrue ⊢
+  · rcases htrue with ⟨i, hi, hli⟩
+    exact ⟨i, hi, by
+      simpa [litValue_addExistsFormula_old f ext deps σ sk his hdeps
+        (hwf _ (Array.mem_toList_iff.mpr (Array.getElem_mem hi)))] using hli⟩
+  · rcases htrue with ⟨i, hi, hli⟩
+    exact ⟨i, hi, by
+      simpa [litValue_addExistsFormula_old f ext deps σ sk his hdeps
+        (hwf _ (Array.mem_toList_iff.mpr (Array.getElem_mem hi)))] using hli⟩
+
+theorem matrixValue_addExistsFormula_old
+    (f : DQBF) (cs : ClauseStore) (ext : Nat) (deps : Array Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hwf : ClausesWellFormed f cs) :
+    cs.matrixValue (addExistsFormula f ext deps) σ sk = cs.matrixValue f σ sk := by
+  unfold ClauseStore.matrixValue
+  apply List.all_congr rfl
+  intro i
+  by_cases hget : cs.getClause (i + 1) = none
+  · simp [hget]
+  · rcases Option.ne_none_iff_exists'.mp hget with ⟨c, hc⟩
+    simp [hc, clauseValue_addExistsFormula_old f ext deps σ sk c.lits his hdeps
+      (hwf (i + 1) c hc)]
+
+theorem DQBFTrue_addExistsFormula
+    (f : DQBF) (cs : ClauseStore) (ext : Nat) (deps : Array Var)
+    (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hwf : ClausesWellFormed f cs)
+    (htrue : DQBFTrue f cs) :
+    DQBFTrue (addExistsFormula f ext deps) cs := by
+  rcases htrue with ⟨sk, hsk⟩
+  refine ⟨sk, ?_⟩
+  intro σ
+  rw [matrixValue_addExistsFormula_old f cs ext deps σ sk his hdeps hwf]
+  exact hsk σ
+
 
 -- ─── Structural invariants ────────────────────────────────────────────────────
 
@@ -475,6 +622,9 @@ structure CheckState.Correct (dqbf : DQBF) (cs : ClauseStore) (st : CheckState) 
   preserves_models : StatePreservesModels st
   /-- Semantic soundness: proof steps never introduce falsity. -/
   formula_sound : DQBFTrue dqbf cs → DQBFTrue st.formula st.clauses
+  /-- Every successful external-to-internal lookup stays within the current formula. -/
+  lookupInternal_sound : ∀ ext v, st.formula.lookupInternal ext = some v →
+      0 < v ∧ v ≤ st.formula.maxVar
   /-- Every literal recorded in the trail refers to a valid variable.
       (Moved here from `Sound`: only needed at action boundaries for `backtrackBefore`.) -/
   trail_lits_valid : ∀ i, i < st.trail.size →
@@ -559,6 +709,145 @@ theorem CheckState.Correct.toPropStruct
     trail_lits_valid := hcorr.trail_lits_valid
     assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
 
+/-- Extending the formula with one fresh existential variable preserves `Correct`.
+    The new variable starts unassigned and does not occur in the existing clause store
+    or trail, so only the formula-growth fields need real work. -/
+theorem CheckState.Correct.withAddVarExists
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (ext0 : Nat) (deps : Array Var)
+    (hfresh : st.formula.externalVarExists ext0 = false) :
+    CheckState.Correct dqbf cs
+      { st with
+        formula := addExistsFormula st.formula ext0 deps
+        isAssigned := st.isAssigned.push false
+        value := st.value.push false
+        indepKnown := st.indepKnown.push false
+        indepOf := st.indepOf.push #[] } := by
+  let f' := addExistsFormula st.formula ext0 deps
+  let st' : CheckState :=
+    { st with
+      formula := f'
+      isAssigned := st.isAssigned.push false
+      value := st.value.push false
+      indepKnown := st.indepKnown.push false
+      indepOf := st.indepOf.push #[] }
+  change CheckState.Correct dqbf cs st'
+  have hgrow : st.formula.maxVar ≤ f'.maxVar := by
+    simp [f', addExistsFormula]
+  refine
+    { toSound := ?_
+      propQueue_empty := hcorr.propQueue_empty
+      trail_single_level := hcorr.trail_single_level
+      clauses_wf := hcorr.clauses_wf.mono hgrow
+      formula_extends := Nat.le_trans hcorr.formula_extends hgrow
+      preserves_models := ?_
+      formula_sound := ?_
+      lookupInternal_sound := ?_
+      trail_lits_valid := ?_
+      assigned_iff_in_trail := ?_ }
+  · refine
+      { isAssigned_size := ?_
+        value_size := ?_
+        indepKnown_size := ?_
+        indepOf_size := ?_
+        externalName_size := ?_
+        isExistential_size := ?_
+        depset_size := ?_
+        clauses_nonempty := hcorr.toSound.clauses_nonempty
+        trail_nonempty := hcorr.toSound.trail_nonempty }
+    all_goals simp [st', f', addExistsFormula, hcorr.toSound.isAssigned_size,
+      hcorr.toSound.value_size, hcorr.toSound.indepKnown_size, hcorr.toSound.indepOf_size,
+      hcorr.toSound.externalName_size, hcorr.toSound.isExistential_size,
+      hcorr.toSound.depset_size]
+  · intro v hpos hassign sk σ hmat
+    dsimp [st', f'] at hassign hmat ⊢
+    have hlt_new : v - 1 < (st.isAssigned.push false).size :=
+      arrayGetD_true_imp_lt (a := st.isAssigned.push false) hassign
+    by_cases hlt : v - 1 < st.isAssigned.size
+    · have hv_le : v ≤ st.formula.maxVar := by
+        have hlt' : v - 1 < st.formula.maxVar := by
+          simpa [hcorr.toSound.isAssigned_size] using hlt
+        have : Nat.succ (v - 1) ≤ st.formula.maxVar := Nat.succ_le_of_lt hlt'
+        have hv_eq : v - 1 + 1 = v := Nat.sub_add_cancel (Nat.succ_le_of_lt hpos)
+        simpa [Nat.succ_eq_add_one, hv_eq] using this
+      have hassign_old : st.isAssigned.getD (v - 1) false = true := by
+        simpa [arrayGetD_push_lt st.isAssigned false false hlt] using hassign
+      have hmat_old : st.clauses.matrixValue st.formula σ sk = true := by
+        rw [matrixValue_addExistsFormula_old st.formula st.clauses ext0 deps σ sk
+          hcorr.toSound.isExistential_size hcorr.toSound.depset_size hcorr.clauses_wf] at hmat
+        exact hmat
+      have hval_lt : v - 1 < st.value.size := by
+        simpa [hcorr.toSound.value_size, hcorr.toSound.isAssigned_size] using hlt
+      rw [varValue_addExistsFormula_old st.formula ext0 deps σ sk
+          hcorr.toSound.isExistential_size hcorr.toSound.depset_size hv_le]
+      rw [arrayGetD_push_lt st.value false false hval_lt]
+      exact hcorr.preserves_models v hpos hassign_old sk σ hmat_old
+    · have htop : v - 1 = st.isAssigned.size := by
+        have hlt_push : v - 1 < st.isAssigned.size + 1 := by
+          simpa [Array.size_push] using hlt_new
+        exact Nat.eq_of_lt_succ_of_not_lt hlt_push hlt
+      have : (st.isAssigned.push false).getD (v - 1) false = false := by
+        rw [htop]
+        simpa using (arrayGetD_push_eq st.isAssigned false false)
+      rw [this] at hassign
+      cases hassign
+  · intro htrue
+    exact DQBFTrue_addExistsFormula st.formula st.clauses ext0 deps
+      hcorr.toSound.isExistential_size hcorr.toSound.depset_size hcorr.clauses_wf
+      (hcorr.formula_sound htrue)
+  · intro ext v hlookup
+    dsimp [st', f'] at hlookup ⊢
+    by_cases hext : ext = ext0
+    · subst ext
+      rw [lookupInternal_addExistsFormula_self st.formula ext0 deps hfresh] at hlookup
+      cases hlookup
+      simp [addExistsFormula]
+    · have hlookup_old : st.formula.lookupInternal ext = some v := by
+        simpa [lookupInternal_addExistsFormula_ne st.formula ext0 ext deps hext] using hlookup
+      rcases hcorr.lookupInternal_sound ext v hlookup_old with ⟨hposv, hlev⟩
+      exact ⟨hposv, Nat.le_trans hlev hgrow⟩
+  · intro i hi l hl
+    rcases hcorr.trail_lits_valid i hi l hl with ⟨hpos, hle⟩
+    exact ⟨hpos, Nat.le_trans hle hgrow⟩
+  · intro v hpos hle
+    dsimp [st']
+    by_cases hnew : v = st.formula.maxVar + 1
+    · constructor
+      · intro hassign
+        have : (st.isAssigned.push false).getD (v - 1) false = false := by
+          subst v
+          have hidx : (st.formula.maxVar + 1) - 1 = st.isAssigned.size := by
+            simpa [hcorr.toSound.isAssigned_size]
+          rw [hidx]
+          simpa using (arrayGetD_push_eq st.isAssigned false false)
+        rw [this] at hassign
+        cases hassign
+      · intro htrail
+        rcases htrail with ⟨i, hi, l, hl, hlvar⟩
+        rcases hcorr.trail_lits_valid i hi l hl with ⟨_, hle_old⟩
+        subst v
+        rw [hlvar] at hle_old
+        exact False.elim (Nat.not_succ_le_self _ hle_old)
+    · have hv_old : v ≤ st.formula.maxVar := by
+        exact Nat.le_of_lt_succ (Nat.lt_of_le_of_ne hle (by simpa [eq_comm] using hnew))
+      have hlt : v - 1 < st.isAssigned.size := by
+        have hlt' : v - 1 < st.formula.maxVar := by
+          have : Nat.succ (v - 1) ≤ st.formula.maxVar := by
+            have hv_eq : v - 1 + 1 = v := Nat.sub_add_cancel (Nat.succ_le_of_lt hpos)
+            simpa [Nat.succ_eq_add_one, hv_eq] using hv_old
+          exact Nat.lt_of_succ_le this
+        simpa [hcorr.toSound.isAssigned_size] using hlt'
+      constructor
+      · intro hassign
+        have hassign_old : st.isAssigned.getD (v - 1) false = true := by
+          simpa [arrayGetD_push_lt st.isAssigned false false hlt] using hassign
+        exact (hcorr.assigned_iff_in_trail v hpos hv_old).mp hassign_old
+      · intro htrail
+        have hassign_old : st.isAssigned.getD (v - 1) false = true :=
+          (hcorr.assigned_iff_in_trail v hpos hv_old).mpr htrail
+        simpa [arrayGetD_push_lt st.isAssigned false false hlt] using hassign_old
+
 /-- Updating only the independence caches preserves `Correct` as long as the cache
     arrays keep the expected `maxVar` length.  None of the semantic fields in `Correct`
     depends on the cache contents themselves. -/
@@ -578,6 +867,7 @@ theorem CheckState.Correct.withIndepCaches
       formula_extends := hcorr.formula_extends
       preserves_models := hcorr.preserves_models
       formula_sound := hcorr.formula_sound
+      lookupInternal_sound := hcorr.lookupInternal_sound
       trail_lits_valid := hcorr.trail_lits_valid
       assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
   exact
@@ -608,6 +898,147 @@ theorem makeIndepUnknown_correct_spec (dqbf : DQBF) (cs : ClauseStore)
       (s.indepOf.setIfInBounds (u - 1) #[])
       (by simp [Array.size_setIfInBounds, hcorr.toSound.indepKnown_size])
       (by simp [Array.size_setIfInBounds, hcorr.toSound.indepOf_size])
+
+theorem makeIndepUnknown_correct_sameFC_spec
+    (dqbf : DQBF) (cs : ClauseStore) (u : Var) (s₀ : CheckState) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄
+    (makeIndepUnknown u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ SameFC s₀ s'⌝⦄ := by
+  exact Triple.entails_wp_of_post
+    (h := Triple.and (makeIndepUnknown u : CheckM Unit)
+      (makeIndepUnknown_correct_spec dqbf cs u)
+      (makeIndepUnknown_sameFC_spec u s₀))
+    (by simp [PostCond.entails, SPred.entails, ExceptConds.entails])
+
+@[spec]
+theorem makeIndepUnknown_correct_lookup_spec
+    (dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (makeIndepUnknown u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hcorr, hlookup⟩
+  have hspec := makeIndepUnknown_correct_sameFC_spec dqbf cs u s s ⟨hcorr, ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec ⊢
+  cases hrun : makeIndepUnknown u s with
+  | error e s' =>
+    rw [hrun] at hspec
+    exact hspec.elim
+  | ok _ s' =>
+    rw [hrun] at hspec
+    rcases hspec with ⟨hcorr', hsame⟩
+    rcases hsame with ⟨hformula, _⟩
+    exact ⟨hcorr', by simpa [hformula] using hlookup⟩
+
+@[spec]
+theorem addVarExists_loop_spec
+    (dqbf : DQBF) (cs : ClauseStore) (deps : Array Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (forIn deps PUnit.unit (fun u _ => do
+      makeIndepUnknown u
+      pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  simpa [Array.forIn_toList] using
+    (show
+      ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+      (forIn deps.toList PUnit.unit (fun u _ => do
+        makeIndepUnknown u
+        pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+      ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ from by
+      refine (Spec.forIn_list_const_inv
+        (xs := deps.toList)
+        (init := PUnit.unit)
+        (f := fun u _ => do
+          makeIndepUnknown u
+          pure (ForInStep.yield PUnit.unit))
+        (inv := (⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝))
+        ?_)
+      intro u b
+      cases b
+      mintro hpre
+      mspec (makeIndepUnknown_correct_lookup_spec dqbf cs u ext v)
+      mleave)
+
+@[spec]
+theorem addVarExists_correct_spec (dqbf : DQBF) (cs : ClauseStore)
+    (ext : Nat) (deps : Array Var) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄
+    (addVarExists ext deps : CheckM Var)
+    ⦃⇓ v s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  have hprefix :
+      ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄
+      ((do
+        let st ← get
+        let v := st.formula.maxVar + 1
+        let f := { st.formula with
+          maxVar        := v
+          internalName  := st.formula.internalName.push (ext, v)
+          externalName  := st.formula.externalName.push ext
+          isExistential := st.formula.isExistential.push true
+          exivars       := st.formula.exivars.push v
+          depset        := st.formula.depset.push deps }
+        set { st with
+          formula    := f
+          isAssigned := st.isAssigned.push false
+          value      := st.value.push false
+          indepKnown := st.indepKnown.push false
+          indepOf    := st.indepOf.push #[] }
+        pure v) : CheckM Var)
+      ⦃⇓ v s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+    mvcgen
+    rename_i s hs v f
+    rcases hs with ⟨hcorr, hfresh⟩
+    refine ⟨CheckState.Correct.withAddVarExists hcorr ext deps hfresh, ?_⟩
+    simpa [f, v] using lookupInternal_addExistsFormula_self s.formula ext deps hfresh
+  have hbody :
+      ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄
+      ((do
+          let v ← ((do
+            let st ← get
+            let v := st.formula.maxVar + 1
+            let f := { st.formula with
+              maxVar        := v
+              internalName  := st.formula.internalName.push (ext, v)
+              externalName  := st.formula.externalName.push ext
+              isExistential := st.formula.isExistential.push true
+              exivars       := st.formula.exivars.push v
+              depset        := st.formula.depset.push deps }
+            set { st with
+              formula    := f
+              isAssigned := st.isAssigned.push false
+              value      := st.value.push false
+              indepKnown := st.indepKnown.push false
+              indepOf    := st.indepOf.push #[] }
+            pure v) : CheckM Var)
+          for u in deps do
+            makeIndepUnknown u
+          pure v) : CheckM Var)
+      ⦃⇓ v s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+    mintro hs
+    mspec hprefix
+    rename_i v
+    mspec (addVarExists_loop_spec dqbf cs deps ext v)
+    mleave
+  simpa [addVarExists] using hbody
+
+theorem lookupInternal_some_of_externalVarExists
+    (f : DQBF) (ext : Nat) (hex : f.externalVarExists ext = true) :
+    ∃ v, f.lookupInternal ext = some v := by
+  rw [DQBF.externalVarExists] at hex
+  simp only [Array.any_eq_true] at hex
+  rcases hex with ⟨i, hi, hpair⟩
+  let p := f.internalName[i]
+  have hp : p.fst = ext := by
+    simpa [p] using hpair
+  have hisSome : (f.lookupInternal ext).isSome := by
+    rw [DQBF.lookupInternal, Array.findSome?_isSome_iff]
+    refine ⟨p, Array.getElem_mem hi, ?_⟩
+    simp [p, hp]
+  cases hlookup : f.lookupInternal ext with
+  | none =>
+      simp [hlookup] at hisSome
+  | some v =>
+      exact ⟨v, rfl⟩
 
 @[spec]
 theorem invalidateDepCaches_correct_spec (dqbf : DQBF) (cs : ClauseStore)
@@ -698,6 +1129,7 @@ theorem CheckState.Correct.withAddClause
       formula_extends := hcorr.formula_extends
       preserves_models := ?_
       formula_sound := hsem
+      lookupInternal_sound := hcorr.lookupInternal_sound
       trail_lits_valid := hcorr.trail_lits_valid
       assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
   · exact
@@ -2076,6 +2508,7 @@ theorem addClausePost_of_unit_success_sameFC
         simpa [s_added, hformula₂] using hcorr.formula_extends
       preserves_models := ?_
       formula_sound := ?_
+      lookupInternal_sound := ?_
       trail_lits_valid := hprop₂.trail_lits_valid
       assigned_iff_in_trail := hprop₂.assigned_iff_in_trail }
   · intro v hpos hassign sk σ hmat₂
@@ -2129,6 +2562,11 @@ theorem addClausePost_of_unit_success_sameFC
     have htrue_added : DQBFTrue s₁.formula (s₁.clauses.addClause lits).1 :=
       addClause_semantics_of_sameFC hsame hsem htrue
     simpa [s_added, hformula₂, hclauses₂] using htrue_added
+  · intro ext v hlookup
+    have hlookup₁ : s₁.formula.lookupInternal ext = some v := by
+      simpa [s_added, hformula₂] using hlookup
+    have hv := hcorr.lookupInternal_sound ext v hlookup₁
+    simpa [s_added, hformula₂] using hv
 
 /-- Postcondition for a single basic checker step.
 
@@ -2226,20 +2664,94 @@ theorem addClauseAfterCache_sound_spec
        (DQBFTrue dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1)⌝⦄
     (addClauseAfterCache lits : CheckM (Option CRef))
     ⦃⇓? r s' => ⌜AddClausePost dqbf cs r s'⌝⦄ := by
-  /-
-  Planned structure:
-  - `lits.isEmpty`: `addClausePost_of_empty_sameFC`
-  - `sat = true`: `addClausePost_of_store_only_sameFC`
-  - `unassigned.isEmpty`: `addClausePost_of_all_false_sameFC`
-  - unit conflict: `addClausePost_of_unit_conflict_sameFC`
-  - unit success: `addClausePost_of_unit_success_sameFC`
-
-  Current proof blocker:
-  after unfolding `addClauseAfterCache`, Lean normalizes the branch conditions into
-  existential / universal / `find?` forms that do not line up directly with the
-  executable `any` / `filter.isEmpty` / `filter.getD` branch lemmas above.
-  -/
-  sorry
+  intro s hs
+  rcases hs with ⟨hcorr, hsame, hlits, hsem⟩
+  let s_added : CheckState := { s with clauses := (s.clauses.addClause lits).1 }
+  let cref : CRef := s_added.clauses.clauses.size - 1
+  by_cases hempty : lits.isEmpty = true
+  · simp only [WP.wp, PredTrans.apply, EStateM.run, addClauseAfterCache, hempty]
+    simpa [s_added] using addClausePost_of_empty_sameFC hcorr hsame hsem hempty
+  · by_cases hsat : lits.any (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ s.formula.maxVar &&
+        s.isAssigned.getD (v - 1) false &&
+        (s.value.getD (v - 1) false == lit.isPos)) = true
+    · simp only [WP.wp, PredTrans.apply, EStateM.run, addClauseAfterCache, hempty, hsat]
+      simpa [s_added, cref] using
+        addClausePost_of_store_only_sameFC (cref := cref) hcorr hsame hlits hsem
+    · have hsat_false : lits.any (fun lit =>
+          let v := lit.var
+          v > 0 && v ≤ s.formula.maxVar &&
+          s.isAssigned.getD (v - 1) false &&
+          (s.value.getD (v - 1) false == lit.isPos)) = false := by
+        cases hbool : lits.any (fun lit =>
+            let v := lit.var
+            v > 0 && v ≤ s.formula.maxVar &&
+            s.isAssigned.getD (v - 1) false &&
+            (s.value.getD (v - 1) false == lit.isPos)) with
+        | false =>
+            simpa [hbool]
+        | true =>
+            exact False.elim (hsat hbool)
+      by_cases hunempty : (lits.filter fun lit =>
+          let v := lit.var
+          v > 0 && v ≤ s.formula.maxVar &&
+          !s.isAssigned.getD (v - 1) false).isEmpty = true
+      ·
+        simp only [WP.wp, PredTrans.apply, EStateM.run, addClauseAfterCache, hempty, hsat, hunempty]
+        simpa [s_added] using
+          addClausePost_of_all_false_sameFC hcorr hsame hlits hsem hsat_false hunempty
+      · by_cases hsize1 : (lits.filter fun lit =>
+            let v := lit.var
+            v > 0 && v ≤ s.formula.maxVar &&
+            !s.isAssigned.getD (v - 1) false).size = 1
+        · let unassigned : Array Literal := lits.filter fun lit =>
+              let v := lit.var
+              v > 0 && v ≤ s.formula.maxVar &&
+              !s.isAssigned.getD (v - 1) false
+          have hunassigned' : unassigned = lits.filter (fun lit =>
+              let v := lit.var
+              v > 0 && v ≤ s.formula.maxVar &&
+              !s.isAssigned.getD (v - 1) false) := by
+            rfl
+          have hsize1' : unassigned.size = 1 := by
+            simpa [unassigned] using hsize1
+          simp only [WP.wp, PredTrans.apply, EStateM.run, addClauseAfterCache, hempty, hsat, hunempty, hsize1]
+          cases henq_run :
+              enqueue ((lits.filter fun lit =>
+                  let v := lit.var
+                  v > 0 && v ≤ s.formula.maxVar &&
+                  !s.isAssigned.getD (v - 1) false).getD 0 ⟨0⟩)
+                { s with clauses := (s.clauses.addClause lits).1 } with
+          | error e s_err =>
+              simp [henq_run]
+          | ok _ s_enq =>
+              cases hprop_run : propagate s_enq with
+              | error e s_err =>
+                  simp [henq_run, hprop_run]
+              | ok conflict s₂ =>
+                  cases conflict with
+                  | none =>
+                      simp [henq_run, hprop_run]
+                      simpa [unassigned] using
+                        addClausePost_of_unit_success_sameFC
+                          (cref := cref) (s₁ := s) (s_enq := s_enq) (s₂ := s₂)
+                          (unassigned := unassigned)
+                          hcorr hsame hlits hsem hunassigned' hsat_false hsize1'
+                          (by simpa [unassigned] using henq_run)
+                          hprop_run
+                  | some conflict =>
+                      simp [henq_run, hprop_run]
+                      simpa [unassigned] using
+                        addClausePost_of_unit_conflict_sameFC
+                          (s₁ := s) (s_enq := s_enq) (s₂ := s₂)
+                          (unassigned := unassigned) (conflict := conflict)
+                          hcorr hsame hlits hsem hunassigned' hsat_false hsize1'
+                          (by simpa [unassigned] using henq_run)
+                          hprop_run
+        · simp only [WP.wp, PredTrans.apply, EStateM.run, addClauseAfterCache, hempty, hsat, hunempty, hsize1]
+          simpa [s_added, cref] using
+            addClausePost_of_store_only_sameFC (cref := cref) hcorr hsame hlits hsem
 
 theorem addClause_sound_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
     ⦃fun s =>
@@ -2248,7 +2760,38 @@ theorem addClause_sound_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Lite
        (DQBFTrue dqbf cs → DQBFTrue s.formula (s.clauses.addClause lits).1)⌝⦄
     (addClause lits : CheckM (Option CRef))
     ⦃⇓? r s' => ⌜AddClausePost dqbf cs r s'⌝⦄ := by
-  sorry
+  intro s hs
+  rcases hs with ⟨hcorr, hlits, hsem⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run]
+  have hadd :
+      addClause lits s =
+        match invalidateDepCaches lits s with
+        | .ok _ s' => addClauseAfterCache lits s'
+        | .error e s' => .error e s' := by
+    unfold addClause
+    cases h : invalidateDepCaches lits s with
+    | ok a s' =>
+        change EStateM.bind (invalidateDepCaches lits) (fun x => addClauseAfterCache lits) s =
+          addClauseAfterCache lits s'
+        simpa [EStateM.bind, h]
+    | error e s' =>
+        change EStateM.bind (invalidateDepCaches lits) (fun x => addClauseAfterCache lits) s =
+          EStateM.Result.error e s'
+        simpa [EStateM.bind, h]
+  rw [hadd]
+  have hcache := invalidateDepCaches_correct_sameFC_spec dqbf cs lits s
+  specialize hcache s ⟨hcorr, by exact ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hcache
+  cases hrun : invalidateDepCaches lits s with
+  | error e s' =>
+      simp [hrun]
+  | ok _ s' =>
+      rw [hrun] at hcache
+      rcases hcache with ⟨hcorr', hsame'⟩
+      have hafter := addClauseAfterCache_sound_spec dqbf cs lits s
+      specialize hafter s' ⟨hcorr', hsame', hlits, hsem⟩
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hafter
+      simpa [hrun] using hafter
 
 -- ─── Checker function soundness theorems ──────────────────────────────────────
 
