@@ -610,6 +610,14 @@ structure CheckState.Sound (st : CheckState) : Prop where
   clauses_nonempty : 0 < st.clauses.clauses.size
   /-- There is always at least one decision level (level 0). -/
   trail_nonempty : 0 < st.trail.size
+  /-- Every literal recorded in the trail refers to a valid variable. -/
+  trail_lits_valid : ∀ i, i < st.trail.size →
+      ∀ l ∈ st.trail.getD i #[], 0 < l.var ∧ l.var ≤ st.formula.maxVar
+  /-- A variable is assigned iff it appears in some trail level.
+      This is the key invariant that makes `backtrackBefore` correct. -/
+  assigned_iff_in_trail : ∀ v : Var, 0 < v → v ≤ st.formula.maxVar →
+      (st.isAssigned.getD (v - 1) false = true ↔
+       ∃ i, i < st.trail.size ∧ ∃ l ∈ st.trail.getD i #[], l.var = v)
 
 /-- High-level invariant of the checker state at action boundaries.
 
@@ -635,16 +643,6 @@ structure CheckState.Correct (dqbf : DQBF) (cs : ClauseStore) (st : CheckState) 
   /-- Every successful external-to-internal lookup stays within the current formula. -/
   lookupInternal_sound : ∀ ext v, st.formula.lookupInternal ext = some v →
       0 < v ∧ v ≤ st.formula.maxVar
-  /-- Every literal recorded in the trail refers to a valid variable.
-      (Moved here from `Sound`: only needed at action boundaries for `backtrackBefore`.) -/
-  trail_lits_valid : ∀ i, i < st.trail.size →
-      ∀ l ∈ st.trail.getD i #[], 0 < l.var ∧ l.var ≤ st.formula.maxVar
-  /-- A variable is assigned iff it appears in some trail level.
-      This is the key invariant that makes `backtrackBefore` correct.
-      (Moved here from `Sound`: only needed at action boundaries.) -/
-  assigned_iff_in_trail : ∀ v : Var, 0 < v → v ≤ st.formula.maxVar →
-      (st.isAssigned.getD (v - 1) false = true ↔
-       ∃ i, i < st.trail.size ∧ ∃ l ∈ st.trail.getD i #[], l.var = v)
 
 /-- The non-semantic action-boundary invariant needed through propagation.
 
@@ -654,11 +652,6 @@ structure CheckState.PropStruct (st : CheckState) : Prop
     extends Sound st where
   clauses_wf : ClausesWellFormed st.formula st.clauses
   trail_single_level : st.trail.size = 1
-  trail_lits_valid : ∀ i, i < st.trail.size →
-      ∀ l ∈ st.trail.getD i #[], 0 < l.var ∧ l.var ≤ st.formula.maxVar
-  assigned_iff_in_trail : ∀ v : Var, 0 < v → v ≤ st.formula.maxVar →
-      (st.isAssigned.getD (v - 1) false = true ↔
-       ∃ i, i < st.trail.size ∧ ∃ l ∈ st.trail.getD i #[], l.var = v)
 
 -- ─── Model consistency predicate ─────────────────────────────────────────────
 
@@ -715,9 +708,7 @@ theorem CheckState.Correct.toPropStruct
     CheckState.PropStruct st :=
   { toSound := hcorr.toSound
     clauses_wf := hcorr.clauses_wf
-    trail_single_level := hcorr.trail_single_level
-    trail_lits_valid := hcorr.trail_lits_valid
-    assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
+    trail_single_level := hcorr.trail_single_level }
 
 /-- Extending the formula with one fresh existential variable preserves `Correct`.
     The new variable starts unassigned and does not occur in the existing clause store
@@ -753,9 +744,7 @@ theorem CheckState.Correct.withAddVarExists
       formula_extends := Nat.le_trans hcorr.formula_extends hgrow
       preserves_models := ?_
       formula_sound := ?_
-      lookupInternal_sound := ?_
-      trail_lits_valid := ?_
-      assigned_iff_in_trail := ?_ }
+      lookupInternal_sound := ?_ }
   · refine
       { isAssigned_size := ?_
         value_size := ?_
@@ -765,11 +754,56 @@ theorem CheckState.Correct.withAddVarExists
         isExistential_size := ?_
         depset_size := ?_
         clauses_nonempty := hcorr.toSound.clauses_nonempty
-        trail_nonempty := hcorr.toSound.trail_nonempty }
-    all_goals simp [st', f', addExistsFormula, hcorr.toSound.isAssigned_size,
-      hcorr.toSound.value_size, hcorr.toSound.indepKnown_size, hcorr.toSound.indepOf_size,
-      hcorr.toSound.externalName_size, hcorr.toSound.isExistential_size,
-      hcorr.toSound.depset_size]
+        trail_nonempty := hcorr.toSound.trail_nonempty
+        trail_lits_valid := ?_
+        assigned_iff_in_trail := ?_ }
+    · simp [st', f', addExistsFormula, hcorr.toSound.isAssigned_size]
+    · simp [st', f', addExistsFormula, hcorr.toSound.value_size]
+    · simp [st', f', addExistsFormula, hcorr.toSound.indepKnown_size]
+    · simp [st', f', addExistsFormula, hcorr.toSound.indepOf_size]
+    · simp [st', f', addExistsFormula, hcorr.toSound.externalName_size]
+    · simp [st', f', addExistsFormula, hcorr.toSound.isExistential_size]
+    · simp [st', f', addExistsFormula, hcorr.toSound.depset_size]
+    · intro i hi l hl
+      rcases hcorr.trail_lits_valid i hi l hl with ⟨hpos, hle⟩
+      exact ⟨hpos, Nat.le_trans hle hgrow⟩
+    · intro v hpos hle
+      dsimp [st']
+      by_cases hnew : v = st.formula.maxVar + 1
+      · constructor
+        · intro hassign
+          have : (st.isAssigned.push false).getD (v - 1) false = false := by
+            subst v
+            have hidx : (st.formula.maxVar + 1) - 1 = st.isAssigned.size := by
+              simpa [hcorr.toSound.isAssigned_size]
+            rw [hidx]
+            simpa using (arrayGetD_push_eq st.isAssigned false false)
+          rw [this] at hassign
+          cases hassign
+        · intro htrail
+          rcases htrail with ⟨i, hi, l, hl, hlvar⟩
+          rcases hcorr.trail_lits_valid i hi l hl with ⟨_, hle_old⟩
+          subst v
+          rw [hlvar] at hle_old
+          exact False.elim (Nat.not_succ_le_self _ hle_old)
+      · have hv_old : v ≤ st.formula.maxVar := by
+          exact Nat.le_of_lt_succ (Nat.lt_of_le_of_ne hle (by simpa [eq_comm] using hnew))
+        have hlt : v - 1 < st.isAssigned.size := by
+          have hlt' : v - 1 < st.formula.maxVar := by
+            have : Nat.succ (v - 1) ≤ st.formula.maxVar := by
+              have hv_eq : v - 1 + 1 = v := Nat.sub_add_cancel (Nat.succ_le_of_lt hpos)
+              simpa [Nat.succ_eq_add_one, hv_eq] using hv_old
+            exact Nat.lt_of_succ_le this
+          simpa [hcorr.toSound.isAssigned_size] using hlt'
+        constructor
+        · intro hassign
+          have hassign_old : st.isAssigned.getD (v - 1) false = true := by
+            simpa [arrayGetD_push_lt st.isAssigned false false hlt] using hassign
+          exact (hcorr.assigned_iff_in_trail v hpos hv_old).mp hassign_old
+        · intro htrail
+          have hassign_old : st.isAssigned.getD (v - 1) false = true :=
+            (hcorr.assigned_iff_in_trail v hpos hv_old).mpr htrail
+          simpa [arrayGetD_push_lt st.isAssigned false false hlt] using hassign_old
   · intro v hpos hassign sk σ hmat
     dsimp [st', f'] at hassign hmat ⊢
     have hlt_new : v - 1 < (st.isAssigned.push false).size :=
@@ -817,46 +851,6 @@ theorem CheckState.Correct.withAddVarExists
         simpa [lookupInternal_addExistsFormula_ne st.formula ext0 ext deps hext] using hlookup
       rcases hcorr.lookupInternal_sound ext v hlookup_old with ⟨hposv, hlev⟩
       exact ⟨hposv, Nat.le_trans hlev hgrow⟩
-  · intro i hi l hl
-    rcases hcorr.trail_lits_valid i hi l hl with ⟨hpos, hle⟩
-    exact ⟨hpos, Nat.le_trans hle hgrow⟩
-  · intro v hpos hle
-    dsimp [st']
-    by_cases hnew : v = st.formula.maxVar + 1
-    · constructor
-      · intro hassign
-        have : (st.isAssigned.push false).getD (v - 1) false = false := by
-          subst v
-          have hidx : (st.formula.maxVar + 1) - 1 = st.isAssigned.size := by
-            simpa [hcorr.toSound.isAssigned_size]
-          rw [hidx]
-          simpa using (arrayGetD_push_eq st.isAssigned false false)
-        rw [this] at hassign
-        cases hassign
-      · intro htrail
-        rcases htrail with ⟨i, hi, l, hl, hlvar⟩
-        rcases hcorr.trail_lits_valid i hi l hl with ⟨_, hle_old⟩
-        subst v
-        rw [hlvar] at hle_old
-        exact False.elim (Nat.not_succ_le_self _ hle_old)
-    · have hv_old : v ≤ st.formula.maxVar := by
-        exact Nat.le_of_lt_succ (Nat.lt_of_le_of_ne hle (by simpa [eq_comm] using hnew))
-      have hlt : v - 1 < st.isAssigned.size := by
-        have hlt' : v - 1 < st.formula.maxVar := by
-          have : Nat.succ (v - 1) ≤ st.formula.maxVar := by
-            have hv_eq : v - 1 + 1 = v := Nat.sub_add_cancel (Nat.succ_le_of_lt hpos)
-            simpa [Nat.succ_eq_add_one, hv_eq] using hv_old
-          exact Nat.lt_of_succ_le this
-        simpa [hcorr.toSound.isAssigned_size] using hlt'
-      constructor
-      · intro hassign
-        have hassign_old : st.isAssigned.getD (v - 1) false = true := by
-          simpa [arrayGetD_push_lt st.isAssigned false false hlt] using hassign
-        exact (hcorr.assigned_iff_in_trail v hpos hv_old).mp hassign_old
-      · intro htrail
-        have hassign_old : st.isAssigned.getD (v - 1) false = true :=
-          (hcorr.assigned_iff_in_trail v hpos hv_old).mpr htrail
-        simpa [arrayGetD_push_lt st.isAssigned false false hlt] using hassign_old
 
 /-- Updating only the independence caches preserves `Correct` as long as the cache
     arrays keep the expected `maxVar` length.  None of the semantic fields in `Correct`
@@ -877,9 +871,7 @@ theorem CheckState.Correct.withIndepCaches
       formula_extends := hcorr.formula_extends
       preserves_models := hcorr.preserves_models
       formula_sound := hcorr.formula_sound
-      lookupInternal_sound := hcorr.lookupInternal_sound
-      trail_lits_valid := hcorr.trail_lits_valid
-      assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
+      lookupInternal_sound := hcorr.lookupInternal_sound }
   exact
     { isAssigned_size := hcorr.toSound.isAssigned_size
       value_size := hcorr.toSound.value_size
@@ -889,7 +881,9 @@ theorem CheckState.Correct.withIndepCaches
       isExistential_size := hcorr.toSound.isExistential_size
       depset_size := hcorr.toSound.depset_size
       clauses_nonempty := hcorr.toSound.clauses_nonempty
-      trail_nonempty := hcorr.toSound.trail_nonempty }
+      trail_nonempty := hcorr.toSound.trail_nonempty
+      trail_lits_valid := hcorr.trail_lits_valid
+      assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
 
 @[spec]
 theorem makeIndepUnknown_correct_spec (dqbf : DQBF) (cs : ClauseStore)
@@ -1346,9 +1340,7 @@ theorem CheckState.Correct.withAddClause
       formula_extends := hcorr.formula_extends
       preserves_models := ?_
       formula_sound := hsem
-      lookupInternal_sound := hcorr.lookupInternal_sound
-      trail_lits_valid := hcorr.trail_lits_valid
-      assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
+      lookupInternal_sound := hcorr.lookupInternal_sound }
   · exact
       { isAssigned_size := hcorr.toSound.isAssigned_size
         value_size := hcorr.toSound.value_size
@@ -1358,7 +1350,9 @@ theorem CheckState.Correct.withAddClause
         isExistential_size := hcorr.toSound.isExistential_size
         depset_size := hcorr.toSound.depset_size
         clauses_nonempty := by simpa [ClauseStore.addClause] using Nat.succ_pos st.clauses.clauses.size
-        trail_nonempty := hcorr.toSound.trail_nonempty }
+        trail_nonempty := hcorr.toSound.trail_nonempty
+        trail_lits_valid := hcorr.trail_lits_valid
+        assigned_iff_in_trail := hcorr.assigned_iff_in_trail }
   · intro v hpos hassign sk σ hmat
     exact hcorr.preserves_models v hpos hassign sk σ
       (matrixValue_addClause_mono st.formula st.clauses lits σ sk hmat)
@@ -1371,9 +1365,7 @@ theorem CheckState.PropStruct.withAddClause
   refine
     { toSound := ?_
       clauses_wf := hprop.clauses_wf.addClause hlits
-      trail_single_level := hprop.trail_single_level
-      trail_lits_valid := hprop.trail_lits_valid
-      assigned_iff_in_trail := hprop.assigned_iff_in_trail }
+      trail_single_level := hprop.trail_single_level }
   exact
     { isAssigned_size := hprop.toSound.isAssigned_size
       value_size := hprop.toSound.value_size
@@ -1383,7 +1375,9 @@ theorem CheckState.PropStruct.withAddClause
       isExistential_size := hprop.toSound.isExistential_size
       depset_size := hprop.toSound.depset_size
       clauses_nonempty := by simpa [ClauseStore.addClause] using Nat.succ_pos st.clauses.clauses.size
-      trail_nonempty := hprop.toSound.trail_nonempty }
+      trail_nonempty := hprop.toSound.trail_nonempty
+      trail_lits_valid := hprop.trail_lits_valid
+      assigned_iff_in_trail := hprop.assigned_iff_in_trail }
 
 -- ─── Key lemma (sorry'd) ──────────────────────────────────────────────────────
 
@@ -1577,74 +1571,14 @@ theorem enqueue_propStruct_spec
   refine
     { toSound := ?_
       clauses_wf := hprop.clauses_wf
-      trail_single_level := by simp [Array.size_setIfInBounds, htrail_size]
-      trail_lits_valid := ?_
-      assigned_iff_in_trail := ?_ }
+      trail_single_level := by simp [Array.size_setIfInBounds, htrail_size] }
   · refine ⟨?_, ?_, hprop.toSound.indepKnown_size, hprop.toSound.indepOf_size,
       hprop.toSound.externalName_size, hprop.toSound.isExistential_size,
-      hprop.toSound.depset_size, hprop.toSound.clauses_nonempty, ?_⟩
+      hprop.toSound.depset_size, hprop.toSound.clauses_nonempty, ?_, ?_, ?_⟩
     · simp [Array.size_setIfInBounds, hprop.toSound.isAssigned_size]
     · simp [Array.size_setIfInBounds, hprop.toSound.value_size]
     · simp [Array.size_setIfInBounds, hprop.toSound.trail_nonempty]
-  · intro i hi l' hl'
-    have hi0 : i = 0 := by
-      rw [show (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).size = 1 by
-        simp [Array.size_setIfInBounds, htrail_size]] at hi
-      exact Nat.lt_one_iff.mp hi
-    subst hi0
-    have hget0 :
-        (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).getD 0 #[] =
-          lastLevel.push l := by
-      simpa [hlastIdx] using
-        arraySetIfInBounds_getD_eq s_state.trail lastIdx (lastLevel.push l) #[] hlast_lt
-    rw [hget0] at hl'
-    have hl'' : l' ∈ lastLevel ∨ l' = l := by
-      simpa using (Array.mem_push.mp hl')
-    rcases hl'' with hl' | rfl
-    · have hlastLevel : lastLevel = s_state.trail.getD 0 #[] := by
-        simp [lastLevel, hlastIdx]
-      have hl_old : l' ∈ s_state.trail.getD 0 #[] := by
-        rw [← hlastLevel]
-        exact hl'
-      exact hprop.trail_lits_valid 0 (by simpa [htrail_size]) l' hl_old
-    · exact ⟨hv_pos, hv_le⟩
-  · intro v' hpos' hle'
-    constructor
-    · intro hass'
-      by_cases hveq : v' = v_var
-      · refine ⟨0, by simpa [Array.size_setIfInBounds, htrail_size], l, ?_, hveq.symm⟩
-        have hget0 :
-            (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).getD 0 #[] =
-              lastLevel.push l := by
-          simpa [hlastIdx] using
-            arraySetIfInBounds_getD_eq s_state.trail lastIdx (lastLevel.push l) #[] hlast_lt
-        rw [hget0]
-        exact Array.mem_push_self
-      · have hne : v_var - 1 ≠ v' - 1 := by
-          intro heq
-          apply hveq
-          have h := congrArg (· + 1) heq
-          simp only [Nat.sub_add_cancel hv_pos, Nat.sub_add_cancel hpos'] at h
-          exact h.symm
-        rw [arraySafeSet_getD_ne' _ _ _ _ hne] at hass'
-        obtain ⟨i, hi, l'', hl'', hlvar⟩ := (hprop.assigned_iff_in_trail v' hpos' hle').mp hass'
-        have hi0 : i = 0 := by
-          rw [htrail_size] at hi
-          exact Nat.lt_one_iff.mp hi
-        subst hi0
-        refine ⟨0, by simpa [Array.size_setIfInBounds, htrail_size], l'', ?_, hlvar⟩
-        have hget0 :
-            (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).getD 0 #[] =
-              lastLevel.push l := by
-          simpa [hlastIdx] using
-            arraySetIfInBounds_getD_eq s_state.trail lastIdx (lastLevel.push l) #[] hlast_lt
-        rw [hget0]
-        have hlastLevel : lastLevel = s_state.trail.getD 0 #[] := by
-          simp [lastLevel, hlastIdx]
-        rw [hlastLevel]
-        exact Array.mem_push.mpr (Or.inl hl'')
-    · intro hmem
-      rcases hmem with ⟨i, hi, l', hl', hlvar⟩
+    · intro i hi l' hl'
       have hi0 : i = 0 := by
         rw [show (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).size = 1 by
           simp [Array.size_setIfInBounds, htrail_size]] at hi
@@ -1658,28 +1592,86 @@ theorem enqueue_propStruct_spec
       rw [hget0] at hl'
       have hl'' : l' ∈ lastLevel ∨ l' = l := by
         simpa using (Array.mem_push.mp hl')
-      rcases hl'' with hl' | hnew
-      · have hass_old := (hprop.assigned_iff_in_trail v' hpos' hle').mpr
-          (by
-            have hlastLevel : lastLevel = s_state.trail.getD 0 #[] := by
-              simp [lastLevel, hlastIdx]
-            refine ⟨0, by simpa [htrail_size], l', ?_, hlvar⟩
-            rw [← hlastLevel]
-            exact hl')
+      rcases hl'' with hl' | rfl
+      · have hlastLevel : lastLevel = s_state.trail.getD 0 #[] := by
+          simp [lastLevel, hlastIdx]
+        have hl_old : l' ∈ s_state.trail.getD 0 #[] := by
+          rw [← hlastLevel]
+          exact hl'
+        exact hprop.trail_lits_valid 0 (by simpa [htrail_size]) l' hl_old
+      · exact ⟨hv_pos, hv_le⟩
+    · intro v' hpos' hle'
+      constructor
+      · intro hass'
         by_cases hveq : v' = v_var
-        · subst hveq
-          exact arraySafeSet_getD_eq' _ _ _ hlt
+        · refine ⟨0, by simpa [Array.size_setIfInBounds, htrail_size], l, ?_, hveq.symm⟩
+          have hget0 :
+              (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).getD 0 #[] =
+                lastLevel.push l := by
+            simpa [hlastIdx] using
+              arraySetIfInBounds_getD_eq s_state.trail lastIdx (lastLevel.push l) #[] hlast_lt
+          rw [hget0]
+          exact Array.mem_push_self
         · have hne : v_var - 1 ≠ v' - 1 := by
             intro heq
             apply hveq
             have h := congrArg (· + 1) heq
             simp only [Nat.sub_add_cancel hv_pos, Nat.sub_add_cancel hpos'] at h
             exact h.symm
-          rw [arraySafeSet_getD_ne' _ _ _ _ hne]
-          exact hass_old
-      · have : v' = v_var := by simpa [hlvar] using congrArg Literal.var hnew
-        subst this
-        exact arraySafeSet_getD_eq' _ _ _ hlt
+          rw [arraySafeSet_getD_ne' _ _ _ _ hne] at hass'
+          obtain ⟨i, hi, l'', hl'', hlvar⟩ := (hprop.assigned_iff_in_trail v' hpos' hle').mp hass'
+          have hi0 : i = 0 := by
+            rw [htrail_size] at hi
+            exact Nat.lt_one_iff.mp hi
+          subst hi0
+          refine ⟨0, by simpa [Array.size_setIfInBounds, htrail_size], l'', ?_, hlvar⟩
+          have hget0 :
+              (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).getD 0 #[] =
+                lastLevel.push l := by
+            simpa [hlastIdx] using
+              arraySetIfInBounds_getD_eq s_state.trail lastIdx (lastLevel.push l) #[] hlast_lt
+          rw [hget0]
+          have hlastLevel : lastLevel = s_state.trail.getD 0 #[] := by
+            simp [lastLevel, hlastIdx]
+          rw [hlastLevel]
+          exact Array.mem_push.mpr (Or.inl hl'')
+      · intro hmem
+        rcases hmem with ⟨i, hi, l', hl', hlvar⟩
+        have hi0 : i = 0 := by
+          rw [show (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).size = 1 by
+            simp [Array.size_setIfInBounds, htrail_size]] at hi
+          exact Nat.lt_one_iff.mp hi
+        subst hi0
+        have hget0 :
+            (s_state.trail.setIfInBounds lastIdx (lastLevel.push l)).getD 0 #[] =
+              lastLevel.push l := by
+          simpa [hlastIdx] using
+            arraySetIfInBounds_getD_eq s_state.trail lastIdx (lastLevel.push l) #[] hlast_lt
+        rw [hget0] at hl'
+        have hl'' : l' ∈ lastLevel ∨ l' = l := by
+          simpa using (Array.mem_push.mp hl')
+        rcases hl'' with hl' | hnew
+        · have hass_old := (hprop.assigned_iff_in_trail v' hpos' hle').mpr
+            (by
+              have hlastLevel : lastLevel = s_state.trail.getD 0 #[] := by
+                simp [lastLevel, hlastIdx]
+              refine ⟨0, by simpa [htrail_size], l', ?_, hlvar⟩
+              rw [← hlastLevel]
+              exact hl')
+          by_cases hveq : v' = v_var
+          · subst hveq
+            exact arraySafeSet_getD_eq' _ _ _ hlt
+          · have hne : v_var - 1 ≠ v' - 1 := by
+              intro heq
+              apply hveq
+              have h := congrArg (· + 1) heq
+              simp only [Nat.sub_add_cancel hv_pos, Nat.sub_add_cancel hpos'] at h
+              exact h.symm
+            rw [arraySafeSet_getD_ne' _ _ _ _ hne]
+            exact hass_old
+        · have : v' = v_var := by simpa [hlvar] using congrArg Literal.var hnew
+          subst this
+          exact arraySafeSet_getD_eq' _ _ _ hlt
 
 theorem enqueue_sameFC_spec (l : Literal) (s₀ : CheckState) :
     ⦃fun s => ⌜SameFC s₀ s⌝⦄
@@ -1759,9 +1751,68 @@ theorem enqueue_consistent_spec
     refine ⟨?_, ?_, h_con.toSound.indepKnown_size, h_con.toSound.indepOf_size,
               h_con.toSound.externalName_size, h_con.toSound.isExistential_size,
               h_con.toSound.depset_size, h_con.toSound.clauses_nonempty,
-              by rw [Array.size_setIfInBounds]; exact h_con.toSound.trail_nonempty⟩
+              by rw [Array.size_setIfInBounds]; exact h_con.toSound.trail_nonempty,
+              ?_, ?_⟩
     · simp [Array.size_setIfInBounds, h_con.toSound.isAssigned_size]
     · simp [Array.size_setIfInBounds, h_con.toSound.value_size]
+    · simp
+      intro i hi lit hlit
+      have := h_con.trail_lits_valid i (by lia) lit
+      by_cases eq : lastIdx = i
+      · rw [← eq] at hlit
+        simp [Array.getElem?_setIfInBounds_self] at hlit
+        have lt : lastIdx < s_state.trail.size := by
+          unfold lastIdx
+          have := h_con.trail_nonempty
+          lia
+        simp only [lt, ↓reduceIte, Option.getD_some, Array.mem_push] at hlit
+        cases hlit with
+        | inl hin =>
+          unfold lastLevel at hin
+          rw [eq] at hin
+          exact this hin
+        | inr liteq =>
+          subst liteq
+          lia
+      · rw [Array.getElem?_setIfInBounds_ne eq] at hlit
+        simp at this
+        exact this hlit
+    · simp
+      intro v hv1 hv2
+      have := h_con.assigned_iff_in_trail v hv1 hv2
+      simp at this
+      by_cases eq : v = v_var
+      · subst eq
+        constructor
+        · intro
+          have lt : lastIdx < s_state.trail.size := by unfold lastIdx; have := h_con.trail_nonempty; lia
+          refine ⟨lastIdx, lt, l, ?_, rfl⟩
+          rw [Array.getElem?_setIfInBounds_self, if_pos lt, Option.getD_some]
+          exact Array.mem_push.mpr (Or.inr rfl)
+        · intro _
+          rw [Array.getElem?_setIfInBounds_self, if_pos hlt, Option.getD_some]
+      · have neq : v_var-1 ≠ v - 1 := by lia
+        rw [Array.getElem?_setIfInBounds_ne neq]
+        rw [this]
+        constructor
+        · rintro ⟨i, hi, lit, lit_in, lit_eq⟩
+          exists i, hi, lit
+          refine ⟨?_, lit_eq⟩
+          by_cases hli : lastIdx = i
+          · have lt : lastIdx < s_state.trail.size := hli ▸ hi
+            rw [← hli, Array.getElem?_setIfInBounds_self, if_pos lt, Option.getD_some]
+            apply Array.mem_push.mpr; left; simpa [lastLevel, Array.getD] using hli ▸ lit_in
+          · rw [Array.getElem?_setIfInBounds_ne hli]; exact lit_in
+        · rintro ⟨i, hi, lit, lit_in, lit_eq⟩
+          refine ⟨i, hi, lit, ?_, lit_eq⟩
+          by_cases hli : lastIdx = i
+          · have lt : lastIdx < s_state.trail.size := hli ▸ hi
+            rw [← hli, Array.getElem?_setIfInBounds_self, if_pos lt, Option.getD_some] at lit_in
+            rcases Array.mem_push.mp lit_in with h | rfl
+            · simpa [lastLevel, hli] using h
+            · exact absurd lit_eq.symm eq
+          · rwa [Array.getElem?_setIfInBounds_ne hli] at lit_in
+      done
   · -- Assignment consistency
     intro v' hpos' hass'
     by_cases hveq : v' = v_var
@@ -2052,11 +2103,11 @@ private theorem propagate_aux_propStruct :
                 isExistential_size := hprop.toSound.isExistential_size
                 depset_size := hprop.toSound.depset_size
                 clauses_nonempty := hprop.toSound.clauses_nonempty
-                trail_nonempty := hprop.toSound.trail_nonempty }
+                trail_nonempty := hprop.toSound.trail_nonempty
+                trail_lits_valid := hprop.trail_lits_valid
+                assigned_iff_in_trail := hprop.assigned_iff_in_trail }
             clauses_wf := hprop.clauses_wf
-            trail_single_level := hprop.trail_single_level
-            trail_lits_valid := hprop.trail_lits_valid
-            assigned_iff_in_trail := hprop.assigned_iff_in_trail }
+            trail_single_level := hprop.trail_single_level }
       have hspec := propagateOne_propStruct_spec
           (st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩)
       specialize hspec { st with propQueue := st.propQueue.pop } hprop₁
@@ -2204,11 +2255,48 @@ theorem newDecisionLevel_consistent_spec
              EStateM.set]
   refine ⟨?_, h_con.formula_eq, h_con.clauses_eq, h_con.clauses_wf, h_con.assigned_model,
             h_con.queue_model⟩
-  exact ⟨h_con.toSound.isAssigned_size, h_con.toSound.value_size,
+  refine ⟨h_con.toSound.isAssigned_size, h_con.toSound.value_size,
          h_con.toSound.indepKnown_size, h_con.toSound.indepOf_size,
          h_con.toSound.externalName_size, h_con.toSound.isExistential_size,
          h_con.toSound.depset_size, h_con.toSound.clauses_nonempty,
-         by simp [Array.size_push]⟩
+         by simp [Array.size_push], ?_, ?_⟩
+  · simp
+    intro i hi lit hlit
+    by_cases eq : i = s.trail.size
+    · simp [eq] at hlit
+    · have := h_con.trail_lits_valid i (by lia) lit
+      rw [Array.getElem?_push_lt (by lia), Option.getD_some] at hlit
+      rw [← Array.getElem_eq_getD] at this
+      · exact this hlit
+      · lia
+  · simp
+    intro v hv1 hv2
+    have := h_con.assigned_iff_in_trail v hv1 hv2
+    simp at this
+    rw [this]
+    constructor
+    · rintro ⟨i, hi, l, hl1, hl2⟩
+      exists i
+      constructor
+      · lia
+      · exists l
+        rw [Array.getElem?_push_lt (by lia)]
+        simp
+        rw [← Array.getD_eq_getD_getElem?, ← Array.getElem_eq_getD] at hl1
+        · exact ⟨hl1, hl2⟩
+        · lia
+    · rintro ⟨i, hi, l, hl1, hl2⟩
+      by_cases eq : i = s.trail.size
+      · simp [eq] at hl1
+      · rw [Array.getElem?_push_lt (by lia)] at hl1
+        simp at hl1
+        exists i
+        constructor
+        · lia
+        · exists l
+          rw [Array.getElem?_eq_getElem (by lia)]
+          simp
+          exact ⟨hl1, hl2⟩
 
 /-- `negateAndPropagate lits (fun _ => true)` returns `false` (no conflict) from a
     `CheckState.ConsistentWith` state when all lits are model-false: each negated literal
@@ -2444,7 +2532,9 @@ theorem CheckState.ConsistentWith.of_addClause_lits
           isExistential_size := hcon.toSound.isExistential_size,
           depset_size := hcon.toSound.depset_size,
           clauses_nonempty := by simpa [ClauseStore.addClause] using Nat.succ_pos cs.clauses.size,
-          trail_nonempty := hcon.toSound.trail_nonempty }
+          trail_nonempty := hcon.toSound.trail_nonempty,
+          trail_lits_valid := hcon.trail_lits_valid,
+          assigned_iff_in_trail := hcon.assigned_iff_in_trail }
 
 -- ─── H4: result-dependent soundness specs for the basic checker ──────────────
 
@@ -2725,9 +2815,7 @@ theorem addClausePost_of_unit_success_sameFC
         simpa [s_added, hformula₂] using hcorr.formula_extends
       preserves_models := ?_
       formula_sound := ?_
-      lookupInternal_sound := ?_
-      trail_lits_valid := hprop₂.trail_lits_valid
-      assigned_iff_in_trail := hprop₂.assigned_iff_in_trail }
+      lookupInternal_sound := ?_ }
   · intro v hpos hassign sk σ hmat₂
     have hmat_added : (s₁.clauses.addClause lits).1.matrixValue s₁.formula σ sk = true := by
       simpa [s_added, hformula₂, hclauses₂] using hmat₂
