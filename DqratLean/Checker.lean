@@ -198,7 +198,7 @@ def checkDQRATU (lits : Array Literal) (pivot : Literal) : CheckM Bool := do
   let negPivot := pivot.negate
   let occPivot := st.clauses.getOcc negPivot
   -- CRef of the clause being proved (if it already exists in the formula)
-  let sortedLits := lits.qsort (fun a b => a.x < b.x)
+  let sortedLits := ClauseStore.sortLits lits
   let crefOfLits := st.clauses.findSortedClause sortedLits
 
   let isRat ← occPivot.foldlM (fun allOk cref => do
@@ -265,6 +265,7 @@ def checkAddUniversal (lineNum : Nat) (extVars : List Int) : CheckM (Option Proo
         return some (.Failed lineNum #["UADD"] #[cv] none)
       else
         let _ ← addVarForall extVar
+  resetPropagationState
   return none
 
 def checkModifyExistential (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
@@ -296,6 +297,7 @@ def checkModifyExistential (lineNum : Nat) (extExi : Nat) (depChanges : List Int
           | none   => throw s!"Dep var {extDep} not found"
           | some v => pure v
       addDependency internalExi internalDep
+  resetPropagationState
   return none
 
 def checkDeleteClause (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofResult) := do
@@ -306,10 +308,11 @@ def checkDeleteClause (lineNum : Nat) (extLits : List Int) : CheckM (Option Proo
     | some iv => return (acc.push (mkLit iv (lit > 0)))
   ) #[]
   let st ← get
-  match st.clauses.findSortedClause (lits.qsort (fun a b => a.x < b.x)) with
+  match st.clauses.findSortedClause (ClauseStore.sortLits lits) with
   | none      => return some (.Failed lineNum #["LOCATE", "DEL"] #[] none)
   | some cref =>
     modify fun s => { s with clauses := s.clauses.deleteClause cref }
+    resetPropagationState
     return none
 
 def checkUniversalReduction (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofResult) := do
@@ -325,7 +328,7 @@ def checkUniversalReduction (lineNum : Nat) (extLits : List Int) : CheckM (Optio
   if f.isVarExistential pivot.var then
     return some (.Failed lineNum #["UR"] #[f.externalizeLit pivot] none)
   let st ← get
-  match st.clauses.findSortedClause (lits.qsort (fun a b => a.x < b.x)) with
+  match st.clauses.findSortedClause (ClauseStore.sortLits lits) with
   | none   => return some (.Failed lineNum #["LOCATE", "UR"] #[] none)
   | some _ =>
     let f2 ← (·.formula) <$> get
@@ -355,17 +358,22 @@ def translateExistingLits (extLits : List Int) : CheckM (Array Literal) := do
 
 /-- Translate RAT/RUP literals, creating fresh existential extension variables for
     missing external names using all current universal variables as the initial dep set. -/
+def translateRatLitBasicStep (acc : Array Literal) (lit : Int) : CheckM (Array Literal) := do
+  let extVar := lit.natAbs
+  let f ← (·.formula) <$> get
+  if !f.externalVarExists extVar then
+    let _ ← addVarExists extVar f.univars
+  let f2 ← (·.formula) <$> get
+  match f2.lookupInternal extVar with
+  | none    => pure acc
+  | some iv => pure (acc.push (mkLit iv (lit > 0)))
+
+/-- Translate RAT/RUP literals, creating fresh existential extension variables for
+    missing external names using all current universal variables as the initial dep set. -/
 def translateRatLitsBasic (extLits : List Int) : CheckM (Array Literal) := do
   let mut acc := #[]
   for lit in extLits do
-    let extVar := lit.natAbs
-    let f ← (·.formula) <$> get
-    if !f.externalVarExists extVar then
-      let _ ← addVarExists extVar f.univars
-    let f2 ← (·.formula) <$> get
-    match f2.lookupInternal extVar with
-    | none    => pure ()
-    | some iv => acc := acc.push (mkLit iv (lit > 0))
+    acc ← translateRatLitBasicStep acc lit
   pure acc
 
 /-- Run the basic RUP trial and restore the action-boundary state before returning. -/
@@ -393,7 +401,7 @@ def checkUniversalReductionBasic (lineNum : Nat) (extLits : List Int) : CheckM (
   if f.isVarExistential pivot.var then
     return some (.Failed lineNum #["UR"] #[f.externalizeLit pivot] none)
   let st ← get
-  match st.clauses.findSortedClause (lits.qsort (fun a b => a.x < b.x)) with
+  match st.clauses.findSortedClause (ClauseStore.sortLits lits) with
   | none   => return some (.Failed lineNum #["LOCATE", "UR"] #[] none)
   | some _ =>
     let f2 ← (·.formula) <$> get
@@ -448,7 +456,9 @@ def checkActions (actions : List DQRatAction) : CheckM ProofResult := do
 
 /-- Check a list of proof actions (UR and RUP only; no DQRATE),
     returning the first decisive result or `Unknown`. -/
-def checkActionsBasic (actions : List DQRatAction) : CheckM ProofResult := do
-  for action in actions do
-    if let some r ← checkActionBasic action then return r
-  return .Unknown
+def checkActionsBasic : List DQRatAction → CheckM ProofResult
+  | [] => pure .Unknown
+  | action :: actions => do
+      if let some r ← checkActionBasic action then
+        return r
+      checkActionsBasic actions

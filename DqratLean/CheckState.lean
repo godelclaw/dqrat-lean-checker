@@ -423,6 +423,17 @@ def addVarExists (ext : Nat) (deps : Array Var) : CheckM Var := do
     makeIndepUnknown u
   return v
 
+/-- Forget all current propagation state and return to a clean action boundary.
+    Formula, clause store, and independence caches are preserved. -/
+def resetPropagationState : CheckM Unit := do
+  let st ← get
+  let n := st.formula.maxVar
+  set { st with
+    isAssigned := Array.replicate n false
+    value      := Array.replicate n false
+    trail      := #[#[]]
+    propQueue  := #[] }
+
 -- Add a dependency: existential of_ now depends on universal on_
 -- Matches C++ addDependency behavior (no-op if on_ is existential)
 def addDependency (of_ on_ : Var) : CheckM Unit := do
@@ -435,7 +446,7 @@ def addDependency (of_ on_ : Var) : CheckM Unit := do
   modify fun s => { s with
     formula := { s.formula with depset := s.formula.depset.setIfInBounds of_ deps' }
   }
-  -- NOTE: C++ addDependency does NOT call makeIndependenciesUnknown here
+  makeIndepUnknown on_
 
 -- Delete a dependency after checking via dep scheme
 -- Returns false (in Except) if deletion not allowed
@@ -447,6 +458,7 @@ def delDependency (of_ on_ : Var) : CheckM Bool := do
     modify fun s => { s with
       formula := s.formula.forceDelDep of_ on_
     }
+    makeIndepUnknown on_
     return true
   else
     return false

@@ -1,3 +1,5 @@
+import Init.Data.Array.Perm
+import Init.Data.List.Sort.Lemmas
 import DqratLean.Types
 
 -- Clause storage with occurrence lists
@@ -14,6 +16,20 @@ structure ClauseStore where
   occurrences : Array (Array CRef) := #[#[], #[]]
 
 namespace ClauseStore
+
+/-- Canonical literal ordering used for clause lookup proofs. -/
+def sortLits (lits : Array Literal) : Array Literal :=
+  (lits.toList.mergeSort (fun a b => a.x <= b.x)).toArray
+
+theorem sortLits_perm (lits : Array Literal) :
+    Array.Perm (sortLits lits) lits := by
+  unfold sortLits
+  exact List.Perm.toArray (List.mergeSort_perm lits.toList _)
+
+theorem mem_sortLits {lits : Array Literal} {l : Literal} :
+    l ∈ sortLits lits ↔ l ∈ lits := by
+  unfold sortLits
+  simp
 
 def getClauseAt (cs : ClauseStore) (cref : CRef) : Option Clause :=
   if h : cref < cs.clauses.size then some cs.clauses[cref] else none
@@ -63,7 +79,8 @@ def swapLits (cs : ClauseStore) (cref : CRef) (i j : Nat) : ClauseStore :=
       { cs with clauses := cs.clauses.setIfInBounds cref c' }
     else cs
 
--- Find a clause with exactly the given sorted literals (via pivot = fewest occurrences)
+-- Find a clause with exactly the given sorted literals (via pivot = fewest occurrences).
+-- The store may contain clauses in unsorted order, so compare against its canonical form.
 def findSortedClause (cs : ClauseStore) (sortedLits : Array Literal) : Option CRef :=
   if sortedLits.isEmpty then none
   else
@@ -74,13 +91,28 @@ def findSortedClause (cs : ClauseStore) (sortedLits : Array Literal) : Option CR
     let pivotOccs := cs.getOcc pivot
     -- Search for matching clause
     pivotOccs.findSome? fun cref =>
-      match getClauseAt cs cref with
+      match getClause cs cref with
       | none => none
       | some c =>
-        if c.deleted then none
-        else if c.lits.size != sortedLits.size then none
-        else if c.lits.all (fun lit => sortedLits.contains lit) then some cref
+        if sortLits c.lits = sortedLits then some cref
         else none
+
+theorem findSortedClause_spec {cs : ClauseStore} {sortedLits : Array Literal} {cref : CRef}
+    (hfind : cs.findSortedClause sortedLits = some cref) :
+    ∃ c, getClause cs cref = some c ∧ sortLits c.lits = sortedLits := by
+  unfold findSortedClause at hfind
+  split at hfind
+  · simp at hfind
+  · simp only [Array.findSome?_eq_some_iff] at hfind
+    rcases hfind with ⟨_, cref', _, _, hstep, _⟩
+    cases hget : getClause cs cref' with
+    | none =>
+        simp [hget] at hstep
+    | some c =>
+        simp [hget] at hstep
+        rcases hstep with ⟨hsorted, hcref⟩
+        subst hcref
+        exact ⟨c, hget, hsorted⟩
 
 -- ─── Soundness helper lemmas ────────────────────────────────────────────────
 
