@@ -20,11 +20,15 @@ def main : List String → IO UInt32
         | .Verified line =>
           IO.println s!"c line {line}: unit propagation derived conflict, proof valid"
         | .Failed line rules _info blocker =>
-          let rulesStr := rules.foldl (· ++ ", " ++ ·) "" |>.drop 2
-          IO.println s!"c line {line}: lemma checked for: {rulesStr}"
-          if let some _ := blocker then
-            IO.println "c (blocker clause found)"
-          IO.println "c the check has failed. The proof is invalid"
+          let parseMsg := rules.getD 0 ""
+          if line = 0 && rules.size = 1 && parseMsg.startsWith "PARSE: " then
+            IO.println s!"c proof parse error: {parseMsg.drop 7}"
+          else
+            let rulesStr := rules.foldl (· ++ ", " ++ ·) "" |>.drop 2
+            IO.println s!"c line {line}: lemma checked for: {rulesStr}"
+            if let some _ := blocker then
+              IO.println "c (blocker clause found)"
+            IO.println "c the check has failed. The proof is invalid"
         | .Unknown =>
           IO.println "c lemmas are correct, but there is no conflict at the end"
         IO.println (formatResult result)

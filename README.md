@@ -17,3 +17,8 @@ Build:
 ```bash
 lake build
 ```
+
+Parser regressions:
+```bash
+./scripts/run_parser_regressions.sh
+```

@@ -3,12 +3,15 @@ import DqratLean.Checker
 
 -- ─── Tokenizer ─────────────────────────────────────────────────────────────
 
+def isCommentLine (line : String) : Bool :=
+  match line.toList.dropWhile Char.isWhitespace with
+  | 'c' :: _ => true
+  | _ => false
+
 def stripCommentLines (content : String) : String :=
   String.intercalate "\n" <|
     (content.splitOn "\n").filter fun line =>
-      match line.toList.dropWhile Char.isWhitespace with
-      | 'c' :: _ => false
-      | _ => true
+      !isCommentLine line
 
 def tokenize (content : String) : Array String :=
   let (tokens, last) := content.foldl (fun (acc, cur) c =>
@@ -153,9 +156,101 @@ termination_by toks.size - pos
 
 -- ─── DQDIMACS parser ───────────────────────────────────────────────────────
 
+/-- Parse and validate the DQDIMACS line structure before token-level parsing.
+    This keeps the executable aligned with the original line-oriented C++ parser:
+    comments are line comments, prefix lines are 0-terminated, and matrix clauses
+    are line-delimited. The declared clause count is parsed but treated as advisory,
+    matching the legacy checker and existing corpus. -/
+private def validateDQDIMACSStructure (content : String) : Except String (Nat × Nat) := do
+  let expectNat (lineNum : Nat) (ctx : String) (tok : String) : Except String Nat :=
+    match tok.toNat? with
+    | some n => pure n
+    | none => throw s!"Line {lineNum}: expected {ctx}, got '{tok}'"
+  let validateSignedZeroTerminated (lineNum : Nat) (ctx : String)
+      (toks : Array String) (start : Nat) : Except String Unit := do
+    let rec goSigned (pos : Nat) : Except String Unit := do
+      if _hpos : pos < toks.size then
+        let tok := toks.getD pos ""
+        match tok.toInt? with
+        | none => throw s!"Line {lineNum}: expected integer in {ctx}, got '{tok}'"
+        | some 0 =>
+            if pos + 1 = toks.size then
+              pure ()
+            else
+              throw s!"Line {lineNum}: unexpected tokens after 0 terminator in {ctx}"
+        | some _ => goSigned (pos + 1)
+      else
+        throw s!"Line {lineNum}: expected 0 terminator in {ctx}"
+    termination_by toks.size - pos
+    decreasing_by
+      omega
+    if start >= toks.size then
+      throw s!"Line {lineNum}: expected 0-terminated {ctx}"
+    goSigned start
+  let validateNatZeroTerminated (lineNum : Nat) (ctx : String)
+      (toks : Array String) (start : Nat) : Except String Unit := do
+    let rec goNat (pos : Nat) : Except String Unit := do
+      if _hpos : pos < toks.size then
+        let tok := toks.getD pos ""
+        match tok.toNat? with
+        | none => throw s!"Line {lineNum}: expected positive integer in {ctx}, got '{tok}'"
+        | some 0 =>
+            if pos + 1 = toks.size then
+              pure ()
+            else
+              throw s!"Line {lineNum}: unexpected tokens after 0 terminator in {ctx}"
+        | some _ => goNat (pos + 1)
+      else
+        throw s!"Line {lineNum}: expected 0 terminator in {ctx}"
+    termination_by toks.size - pos
+    decreasing_by
+      omega
+    if start >= toks.size then
+      throw s!"Line {lineNum}: expected 0-terminated {ctx}"
+    goNat start
+  let rec go (lines : List String) (lineNum : Nat)
+      (seenHeader : Bool) (inMatrix : Bool)
+      (declaredMaxVar declaredNumClauses clauseCount : Nat) :
+      Except String (Nat × Nat) := do
+    match lines with
+    | [] =>
+        if !seenHeader then
+          throw "Expected 'p cnf <maxVar> <numClauses>'"
+        else
+          pure (declaredMaxVar, declaredNumClauses)
+    | line :: rest =>
+        let toks := tokenize line
+        if toks.isEmpty || isCommentLine line then
+          go rest (lineNum + 1) seenHeader inMatrix declaredMaxVar declaredNumClauses clauseCount
+        else if !seenHeader then
+          if toks.size != 4 || toks.getD 0 "" != "p" || toks.getD 1 "" != "cnf" then
+            throw s!"Line {lineNum}: expected 'p cnf <maxVar> <numClauses>'"
+          let declaredMaxVar ← expectNat lineNum "numeric <maxVar> in header" (toks.getD 2 "")
+          let declaredNumClauses ← expectNat lineNum "numeric <numClauses> in header" (toks.getD 3 "")
+          go rest (lineNum + 1) true false declaredMaxVar declaredNumClauses 0
+        else
+          let tok := toks.getD 0 ""
+          if !inMatrix && tok = "a" then
+            validateNatZeroTerminated lineNum "'a' line" toks 1 *>
+            go rest (lineNum + 1) true false declaredMaxVar declaredNumClauses clauseCount
+          else if !inMatrix && tok = "e" then
+            validateNatZeroTerminated lineNum "'e' line" toks 1 *>
+            go rest (lineNum + 1) true false declaredMaxVar declaredNumClauses clauseCount
+          else if !inMatrix && tok = "d" then
+            let _ ← expectNat lineNum "existential variable after 'd'" (toks.getD 1 "")
+            validateNatZeroTerminated lineNum "'d' line" toks 2 *>
+            go rest (lineNum + 1) true false declaredMaxVar declaredNumClauses clauseCount
+          else
+            if inMatrix && (tok = "a" || tok = "e" || tok = "d") then
+              throw s!"Line {lineNum}: prefix line after matrix started"
+            validateSignedZeroTerminated lineNum "matrix clause" toks 0 *>
+            go rest (lineNum + 1) true true declaredMaxVar declaredNumClauses (clauseCount + 1)
+  go (content.splitOn "\n") 1 false false 0 0 0
+
 /-- Parse formula file. Returns None if formula UNSAT by UP (= already verified),
     or Some state if proof is needed. -/
 def parseDQDIMACS (content : String) : Except String (Option CheckState) := do
+  let _ ← validateDQDIMACSStructure content
   let allToks := tokenize (stripCommentLines content)
   if allToks.getD 0 "" != "p" || allToks.getD 1 "" != "cnf" then
     throw "Expected 'p cnf <maxVar> <numClauses>'"
@@ -177,49 +272,106 @@ def parseDQDIMACS (content : String) : Except String (Option CheckState) := do
 
 -- ─── Proof action parser ───────────────────────────────────────────────────
 
-/-- Tokenize proof content and produce a list of DQRatActions.
-    Pure, no state access. Well-founded recursion on `toks.size - pos`. -/
+private def parseProofLineAction (lineNum : Nat) (toks : Array String) : Option DQRatAction :=
+  let tok := toks.getD 0 ""
+  if tok = "a" then
+    let (vars, _) := readIntList toks 1
+    some (.AddUniversal lineNum vars)
+  else if tok = "e" then
+    match (toks.getD 1 "").toNat? with
+    | none => some (.ModifyExistential lineNum 0 [])
+    | some extExi =>
+        let (deps, _) := readIntList toks 2
+        some (.ModifyExistential lineNum extExi deps)
+  else if tok = "d" then
+    let (lits, _) := readIntList toks 1
+    some (.DeleteClause lineNum lits)
+  else if tok = "u" then
+    let (lits, _) := readIntList toks 1
+    some (.UniversalReduction lineNum lits)
+  else
+    match tok.toInt? with
+    | none => none
+    | some firstLit =>
+        let (rest, _) := readIntList toks 1
+        let extLits := if firstLit = 0 then rest else firstLit :: rest
+        some (.RatClause lineNum extLits)
+
+/-- Line-oriented proof parser used by the proof development.
+    It ignores blank/comment lines and preserves real source line numbers. -/
 def parseProofActions (content : String) : List DQRatAction :=
-  let toks := tokenize content
-  let n    := toks.size
-  let rec go (pos lineNum : Nat) (acc : List DQRatAction) : List DQRatAction :=
-    if pos >= n then acc.reverse
-    else
-      let tok := toks.getD pos ""
-      let pos' := pos + 1
-      let ln   := lineNum + 1
-      if tok = "a" then
-        let (vars, ⟨pos'', _hge⟩) := readIntList toks pos'
-        go pos'' ln (.AddUniversal ln vars :: acc)
-      else if tok = "e" then
-        if pos' >= n then
-          go pos' ln (.ModifyExistential ln 0 [] :: acc)
+  let rec go (lines : List String) (lineNum : Nat) (acc : List DQRatAction) : List DQRatAction :=
+    match lines with
+    | [] => acc.reverse
+    | line :: rest =>
+        let toks := tokenize line
+        if toks.isEmpty || isCommentLine line then
+          go rest (lineNum + 1) acc
         else
-          match (toks.getD pos' "").toNat? with
-          | none =>
-            go (pos' + 1) ln (.ModifyExistential ln 0 [] :: acc)
-          | some extExi =>
-            let (deps, ⟨pos'', _hge⟩) := readIntList toks (pos' + 1)
-            go pos'' ln (.ModifyExistential ln extExi deps :: acc)
-      else if tok = "d" then
-        let (lits, ⟨pos'', _hge⟩) := readIntList toks pos'
-        go pos'' ln (.DeleteClause ln lits :: acc)
-      else if tok = "u" then
-        let (lits, ⟨pos'', _hge⟩) := readIntList toks pos'
-        go pos'' ln (.UniversalReduction ln lits :: acc)
-      else
+          let acc' := match parseProofLineAction lineNum toks with
+            | some action => action :: acc
+            | none => acc
+          go rest (lineNum + 1) acc'
+  go (content.splitOn "\n") 1 []
+
+private def parseProofActionsStrict (content : String) : Except String (List DQRatAction) := do
+  let validateSignedZeroTerminated (lineNum : Nat) (ctx : String)
+      (toks : Array String) (start : Nat) : Except String Unit := do
+    let rec goSigned (pos : Nat) : Except String Unit := do
+      if _hpos : pos < toks.size then
+        let tok := toks.getD pos ""
         match tok.toInt? with
-        | none => go pos' ln acc
-        | some firstLit =>
-          let (rest, ⟨pos'', _hge⟩) := readIntList toks pos'
-          let extLits := if firstLit = 0 then rest else firstLit :: rest
-          go pos'' ln (.RatClause ln extLits :: acc)
-  termination_by n - pos
-  go 0 0 []
+        | none => throw s!"Line {lineNum}: expected integer in {ctx}, got '{tok}'"
+        | some 0 =>
+            if pos + 1 = toks.size then
+              pure ()
+            else
+              throw s!"Line {lineNum}: unexpected tokens after 0 terminator in {ctx}"
+        | some _ => goSigned (pos + 1)
+      else
+        throw s!"Line {lineNum}: expected 0 terminator in {ctx}"
+    termination_by toks.size - pos
+    decreasing_by
+      omega
+    if start >= toks.size then
+      throw s!"Line {lineNum}: expected 0-terminated {ctx}"
+    goSigned start
+  let rec go (lines : List String) (lineNum : Nat) (acc : List DQRatAction) :
+      Except String (List DQRatAction) := do
+    match lines with
+    | [] => pure acc.reverse
+    | line :: rest =>
+        let toks := tokenize line
+        if toks.isEmpty || isCommentLine line then
+          go rest (lineNum + 1) acc
+        else
+          let tok := toks.getD 0 ""
+          if tok = "a" then
+            validateSignedZeroTerminated lineNum "'a' line" toks 1
+          else if tok = "e" then
+            match (toks.getD 1 "").toNat? with
+            | none => throw s!"Line {lineNum}: expected existential variable after 'e'"
+            | some _ => validateSignedZeroTerminated lineNum "'e' line" toks 2
+          else if tok = "d" then
+            validateSignedZeroTerminated lineNum "'d' line" toks 1
+          else if tok = "u" then
+            validateSignedZeroTerminated lineNum "'u' line" toks 1
+          else
+            match tok.toInt? with
+            | none => throw s!"Line {lineNum}: expected proof action"
+            | some _ => validateSignedZeroTerminated lineNum "clause line" toks 0
+          let acc' := match parseProofLineAction lineNum toks with
+            | some action => action :: acc
+            | none => acc
+          go rest (lineNum + 1) acc'
+  go (content.splitOn "\n") 1 []
 
 -- ─── Proof processor ───────────────────────────────────────────────────────
 
 def processProof (st : CheckState) (content : String) : ProofResult :=
-  match (checkActions (parseProofActions content)).run st with
-  | .error e _ => .Failed 0 #[e] #[] none
-  | .ok r _    => r
+  match parseProofActionsStrict content with
+  | .error e => .Failed 0 #[s!"PARSE: {e}"] #[] none
+  | .ok actions =>
+      match (checkActions actions).run st with
+      | .error e _ => .Failed 0 #[e] #[] none
+      | .ok r _    => r
