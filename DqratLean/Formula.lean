@@ -62,6 +62,11 @@ def forceDelDep (f : DQBF) (of_ on_ : Var) : DQBF :=
   let deps := (f.depset.getD of_ #[]).filter (· ≠ on_)
   { f with depset := f.depset.setIfInBounds of_ deps }
 
+-- Add a dependency to an existential's dependency set (caller enforces validity/no-dup)
+def addDependencyFormula (f : DQBF) (of_ on_ : Var) : DQBF :=
+  let deps := f.depset.getD of_ #[]
+  { f with depset := f.depset.setIfInBounds of_ (deps.push on_) }
+
 -- Externalize a literal for error messages
 def externalizeLit (f : DQBF) (l : Literal) : Int :=
   let ext := (f.externalName.getD l.var 0 : Nat)

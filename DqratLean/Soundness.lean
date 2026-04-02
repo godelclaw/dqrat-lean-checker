@@ -613,6 +613,23 @@ theorem ClausesWellFormed.addClause
     cases hget
     exact hlits l hl
 
+theorem ClausesWellFormed.deleteClause
+    {f : DQBF} {cs : ClauseStore} {cref : CRef}
+    (hwf : ClausesWellFormed f cs) :
+    ClausesWellFormed f (cs.deleteClause cref) := by
+  intro cref' c hget l hl
+  by_cases hsame : cref' = cref
+  · subst cref'
+    have hlt' : cref < (cs.deleteClause cref).clauses.size :=
+      ClauseStore.getClause_some_imp_lt (cs := cs.deleteClause cref) cref c hget
+    have hlt : cref < cs.clauses.size := by
+      rw [ClauseStore.deleteClause_clauses_size] at hlt'
+      exact hlt'
+    rw [ClauseStore.getClause_deleteClause_eq cs cref hlt] at hget
+    cases hget
+  · rw [ClauseStore.getClause_deleteClause_ne cs cref cref' hsame] at hget
+    exact hwf cref' c hget l hl
+
 theorem DQBFFalse.of_sound_extension
     {f₀ f₁ : DQBF} {cs₀ cs₁ : ClauseStore}
     (hsem : DQBFTrue f₀ cs₀ → DQBFTrue f₁ cs₁)
@@ -647,6 +664,16 @@ theorem DQBFFalse.of_not_true
     cases h : cs.matrixValue f σ sk <;> simp at h ⊢
     exact False.elim (hex ⟨σ, h⟩)
 
+def addForallFormula (f : DQBF) (ext : Nat) : DQBF :=
+  let v := f.maxVar + 1
+  { f with
+    maxVar := v
+    internalName := f.internalName.push (ext, v)
+    externalName := f.externalName.push ext
+    isExistential := f.isExistential.push false
+    univars := f.univars.push v
+    depset := f.depset.push #[] }
+
 def addExistsFormula (f : DQBF) (ext : Nat) (deps : Array Var) : DQBF :=
   let v := f.maxVar + 1
   { f with
@@ -672,6 +699,109 @@ theorem arrayGetD_true_imp_lt (a : Array Bool) {i : Nat}
   by_cases hi : i < a.size
   · exact hi
   · simp [Array.getD, hi] at h
+
+theorem lookupInternal_addForallFormula_self
+    (f : DQBF) (ext : Nat)
+    (hfresh : f.externalVarExists ext = false) :
+    (addForallFormula f ext).lookupInternal ext = some (f.maxVar + 1) := by
+  rw [addForallFormula, DQBF.lookupInternal, Array.findSome?_eq_some_iff]
+  refine ⟨f.internalName, (ext, f.maxVar + 1), #[], ?_, by simp, ?_⟩
+  · simp
+  · intro x hx
+    have hneq : x.fst ≠ ext := by
+      intro hxe
+      have ⟨j, hj, hji⟩ := Array.mem_iff_getElem.mp hx
+      have hany : f.internalName.any (fun p => p.fst = ext) = true :=
+        Array.any_eq_true.mpr ⟨j, hj, by simpa [hji, hxe]⟩
+      rw [DQBF.externalVarExists, hany] at hfresh
+      cases hfresh
+    simp [hneq]
+
+theorem lookupInternal_addForallFormula_ne
+    (f : DQBF) (ext ext' : Nat)
+    (hne : ext' ≠ ext) :
+    (addForallFormula f ext).lookupInternal ext' = f.lookupInternal ext' := by
+  unfold addForallFormula DQBF.lookupInternal
+  have hif : (if ext = ext' then some (f.maxVar + 1) else none) = none := by
+    simp [hne.symm]
+  simp [hif]
+
+theorem varValue_addForallFormula_old
+    (f : DQBF) (ext : Nat) (σ : UnivAssignment) (sk : SkolemAssignment)
+    {v : Var}
+    (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hle : v ≤ f.maxVar) :
+    (addForallFormula f ext).varValue σ sk v = f.varValue σ sk v := by
+  unfold DQBF.varValue DQBF.exiValue addForallFormula
+  have hvis : v < f.isExistential.size := by
+    simpa [his] using Nat.lt_succ_of_le hle
+  have hvdeps : v < f.depset.size := by
+    simpa [hdeps] using Nat.lt_succ_of_le hle
+  have his' : (f.isExistential.push false).getD v false = f.isExistential.getD v false :=
+    arrayGetD_push_lt f.isExistential false false hvis
+  have hdeps' : (f.depset.push #[]).getD v #[] = f.depset.getD v #[] :=
+    arrayGetD_push_lt f.depset #[] #[] hvdeps
+  simp [DQBF.isVarExistential, his', hdeps']
+
+theorem litValue_addForallFormula_old
+    (f : DQBF) (ext : Nat) (σ : UnivAssignment) (sk : SkolemAssignment)
+    {l : Literal}
+    (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hwf : 0 < l.var ∧ l.var ≤ f.maxVar) :
+    (addForallFormula f ext).litValue σ sk l = f.litValue σ sk l := by
+  unfold DQBF.litValue
+  simpa using congrArg (fun b => if l.isPos then b else !b)
+    (varValue_addForallFormula_old f ext σ sk his hdeps hwf.2)
+
+theorem clauseValue_addForallFormula_old
+    (f : DQBF) (ext : Nat) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (lits : Array Literal)
+    (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hwf : ∀ l ∈ lits.toList, 0 < l.var ∧ l.var ≤ f.maxVar) :
+    (addForallFormula f ext).clauseValue σ sk lits = f.clauseValue σ sk lits := by
+  unfold DQBF.clauseValue
+  apply Bool.eq_iff_iff.mpr
+  constructor <;> intro htrue <;> simp only [Array.any_eq_true] at htrue ⊢
+  · rcases htrue with ⟨i, hi, hli⟩
+    exact ⟨i, hi, by
+      simpa [litValue_addForallFormula_old f ext σ sk his hdeps
+        (hwf _ (Array.mem_toList_iff.mpr (Array.getElem_mem hi)))] using hli⟩
+  · rcases htrue with ⟨i, hi, hli⟩
+    exact ⟨i, hi, by
+      simpa [litValue_addForallFormula_old f ext σ sk his hdeps
+        (hwf _ (Array.mem_toList_iff.mpr (Array.getElem_mem hi)))] using hli⟩
+
+theorem matrixValue_addForallFormula_old
+    (f : DQBF) (cs : ClauseStore) (ext : Nat)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hwf : ClausesWellFormed f cs) :
+    cs.matrixValue (addForallFormula f ext) σ sk = cs.matrixValue f σ sk := by
+  unfold ClauseStore.matrixValue
+  apply List.all_congr rfl
+  intro i
+  by_cases hget : cs.getClause (i + 1) = none
+  · simp [hget]
+  · rcases Option.ne_none_iff_exists'.mp hget with ⟨c, hc⟩
+    simp [hc, clauseValue_addForallFormula_old f ext σ sk c.lits his hdeps
+      (hwf (i + 1) c hc)]
+
+theorem DQBFTrue_addForallFormula
+    (f : DQBF) (cs : ClauseStore) (ext : Nat)
+    (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hwf : ClausesWellFormed f cs)
+    (htrue : DQBFTrue f cs) :
+    DQBFTrue (addForallFormula f ext) cs := by
+  rcases htrue with ⟨sk, hsk⟩
+  refine ⟨sk, ?_⟩
+  intro σ
+  rw [matrixValue_addForallFormula_old f cs ext σ sk his hdeps hwf]
+  exact hsk σ
 
 theorem lookupInternal_addExistsFormula_self
     (f : DQBF) (ext : Nat) (deps : Array Var)
@@ -774,6 +904,98 @@ theorem DQBFTrue_addExistsFormula
   refine ⟨sk, ?_⟩
   intro σ
   rw [matrixValue_addExistsFormula_old f cs ext deps σ sk his hdeps hwf]
+  exact hsk σ
+
+private def extendSkolemIgnoreLast
+    (sk : SkolemAssignment) (of_ : Var) : SkolemAssignment :=
+  fun v args => if v = of_ then sk v args.pop else sk v args
+
+theorem lookupInternal_addDependencyFormula
+    (f : DQBF) (of_ on_ : Var) (ext : Nat) :
+    (f.addDependencyFormula of_ on_).lookupInternal ext = f.lookupInternal ext := by
+  simp [DQBF.addDependencyFormula, DQBF.lookupInternal]
+
+theorem varValue_addDependencyFormula_old
+    (f : DQBF) (of_ on_ v : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hof : 0 < of_) (hof_le : of_ ≤ f.maxVar) :
+    (f.addDependencyFormula of_ on_).varValue σ (extendSkolemIgnoreLast sk of_) v =
+      f.varValue σ sk v := by
+  have hof_lt : of_ < f.depset.size := by
+    have : of_ < f.maxVar + 1 := Nat.lt_succ_of_le hof_le
+    simpa [hdeps] using this
+  by_cases hex : f.isVarExistential v = true
+  · by_cases hov : v = of_
+    · subst hov
+      have hex' : (f.addDependencyFormula v on_).isVarExistential v = true := by
+        simpa [DQBF.addDependencyFormula, DQBF.isVarExistential] using hex
+      rw [DQBF.varValue, DQBF.varValue, hex', hex]
+      simp [DQBF.exiValue, DQBF.addDependencyFormula, extendSkolemIgnoreLast, hof_lt]
+    · have hex' : (f.addDependencyFormula of_ on_).isVarExistential v = true := by
+        simpa [DQBF.addDependencyFormula, DQBF.isVarExistential] using hex
+      rw [DQBF.varValue, DQBF.varValue, hex', hex]
+      have hne : of_ ≠ v := by simpa [eq_comm] using hov
+      have hget :
+          (f.depset.setIfInBounds of_ ((f.depset.getD of_ #[]).push on_)).getD v #[] =
+            f.depset.getD v #[] := by
+        simp [Array.setIfInBounds, hof_lt, hne]
+      simp [DQBF.exiValue, DQBF.addDependencyFormula, extendSkolemIgnoreLast, hne]
+      intro hv
+      exact False.elim (hov hv)
+  · have hex_false : f.isVarExistential v = false := by
+      cases hval : f.isVarExistential v <;> simp_all
+    have hex' : (f.addDependencyFormula of_ on_).isVarExistential v = false := by
+      simpa [DQBF.addDependencyFormula, DQBF.isVarExistential] using hex_false
+    rw [DQBF.varValue, DQBF.varValue, hex', hex_false]
+    simp
+
+theorem litValue_addDependencyFormula_old
+    (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (l : Literal)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hof : 0 < of_) (hof_le : of_ ≤ f.maxVar) :
+    (f.addDependencyFormula of_ on_).litValue σ (extendSkolemIgnoreLast sk of_) l =
+      f.litValue σ sk l := by
+  simp [DQBF.litValue, varValue_addDependencyFormula_old f of_ on_ l.var σ sk hdeps hof hof_le]
+
+theorem clauseValue_addDependencyFormula_old
+    (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (lits : Array Literal)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hof : 0 < of_) (hof_le : of_ ≤ f.maxVar) :
+    (f.addDependencyFormula of_ on_).clauseValue σ (extendSkolemIgnoreLast sk of_) lits =
+      f.clauseValue σ sk lits := by
+  unfold DQBF.clauseValue
+  simpa using
+    (Array.any_congr (w := rfl)
+      (h := fun l => litValue_addDependencyFormula_old f of_ on_ σ sk l hdeps hof hof_le)
+      (wstart := rfl) (wstop := rfl))
+
+theorem matrixValue_addDependencyFormula_old
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hdeps : f.depset.size = f.maxVar + 1) (hof : 0 < of_) (hof_le : of_ ≤ f.maxVar) :
+    cs.matrixValue (f.addDependencyFormula of_ on_) σ (extendSkolemIgnoreLast sk of_) =
+      cs.matrixValue f σ sk := by
+  unfold ClauseStore.matrixValue
+  apply List.all_congr rfl
+  intro i
+  cases hclause : cs.getClause (i + 1) with
+  | none =>
+      simp [hclause]
+  | some c =>
+      simp [hclause, clauseValue_addDependencyFormula_old f of_ on_ σ sk c.lits hdeps hof hof_le]
+
+theorem DQBFTrue_addDependencyFormula
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (hdeps : f.depset.size = f.maxVar + 1)
+    (hof : 0 < of_) (hof_le : of_ ≤ f.maxVar)
+    (htrue : DQBFTrue f cs) :
+    DQBFTrue (f.addDependencyFormula of_ on_) cs := by
+  rcases htrue with ⟨sk, hsk⟩
+  refine ⟨extendSkolemIgnoreLast sk of_, ?_⟩
+  intro σ
+  rw [matrixValue_addDependencyFormula_old f cs of_ on_ σ sk hdeps hof hof_le]
   exact hsk σ
 
 
@@ -898,6 +1120,153 @@ theorem CheckState.Correct.toPropStruct
   { toSound := hcorr.toSound
     clauses_wf := hcorr.clauses_wf
     trail_single_level := hcorr.trail_single_level }
+
+theorem CheckState.empty_correct :
+    CheckState.Correct CheckState.empty.formula CheckState.empty.clauses CheckState.empty := by
+  refine
+    { toSound := ?_
+      propQueue_empty := rfl
+      trail_single_level := rfl
+      clauses_wf := ?_
+      formula_extends := by simp [CheckState.empty]
+      preserves_models := ?_
+      formula_sound := ?_
+      lookupInternal_sound := ?_ }
+  · refine
+      { isAssigned_size := by simp [CheckState.empty]
+        value_size := by simp [CheckState.empty]
+        indepKnown_size := by simp [CheckState.empty]
+        indepOf_size := by simp [CheckState.empty]
+        externalName_size := by simp [CheckState.empty]
+        isExistential_size := by simp [CheckState.empty]
+        depset_size := by simp [CheckState.empty]
+        clauses_nonempty := by simp [CheckState.empty]
+        trail_nonempty := by simp [CheckState.empty]
+        trail_lits_valid := ?_
+        assigned_iff_in_trail := ?_ }
+    · intro i hi l hl
+      simp [CheckState.empty] at hi
+      have hi0 : i = 0 := by omega
+      subst hi0
+      simp [CheckState.empty] at hl
+    · intro v hpos hle
+      have hle0 : v ≤ 0 := by
+        simpa [CheckState.empty] using hle
+      have hv0 : v = 0 := Nat.eq_zero_of_le_zero hle0
+      subst hv0
+      simp at hpos
+  · intro cref c hget l hl
+    by_cases hzero : cref = CRef_Undef
+    · have : False := by
+        simpa [CheckState.empty, ClauseStore.getClause, CRef_Undef, hzero] using hget
+      exact this.elim
+    · have : False := by
+        have hne0 : cref ≠ 0 := by
+          simpa [CRef_Undef] using hzero
+        have hnone :
+            (if cref = 0 then some Clause.dummy else none) = none := by
+          simp [hne0]
+        simp [CheckState.empty, ClauseStore.getClause, ClauseStore.getClauseAt, CRef_Undef, hzero,
+          hnone] at hget
+      exact this.elim
+  · intro v hpos hassign sk σ hmat
+    simp [CheckState.empty] at hassign
+  · intro htrue
+    exact htrue
+  · intro ext v hlookup
+    simp [CheckState.empty, DQBF.lookupInternal] at hlookup
+
+/-- Parser-side invariant during prefix loading.
+
+    Before matrix parsing starts, the checker state is still relative to the empty
+    initial formula/clause store, the clause store is untouched, and the trail is the
+    clean base level.  This is the right invariant for `a/e/d` prefix lines. -/
+def PrefixState (st : CheckState) : Prop :=
+  CheckState.Correct CheckState.empty.formula CheckState.empty.clauses st ∧
+    st.clauses = {} ∧
+    (∀ v : Var, 0 < v → v ≤ st.formula.maxVar →
+      st.isAssigned.getD (v - 1) false = false)
+
+theorem PrefixState.empty : PrefixState CheckState.empty := by
+  refine ⟨CheckState.empty_correct, rfl, ?_⟩
+  intro v hpos hle
+  have : False := by
+    have hle0 : v ≤ 0 := by simpa [CheckState.empty] using hle
+    exact Nat.not_lt_zero _ (Nat.lt_of_lt_of_le hpos hle0)
+  exact False.elim this
+
+private theorem PrefixState.isAssigned_false
+    {st : CheckState} (hpref : PrefixState st) {v : Var}
+    (hpos : 0 < v) (hle : v ≤ st.formula.maxVar) :
+    st.isAssigned.getD (v - 1) false = false :=
+  hpref.2.2 v hpos hle
+
+theorem PrefixState.withSetDepset
+    {st : CheckState} (hpref : PrefixState st) (iv : Var) (deps : Array Var) :
+    PrefixState
+      { st with
+        formula := { st.formula with depset := st.formula.depset.setIfInBounds iv deps } } := by
+  let st' : CheckState :=
+    { st with
+      formula := { st.formula with depset := st.formula.depset.setIfInBounds iv deps } }
+  rcases hpref with ⟨hcorr, hclauses, hallFalse⟩
+  refine ⟨?_, ?_, ?_⟩
+  · change CheckState.Correct CheckState.empty.formula CheckState.empty.clauses st'
+    refine
+      { toSound := ?_
+        propQueue_empty := by simpa [st'] using hcorr.propQueue_empty
+        trail_single_level := by simpa [st'] using hcorr.trail_single_level
+        clauses_wf := by simpa [st'] using hcorr.clauses_wf
+        formula_extends := hcorr.formula_extends
+        preserves_models := ?_
+        formula_sound := ?_
+        lookupInternal_sound := ?_ }
+    · refine
+        { isAssigned_size := by simpa [st'] using hcorr.toSound.isAssigned_size
+          value_size := by simpa [st'] using hcorr.toSound.value_size
+          indepKnown_size := by simpa [st'] using hcorr.toSound.indepKnown_size
+          indepOf_size := by simpa [st'] using hcorr.toSound.indepOf_size
+          externalName_size := by simpa [st'] using hcorr.toSound.externalName_size
+          isExistential_size := by simpa [st'] using hcorr.toSound.isExistential_size
+          depset_size := by simp [st', Array.size_setIfInBounds, hcorr.toSound.depset_size]
+          clauses_nonempty := by simpa [st'] using hcorr.toSound.clauses_nonempty
+          trail_nonempty := by simpa [st'] using hcorr.toSound.trail_nonempty
+          trail_lits_valid := ?_
+          assigned_iff_in_trail := ?_ }
+      · intro i hi l hl
+        rcases hcorr.trail_lits_valid i hi l hl with ⟨hpos, hle_old⟩
+        exact ⟨hpos, by simpa [st'] using hle_old⟩
+      · intro v hpos hle
+        have hle_old : v ≤ st.formula.maxVar := by
+          simpa [st'] using hle
+        simpa [st'] using hcorr.assigned_iff_in_trail v hpos hle_old
+    · intro v hpos hassign sk σ hmat
+      have hlt : v - 1 < st.isAssigned.size := arrayGetD_true_imp_lt (a := st.isAssigned) (by
+        simpa [st'] using hassign)
+      have hle : v ≤ st.formula.maxVar := by
+        rw [hcorr.toSound.isAssigned_size] at hlt
+        have hsucc : v - 1 + 1 ≤ st.formula.maxVar := Nat.succ_le_of_lt hlt
+        simpa [Nat.sub_add_cancel hpos] using hsucc
+      have hfalse : st.isAssigned.getD (v - 1) false = false :=
+        PrefixState.isAssigned_false ⟨hcorr, hclauses, hallFalse⟩ hpos hle
+      rw [show st'.isAssigned = st.isAssigned by rfl] at hassign
+      rw [hfalse] at hassign
+      cases hassign
+    · intro _htrue
+      have hclauses' : st'.clauses = {} := by
+        simpa [st'] using hclauses
+      rw [hclauses']
+      simpa using DQBFTrue.of_empty_matrix st'.formula ({}) (by simp)
+    · intro ext v hlookup
+      have hlookup_old : st.formula.lookupInternal ext = some v := by
+        simpa [st', DQBF.lookupInternal] using hlookup
+      simpa [st'] using hcorr.lookupInternal_sound ext v hlookup_old
+  · simpa [st'] using hclauses
+  · intro v hpos hle
+    have hle_old : v ≤ st.formula.maxVar := by
+      simpa [st'] using hle
+    simpa [st'] using hallFalse v hpos hle_old
+
 
 /-- Extending the formula with one fresh existential variable preserves `Correct`.
     The new variable starts unassigned and does not occur in the existing clause store
@@ -1041,6 +1410,216 @@ theorem CheckState.Correct.withAddVarExists
       rcases hcorr.lookupInternal_sound ext v hlookup_old with ⟨hposv, hlev⟩
       exact ⟨hposv, Nat.le_trans hlev hgrow⟩
 
+/-- Extending the formula with one fresh universal variable preserves `Correct`.
+    The new variable starts unassigned and does not occur in the existing clause store
+    or trail, so the semantic effect is only the introduction of an unused universal. -/
+theorem CheckState.Correct.withAddVarForall
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (ext0 : Nat)
+    (hfresh : st.formula.externalVarExists ext0 = false) :
+    CheckState.Correct dqbf cs
+      { st with
+        formula := addForallFormula st.formula ext0
+        isAssigned := st.isAssigned.push false
+        value := st.value.push false
+        indepKnown := st.indepKnown.push false
+        indepOf := st.indepOf.push #[] } := by
+  let f' := addForallFormula st.formula ext0
+  let st' : CheckState :=
+    { st with
+      formula := f'
+      isAssigned := st.isAssigned.push false
+      value := st.value.push false
+      indepKnown := st.indepKnown.push false
+      indepOf := st.indepOf.push #[] }
+  change CheckState.Correct dqbf cs st'
+  have hgrow : st.formula.maxVar ≤ f'.maxVar := by
+    simp [f', addForallFormula]
+  refine
+    { toSound := ?_
+      propQueue_empty := hcorr.propQueue_empty
+      trail_single_level := hcorr.trail_single_level
+      clauses_wf := hcorr.clauses_wf.mono hgrow
+      formula_extends := Nat.le_trans hcorr.formula_extends hgrow
+      preserves_models := ?_
+      formula_sound := ?_
+      lookupInternal_sound := ?_ }
+  · refine
+      { isAssigned_size := ?_
+        value_size := ?_
+        indepKnown_size := ?_
+        indepOf_size := ?_
+        externalName_size := ?_
+        isExistential_size := ?_
+        depset_size := ?_
+        clauses_nonempty := hcorr.toSound.clauses_nonempty
+        trail_nonempty := hcorr.toSound.trail_nonempty
+        trail_lits_valid := ?_
+        assigned_iff_in_trail := ?_ }
+    · simp [st', f', addForallFormula, hcorr.toSound.isAssigned_size]
+    · simp [st', f', addForallFormula, hcorr.toSound.value_size]
+    · simp [st', f', addForallFormula, hcorr.toSound.indepKnown_size]
+    · simp [st', f', addForallFormula, hcorr.toSound.indepOf_size]
+    · simp [st', f', addForallFormula, hcorr.toSound.externalName_size]
+    · simp [st', f', addForallFormula, hcorr.toSound.isExistential_size]
+    · simp [st', f', addForallFormula, hcorr.toSound.depset_size]
+    · intro i hi l hl
+      rcases hcorr.trail_lits_valid i hi l hl with ⟨hpos, hle⟩
+      exact ⟨hpos, Nat.le_trans hle hgrow⟩
+    · intro v hpos hle
+      dsimp [st']
+      by_cases hnew : v = st.formula.maxVar + 1
+      · constructor
+        · intro hassign
+          have : (st.isAssigned.push false).getD (v - 1) false = false := by
+            subst v
+            have hidx : (st.formula.maxVar + 1) - 1 = st.isAssigned.size := by
+              simpa [hcorr.toSound.isAssigned_size]
+            rw [hidx]
+            simpa using (arrayGetD_push_eq st.isAssigned false false)
+          rw [this] at hassign
+          cases hassign
+        · intro htrail
+          rcases htrail with ⟨i, hi, l, hl, hlvar⟩
+          rcases hcorr.trail_lits_valid i hi l hl with ⟨_, hle_old⟩
+          subst v
+          rw [hlvar] at hle_old
+          exact False.elim (Nat.not_succ_le_self _ hle_old)
+      · have hv_old : v ≤ st.formula.maxVar := by
+          exact Nat.le_of_lt_succ (Nat.lt_of_le_of_ne hle (by simpa [eq_comm] using hnew))
+        have hlt : v - 1 < st.isAssigned.size := by
+          have hlt' : v - 1 < st.formula.maxVar := by
+            have : Nat.succ (v - 1) ≤ st.formula.maxVar := by
+              have hv_eq : v - 1 + 1 = v := Nat.sub_add_cancel (Nat.succ_le_of_lt hpos)
+              simpa [Nat.succ_eq_add_one, hv_eq] using hv_old
+            exact Nat.lt_of_succ_le this
+          simpa [hcorr.toSound.isAssigned_size] using hlt'
+        constructor
+        · intro hassign
+          have hassign_old : st.isAssigned.getD (v - 1) false = true := by
+            simpa [arrayGetD_push_lt st.isAssigned false false hlt] using hassign
+          exact (hcorr.assigned_iff_in_trail v hpos hv_old).mp hassign_old
+        · intro htrail
+          have hassign_old : st.isAssigned.getD (v - 1) false = true :=
+            (hcorr.assigned_iff_in_trail v hpos hv_old).mpr htrail
+          simpa [arrayGetD_push_lt st.isAssigned false false hlt] using hassign_old
+  · intro v hpos hassign sk σ hmat
+    dsimp [st', f'] at hassign hmat ⊢
+    have hlt_new : v - 1 < (st.isAssigned.push false).size :=
+      arrayGetD_true_imp_lt (a := st.isAssigned.push false) hassign
+    by_cases hlt : v - 1 < st.isAssigned.size
+    · have hv_le : v ≤ st.formula.maxVar := by
+        have hlt' : v - 1 < st.formula.maxVar := by
+          simpa [hcorr.toSound.isAssigned_size] using hlt
+        have : Nat.succ (v - 1) ≤ st.formula.maxVar := Nat.succ_le_of_lt hlt'
+        have hv_eq : v - 1 + 1 = v := Nat.sub_add_cancel (Nat.succ_le_of_lt hpos)
+        simpa [Nat.succ_eq_add_one, hv_eq] using this
+      have hassign_old : st.isAssigned.getD (v - 1) false = true := by
+        simpa [arrayGetD_push_lt st.isAssigned false false hlt] using hassign
+      have hmat_old : st.clauses.matrixValue st.formula σ sk = true := by
+        rw [matrixValue_addForallFormula_old st.formula st.clauses ext0 σ sk
+          hcorr.toSound.isExistential_size hcorr.toSound.depset_size hcorr.clauses_wf] at hmat
+        exact hmat
+      have hval_lt : v - 1 < st.value.size := by
+        simpa [hcorr.toSound.value_size, hcorr.toSound.isAssigned_size] using hlt
+      rw [varValue_addForallFormula_old st.formula ext0 σ sk
+          hcorr.toSound.isExistential_size hcorr.toSound.depset_size hv_le]
+      rw [arrayGetD_push_lt st.value false false hval_lt]
+      exact hcorr.preserves_models v hpos hassign_old sk σ hmat_old
+    · have htop : v - 1 = st.isAssigned.size := by
+        have hlt_push : v - 1 < st.isAssigned.size + 1 := by
+          simpa [Array.size_push] using hlt_new
+        exact Nat.eq_of_lt_succ_of_not_lt hlt_push hlt
+      have : (st.isAssigned.push false).getD (v - 1) false = false := by
+        rw [htop]
+        simpa using (arrayGetD_push_eq st.isAssigned false false)
+      rw [this] at hassign
+      cases hassign
+  · intro htrue
+    exact DQBFTrue_addForallFormula st.formula st.clauses ext0
+      hcorr.toSound.isExistential_size hcorr.toSound.depset_size hcorr.clauses_wf
+      (hcorr.formula_sound htrue)
+  · intro ext v hlookup
+    dsimp [st', f'] at hlookup ⊢
+    by_cases hext : ext = ext0
+    · subst ext
+      rw [lookupInternal_addForallFormula_self st.formula ext0 hfresh] at hlookup
+      cases hlookup
+      simp [addForallFormula]
+    · have hlookup_old : st.formula.lookupInternal ext = some v := by
+        simpa [lookupInternal_addForallFormula_ne st.formula ext0 ext hext] using hlookup
+      rcases hcorr.lookupInternal_sound ext v hlookup_old with ⟨hposv, hlev⟩
+      exact ⟨hposv, Nat.le_trans hlev hgrow⟩
+
+/-- Build a `Correct` boundary state by resetting assignments/queue on top of a
+    structurally sound state whose formula/clauses are already known to be a sound
+    extension of the original input. -/
+theorem CheckState.Correct.ofResetState
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hsound : CheckState.Sound st)
+    (hclauses_wf : ClausesWellFormed st.formula st.clauses)
+    (hformula_extends : dqbf.maxVar ≤ st.formula.maxVar)
+    (hformula_sound : DQBFTrue dqbf cs → DQBFTrue st.formula st.clauses)
+    (hlookupInternal_sound : ∀ ext v, st.formula.lookupInternal ext = some v →
+      0 < v ∧ v ≤ st.formula.maxVar) :
+    CheckState.Correct dqbf cs
+      { st with
+        isAssigned := Array.replicate st.formula.maxVar false
+        value := Array.replicate st.formula.maxVar false
+        trail := #[#[]]
+        propQueue := #[] } := by
+  let st' : CheckState :=
+    { st with
+      isAssigned := Array.replicate st.formula.maxVar false
+      value := Array.replicate st.formula.maxVar false
+      trail := #[#[]]
+      propQueue := #[] }
+  change CheckState.Correct dqbf cs st'
+  refine
+    { toSound := ?_
+      propQueue_empty := rfl
+      trail_single_level := rfl
+      clauses_wf := hclauses_wf
+      formula_extends := hformula_extends
+      preserves_models := ?_
+      formula_sound := hformula_sound
+      lookupInternal_sound := hlookupInternal_sound }
+  · refine
+      { isAssigned_size := by simp [st', hsound.isAssigned_size]
+        value_size := by simp [st', hsound.value_size]
+        indepKnown_size := hsound.indepKnown_size
+        indepOf_size := hsound.indepOf_size
+        externalName_size := hsound.externalName_size
+        isExistential_size := hsound.isExistential_size
+        depset_size := hsound.depset_size
+        clauses_nonempty := hsound.clauses_nonempty
+        trail_nonempty := by simp [st']
+        trail_lits_valid := ?_
+        assigned_iff_in_trail := ?_ }
+    · intro i hi l hl
+      simp [st'] at hi
+      have hi0 : i = 0 := by omega
+      subst hi0
+      simp [st'] at hl
+    · intro v hpos hle
+      have hpred : v - 1 < v := by
+        simpa [Nat.pred_eq_sub_one] using Nat.pred_lt (Nat.ne_of_gt hpos)
+      have hlt : v - 1 < st.formula.maxVar := Nat.lt_of_lt_of_le hpred hle
+      constructor
+      · intro hassign
+        simp [st', hlt] at hassign
+      · intro htrail
+        rcases htrail with ⟨i, hi, l, hl, _⟩
+        simp [st'] at hi
+        have hi0 : i = 0 := by omega
+        subst hi0
+        simp [st'] at hl
+  · intro v hpos hassign sk σ hmat
+    by_cases hlt : v - 1 < st.formula.maxVar
+    · simp [st', hlt] at hassign
+    · simp [st', hlt] at hassign
+
 /-- Updating only the independence caches preserves `Correct` as long as the cache
     arrays keep the expected `maxVar` length.  None of the semantic fields in `Correct`
     depends on the cache contents themselves. -/
@@ -1138,6 +1717,98 @@ theorem CheckState.Correct.withResetPropagationState
     · simp [st', hlt] at hassign
     · simp [st', hlt] at hassign
 
+theorem PrefixState.withIndepCaches
+    {st : CheckState} (hpref : PrefixState st)
+    (indepKnown : Array Bool) (indepOf : Array (Array Var))
+    (hknown : indepKnown.size = st.formula.maxVar)
+    (hof : indepOf.size = st.formula.maxVar) :
+    PrefixState { st with indepKnown := indepKnown, indepOf := indepOf } := by
+  rcases hpref with ⟨hcorr, hclauses, hallFalse⟩
+  refine ⟨CheckState.Correct.withIndepCaches hcorr indepKnown indepOf hknown hof, ?_, ?_⟩
+  · simpa using hclauses
+  · intro v hpos hle
+    simpa using hallFalse v hpos hle
+
+theorem PrefixState.withAddVarForall
+    {st : CheckState} (hpref : PrefixState st)
+    (ext : Nat) (hfresh : st.formula.externalVarExists ext = false) :
+    PrefixState
+      { st with
+        formula := addForallFormula st.formula ext
+        isAssigned := st.isAssigned.push false
+        value := st.value.push false
+        indepKnown := st.indepKnown.push false
+        indepOf := st.indepOf.push #[] } := by
+  let st' : CheckState :=
+    { st with
+      formula := addForallFormula st.formula ext
+      isAssigned := st.isAssigned.push false
+      value := st.value.push false
+      indepKnown := st.indepKnown.push false
+      indepOf := st.indepOf.push #[] }
+  rcases hpref with ⟨hcorr, hclauses, hallFalse⟩
+  refine ⟨CheckState.Correct.withAddVarForall hcorr ext hfresh, ?_, ?_⟩
+  · simpa [st'] using hclauses
+  · intro v hpos hle
+    by_cases hnew : v = st.formula.maxVar + 1
+    · subst hnew
+      have hidx : (st.formula.maxVar + 1) - 1 = st.isAssigned.size := by
+        simpa [hcorr.toSound.isAssigned_size]
+      rw [show st'.isAssigned = st.isAssigned.push false by rfl, hidx]
+      simpa using (arrayGetD_push_eq st.isAssigned false false)
+    · have hle_old : v ≤ st.formula.maxVar := by
+        exact Nat.le_of_lt_succ (Nat.lt_of_le_of_ne hle (by simpa [eq_comm] using hnew))
+      have hlt : v - 1 < st.isAssigned.size := by
+        have hlt' : v - 1 < st.formula.maxVar := by
+          have : Nat.succ (v - 1) ≤ st.formula.maxVar := by
+            have hv_eq : v - 1 + 1 = v := Nat.sub_add_cancel (Nat.succ_le_of_lt hpos)
+            simpa [Nat.succ_eq_add_one, hv_eq] using hle_old
+          exact Nat.lt_of_succ_le this
+        simpa [hcorr.toSound.isAssigned_size] using hlt'
+      rw [show st'.isAssigned = st.isAssigned.push false by rfl]
+      simpa [arrayGetD_push_lt st.isAssigned false false hlt] using
+        hallFalse v hpos hle_old
+
+theorem PrefixState.withAddVarExists
+    {st : CheckState} (hpref : PrefixState st)
+    (ext : Nat) (deps : Array Var) (hfresh : st.formula.externalVarExists ext = false) :
+    PrefixState
+      { st with
+        formula := addExistsFormula st.formula ext deps
+        isAssigned := st.isAssigned.push false
+        value := st.value.push false
+        indepKnown := st.indepKnown.push false
+        indepOf := st.indepOf.push #[] } := by
+  let st' : CheckState :=
+    { st with
+      formula := addExistsFormula st.formula ext deps
+      isAssigned := st.isAssigned.push false
+      value := st.value.push false
+      indepKnown := st.indepKnown.push false
+      indepOf := st.indepOf.push #[] }
+  rcases hpref with ⟨hcorr, hclauses, hallFalse⟩
+  refine ⟨CheckState.Correct.withAddVarExists hcorr ext deps hfresh, ?_, ?_⟩
+  · simpa [st'] using hclauses
+  · intro v hpos hle
+    by_cases hnew : v = st.formula.maxVar + 1
+    · subst hnew
+      have hidx : (st.formula.maxVar + 1) - 1 = st.isAssigned.size := by
+        simpa [hcorr.toSound.isAssigned_size]
+      rw [show st'.isAssigned = st.isAssigned.push false by rfl, hidx]
+      simpa using (arrayGetD_push_eq st.isAssigned false false)
+    · have hle_old : v ≤ st.formula.maxVar := by
+        exact Nat.le_of_lt_succ (Nat.lt_of_le_of_ne hle (by simpa [eq_comm] using hnew))
+      have hlt : v - 1 < st.isAssigned.size := by
+        have hlt' : v - 1 < st.formula.maxVar := by
+          have : Nat.succ (v - 1) ≤ st.formula.maxVar := by
+            have hv_eq : v - 1 + 1 = v := Nat.sub_add_cancel (Nat.succ_le_of_lt hpos)
+            simpa [Nat.succ_eq_add_one, hv_eq] using hle_old
+          exact Nat.lt_of_succ_le this
+        simpa [hcorr.toSound.isAssigned_size] using hlt'
+      rw [show st'.isAssigned = st.isAssigned.push false by rfl]
+      simpa [arrayGetD_push_lt st.isAssigned false false hlt] using
+        hallFalse v hpos hle_old
+
 theorem resetPropagationState_run (s : CheckState) :
     resetPropagationState s =
       .ok () { s with
@@ -1195,6 +1866,26 @@ theorem makeIndepUnknown_correct_spec (dqbf : DQBF) (cs : ClauseStore)
       (by simp [Array.size_setIfInBounds, hcorr.toSound.indepKnown_size])
       (by simp [Array.size_setIfInBounds, hcorr.toSound.indepOf_size])
 
+@[spec]
+theorem makeIndepUnknown_prefix_spec (u : Var) :
+    ⦃fun s => ⌜PrefixState s⌝⦄
+    (makeIndepUnknown u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜PrefixState s'⌝⦄ := by
+  intro s hpref
+  simp only [WP.wp, PredTrans.apply, EStateM.run, makeIndepUnknown]
+  by_cases hu : u = 0
+  · simp [hu]
+    exact hpref
+  · simp [hu]
+    rcases hpref with ⟨hcorr, hclauses, hallFalse⟩
+    exact PrefixState.withIndepCaches
+      (st := s)
+      (⟨hcorr, hclauses, hallFalse⟩)
+      (s.indepKnown.setIfInBounds (u - 1) false)
+      (s.indepOf.setIfInBounds (u - 1) #[])
+      (by simp [Array.size_setIfInBounds, hcorr.toSound.indepKnown_size])
+      (by simp [Array.size_setIfInBounds, hcorr.toSound.indepOf_size])
+
 theorem makeIndepUnknown_correct_sameFC_spec
     (dqbf : DQBF) (cs : ClauseStore) (u : Var) (s₀ : CheckState) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄
@@ -1225,6 +1916,161 @@ theorem makeIndepUnknown_correct_lookup_spec
     rcases hspec with ⟨hcorr', hsame⟩
     rcases hsame with ⟨hformula, _⟩
     exact ⟨hcorr', by simpa [hformula] using hlookup⟩
+
+theorem makeIndepUnknown_prefix_lookup_spec
+    (u : Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜PrefixState s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (makeIndepUnknown u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜PrefixState s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hpref, hlookup⟩
+  have hprefix := makeIndepUnknown_prefix_spec u s hpref
+  have hsame := makeIndepUnknown_sameFC_spec u s s ⟨rfl, rfl⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hprefix hsame ⊢
+  cases hrun : makeIndepUnknown u s with
+  | error e s' =>
+      rw [hrun] at hprefix
+      exact hprefix.elim
+  | ok _ s' =>
+      rw [hrun] at hprefix hsame
+      rcases hsame with ⟨hformula, _⟩
+      exact ⟨hprefix, by simpa [hformula] using hlookup⟩
+
+theorem setDepset_prefix_spec (iv : Var) (deps : Array Var) :
+    ⦃fun s => ⌜PrefixState s⌝⦄
+    (modify fun st =>
+      { st with
+        formula := { st.formula with depset := st.formula.depset.setIfInBounds iv deps } } :
+      CheckM Unit)
+    ⦃⇓ _ s' => ⌜PrefixState s'⌝⦄ := by
+  intro s hpref
+  simp only [WP.wp, PredTrans.apply, EStateM.run, modify]
+  exact PrefixState.withSetDepset hpref iv deps
+
+theorem makeIndepUnknown_prefix_loop_spec
+    (deps : Array Var) :
+    ⦃fun s => ⌜PrefixState s⌝⦄
+    (forIn deps PUnit.unit (fun u _ => do
+      makeIndepUnknown u
+      pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+    ⦃⇓ _ s' => ⌜PrefixState s'⌝⦄ := by
+  simpa [Array.forIn_toList] using
+    (show
+      ⦃fun s => ⌜PrefixState s⌝⦄
+      (forIn deps.toList PUnit.unit (fun u _ => do
+        makeIndepUnknown u
+        pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+      ⦃⇓ _ s' => ⌜PrefixState s'⌝⦄ from by
+      refine (Spec.forIn_list_const_inv
+        (xs := deps.toList)
+        (init := PUnit.unit)
+        (f := fun u _ => do
+          makeIndepUnknown u
+          pure (ForInStep.yield PUnit.unit))
+        (inv := (⇓ _ s' => ⌜PrefixState s'⌝))
+        ?_)
+      intro u b
+      cases b
+      mintro hpref
+      mspec (makeIndepUnknown_prefix_spec u)
+      mleave)
+
+theorem getFormula_run (s : CheckState) :
+    (((fun x => x.formula) <$> (get : CheckM CheckState)) s) = .ok s.formula s := by
+  rfl
+
+theorem ensureWithinMaxVar_ok_run
+    (declaredMaxVar extVar : Nat) (h : extVar ≤ declaredMaxVar) (s : CheckState) :
+    ensureWithinMaxVar declaredMaxVar extVar s = .ok () s := by
+  have h' : ¬ declaredMaxVar < extVar := Nat.not_lt_of_ge h
+  simp [ensureWithinMaxVar, h', Pure.pure, EStateM.pure]
+
+theorem ensureWithinMaxVar_error_run
+    (declaredMaxVar extVar : Nat) (h : extVar > declaredMaxVar) (s : CheckState) :
+    ensureWithinMaxVar declaredMaxVar extVar s =
+      .error s!"Variable {extVar} exceeds maximum declared variable" s := by
+  simp [ensureWithinMaxVar, h, throw, throwThe, MonadExceptOf.throw, EStateM.throw]
+
+theorem ensureWithinMaxVar_prefix_spec
+    (declaredMaxVar extVar : Nat) :
+    ⦃fun s => ⌜PrefixState s⌝⦄
+    (ensureWithinMaxVar declaredMaxVar extVar : CheckM Unit)
+    ⦃⇓? _ s' => ⌜PrefixState s'⌝⦄ := by
+  intro s hpref
+  simp only [WP.wp, PredTrans.apply, EStateM.run, ensureWithinMaxVar]
+  by_cases hgt : extVar > declaredMaxVar
+  · simp [hgt, throw, throwThe, MonadExceptOf.throw, EStateM.throw]
+  · simp [hgt]
+    exact hpref
+
+theorem addVarForall_prefix_spec
+    (ext : Nat) :
+    ⦃fun s => ⌜PrefixState s ∧ s.formula.externalVarExists ext = false⌝⦄
+    (addVarForall ext : CheckM Var)
+    ⦃⇓ _ s' => ⌜PrefixState s'⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hpref, hfresh⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run, addVarForall]
+  exact PrefixState.withAddVarForall hpref ext hfresh
+
+theorem addVarExists_prefix_spec
+    (ext : Nat) (deps : Array Var) :
+    ⦃fun s => ⌜PrefixState s ∧ s.formula.externalVarExists ext = false⌝⦄
+    (addVarExists ext deps : CheckM Var)
+    ⦃⇓ _ s' => ⌜PrefixState s'⌝⦄ := by
+  have hprefix :
+      ⦃fun s => ⌜PrefixState s ∧ s.formula.externalVarExists ext = false⌝⦄
+      ((do
+        let st ← get
+        let v := st.formula.maxVar + 1
+        let f := { st.formula with
+          maxVar        := v
+          internalName  := st.formula.internalName.push (ext, v)
+          externalName  := st.formula.externalName.push ext
+          isExistential := st.formula.isExistential.push true
+          exivars       := st.formula.exivars.push v
+          depset        := st.formula.depset.push deps }
+        set { st with
+          formula    := f
+          isAssigned := st.isAssigned.push false
+          value      := st.value.push false
+          indepKnown := st.indepKnown.push false
+          indepOf    := st.indepOf.push #[] }
+        pure v) : CheckM Var)
+      ⦃⇓ _ s' => ⌜PrefixState s'⌝⦄ := by
+    intro s hs
+    rcases hs with ⟨hpref, hfresh⟩
+    simp only [WP.wp, PredTrans.apply, EStateM.run]
+    exact PrefixState.withAddVarExists hpref ext deps hfresh
+  have hbody :
+      ⦃fun s => ⌜PrefixState s ∧ s.formula.externalVarExists ext = false⌝⦄
+      ((do
+          let v ← ((do
+            let st ← get
+            let v := st.formula.maxVar + 1
+            let f := { st.formula with
+              maxVar        := v
+              internalName  := st.formula.internalName.push (ext, v)
+              externalName  := st.formula.externalName.push ext
+              isExistential := st.formula.isExistential.push true
+              exivars       := st.formula.exivars.push v
+              depset        := st.formula.depset.push deps }
+            set { st with
+              formula    := f
+              isAssigned := st.isAssigned.push false
+              value      := st.value.push false
+              indepKnown := st.indepKnown.push false
+              indepOf    := st.indepOf.push #[] }
+            pure v) : CheckM Var)
+          for u in deps do
+            makeIndepUnknown u
+          pure v) : CheckM Var)
+      ⦃⇓ _ s' => ⌜PrefixState s'⌝⦄ := by
+    mintro hs
+    mspec hprefix
+    mspec (makeIndepUnknown_prefix_loop_spec deps)
+    mleave
+  simpa [addVarExists] using hbody
 
 @[spec]
 theorem makeIndepUnknown_correct_lookup_wf_spec
@@ -1326,6 +2172,39 @@ theorem addVarExists_loop_wf_spec
       mintro hpre
       mspec (makeIndepUnknown_correct_lookup_wf_spec dqbf cs u acc ext v)
       mleave)
+
+@[spec]
+theorem addVarForall_correct_spec (dqbf : DQBF) (cs : ClauseStore)
+    (ext : Nat) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄
+    (addVarForall ext : CheckM Var)
+    ⦃⇓ v s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  have hprefix :
+      ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄
+      ((do
+        let st ← get
+        let v := st.formula.maxVar + 1
+        let f := { st.formula with
+          maxVar        := v
+          internalName  := st.formula.internalName.push (ext, v)
+          externalName  := st.formula.externalName.push ext
+          isExistential := st.formula.isExistential.push false
+          univars       := st.formula.univars.push v
+          depset        := st.formula.depset.push #[] }
+        set { st with
+          formula    := f
+          isAssigned := st.isAssigned.push false
+          value      := st.value.push false
+          indepKnown := st.indepKnown.push false
+          indepOf    := st.indepOf.push #[] }
+        pure v) : CheckM Var)
+      ⦃⇓ v s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+    mvcgen
+    rename_i s hs v f
+    rcases hs with ⟨hcorr, hfresh⟩
+    refine ⟨CheckState.Correct.withAddVarForall hcorr ext hfresh, ?_⟩
+    simpa [f, v] using lookupInternal_addForallFormula_self s.formula ext hfresh
+  simpa [addVarForall] using hprefix
 
 @[spec]
 theorem addVarExists_correct_spec (dqbf : DQBF) (cs : ClauseStore)
@@ -1734,6 +2613,143 @@ theorem CheckState.Correct.withAddClause
   · intro v hpos hassign sk σ hmat
     exact hcorr.preserves_models v hpos hassign sk σ
       (matrixValue_addClause_mono st.formula st.clauses lits σ sk hmat)
+
+theorem CheckState.Correct.withDeleteClauseReset
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {cref : CRef}
+    (hcorr : CheckState.Correct dqbf cs st) :
+    CheckState.Correct dqbf cs
+      { st with
+        clauses := st.clauses.deleteClause cref
+        isAssigned := Array.replicate st.formula.maxVar false
+        value := Array.replicate st.formula.maxVar false
+        trail := #[#[]]
+        propQueue := #[] } := by
+  let st' : CheckState :=
+    { st with
+      clauses := st.clauses.deleteClause cref
+      isAssigned := Array.replicate st.formula.maxVar false
+      value := Array.replicate st.formula.maxVar false
+      trail := #[#[]]
+      propQueue := #[] }
+  change CheckState.Correct dqbf cs st'
+  refine
+    { toSound := ?_
+      propQueue_empty := rfl
+      trail_single_level := rfl
+      clauses_wf := hcorr.clauses_wf.deleteClause
+      formula_extends := hcorr.formula_extends
+      preserves_models := ?_
+      formula_sound := ?_
+      lookupInternal_sound := hcorr.lookupInternal_sound }
+  · refine
+      { isAssigned_size := by simp [st']
+        value_size := by simp [st']
+        indepKnown_size := hcorr.toSound.indepKnown_size
+        indepOf_size := hcorr.toSound.indepOf_size
+        externalName_size := hcorr.toSound.externalName_size
+        isExistential_size := hcorr.toSound.isExistential_size
+        depset_size := hcorr.toSound.depset_size
+        clauses_nonempty := by
+          simpa [st', ClauseStore.deleteClause_clauses_size] using hcorr.toSound.clauses_nonempty
+        trail_nonempty := by simp [st']
+        trail_lits_valid := ?_
+        assigned_iff_in_trail := ?_ }
+    · intro i hi l hl
+      simp [st'] at hi
+      have hi0 : i = 0 := by omega
+      subst hi0
+      simp [st'] at hl
+    · intro v hpos hle
+      have hle' : v ≤ st.formula.maxVar := by simpa [st'] using hle
+      have hpred : v - 1 < v := by
+        simpa [Nat.pred_eq_sub_one] using Nat.pred_lt (Nat.ne_of_gt hpos)
+      have hlt : v - 1 < st.formula.maxVar := Nat.lt_of_lt_of_le hpred hle'
+      constructor
+      · intro hassign
+        simp [st', hlt] at hassign
+      · intro htrail
+        rcases htrail with ⟨i, hi, l, hl, _⟩
+        simp [st'] at hi
+        have hi0 : i = 0 := by omega
+        subst hi0
+        simp [st'] at hl
+  · intro v hpos hassign sk σ hmat
+    by_cases hlt : v - 1 < st.formula.maxVar
+    · simp [st', hlt] at hassign
+    · simp [st', hlt] at hassign
+  · intro htrue
+    exact DQBFTrue.delete_clause st.formula st.clauses cref (hcorr.formula_sound htrue)
+
+theorem CheckState.Correct.withAddDependencyReset
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {of_ on_ : Var}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (hof : 0 < of_) (hof_le : of_ ≤ st.formula.maxVar) :
+    CheckState.Correct dqbf cs
+      { st with
+        formula := st.formula.addDependencyFormula of_ on_
+        isAssigned := Array.replicate st.formula.maxVar false
+        value := Array.replicate st.formula.maxVar false
+        trail := #[#[]]
+        propQueue := #[]
+        indepKnown := st.indepKnown.setIfInBounds (on_ - 1) false
+        indepOf := st.indepOf.setIfInBounds (on_ - 1) #[] } := by
+  let st₁ : CheckState :=
+    { st with
+      formula := st.formula.addDependencyFormula of_ on_
+      indepKnown := st.indepKnown.setIfInBounds (on_ - 1) false
+      indepOf := st.indepOf.setIfInBounds (on_ - 1) #[] }
+  have hsound₁ : CheckState.Sound st₁ := by
+    refine
+      { isAssigned_size := by
+          simpa [st₁, DQBF.addDependencyFormula] using hcorr.toSound.isAssigned_size
+        value_size := by
+          simpa [st₁, DQBF.addDependencyFormula] using hcorr.toSound.value_size
+        indepKnown_size := by
+          simp [st₁, DQBF.addDependencyFormula, Array.size_setIfInBounds,
+            hcorr.toSound.indepKnown_size]
+        indepOf_size := by
+          simp [st₁, DQBF.addDependencyFormula, Array.size_setIfInBounds,
+            hcorr.toSound.indepOf_size]
+        externalName_size := by
+          simpa [st₁, DQBF.addDependencyFormula] using hcorr.toSound.externalName_size
+        isExistential_size := by
+          simpa [st₁, DQBF.addDependencyFormula] using hcorr.toSound.isExistential_size
+        depset_size := by
+          simp [st₁, DQBF.addDependencyFormula, Array.size_setIfInBounds,
+            hcorr.toSound.depset_size]
+        clauses_nonempty := hcorr.toSound.clauses_nonempty
+        trail_nonempty := hcorr.toSound.trail_nonempty
+        trail_lits_valid := ?_
+        assigned_iff_in_trail := ?_ }
+    · intro i hi l hl
+      rcases hcorr.trail_lits_valid i hi l hl with ⟨hpos, hle⟩
+      exact ⟨hpos, by simpa [st₁, DQBF.addDependencyFormula] using hle⟩
+    · intro v hpos hle
+      have hle_old : v ≤ st.formula.maxVar := by
+        simpa [st₁, DQBF.addDependencyFormula] using hle
+      exact hcorr.assigned_iff_in_trail v hpos hle_old
+  have hclauses₁ : ClausesWellFormed st₁.formula st₁.clauses := by
+    simpa [st₁, DQBF.addDependencyFormula] using hcorr.clauses_wf
+  have hformula_sound₁ : DQBFTrue dqbf cs → DQBFTrue st₁.formula st₁.clauses := by
+    intro htrue
+    exact DQBFTrue_addDependencyFormula st.formula st.clauses of_ on_
+      hcorr.toSound.depset_size hof hof_le (hcorr.formula_sound htrue)
+  have hlookup₁ :
+      ∀ ext v, st₁.formula.lookupInternal ext = some v →
+        0 < v ∧ v ≤ st₁.formula.maxVar := by
+    intro ext v hlookup
+    have hlookup_old : st.formula.lookupInternal ext = some v := by
+      simpa [st₁, lookupInternal_addDependencyFormula] using hlookup
+    rcases hcorr.lookupInternal_sound ext v hlookup_old with ⟨hpos, hle⟩
+    exact ⟨hpos, by simpa [st₁, DQBF.addDependencyFormula] using hle⟩
+  simpa [st₁, DQBF.addDependencyFormula] using
+    (CheckState.Correct.ofResetState
+      (st := st₁)
+      hsound₁
+      hclauses₁
+      hcorr.formula_extends
+      hformula_sound₁
+      hlookup₁)
 
 theorem CheckState.PropStruct.withAddClause
     {st : CheckState} {lits : Array Literal}
@@ -3502,6 +4518,123 @@ theorem DQRATU_soundness (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
     (_ : URCondition f lits pivot) -- simplified; full condition involves D^pure path
     (h : DQBFTrue f cs) : DQBFTrue f (cs.addClause lits).1 := by
   sorry
+
+private theorem checkAddUniversalStep_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat) (cv : Int)
+    (r : MProd (Option (Option ProofResult)) PUnit) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    (checkAddUniversalStep lineNum cv r)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄ := by
+  intro s hcorr
+  have hget_formula :
+      (((fun x => x.formula) <$> (get : CheckM CheckState)) s) = .ok s.formula s := by
+    rfl
+  by_cases hneg : cv < 0
+  · by_cases hex_neg : s.formula.externalVarExists (-cv).toNat = true
+    · simp [checkAddUniversalStep, hneg, hex_neg, WP.wp, PredTrans.apply, EStateM.run,
+        Bind.bind, EStateM.bind, hget_formula]
+      exact hcorr
+    · simp [checkAddUniversalStep, hneg, hex_neg, WP.wp, PredTrans.apply, EStateM.run,
+        Bind.bind, EStateM.bind, hget_formula]
+      exact hcorr
+  ·
+    by_cases hex : s.formula.externalVarExists cv.toNat = true
+    · simp [checkAddUniversalStep, hneg, hex, WP.wp, PredTrans.apply, EStateM.run,
+        Bind.bind, EStateM.bind, hget_formula]
+      exact hcorr
+    · have hex_false : s.formula.externalVarExists cv.toNat = false := by
+        cases hval : s.formula.externalVarExists cv.toNat <;> simp_all
+      have hadd := addVarForall_correct_spec dqbf cs cv.toNat s ⟨hcorr, hex_false⟩
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hadd
+      cases hrun : addVarForall cv.toNat s with
+      | error e s' =>
+          rw [hrun] at hadd
+          exact hadd.elim
+      | ok v s' =>
+          rw [hrun] at hadd
+          rcases hadd with ⟨hcorr', _⟩
+          simpa [checkAddUniversalStep, hneg, hex_false, WP.wp, PredTrans.apply, EStateM.run,
+            Bind.bind, EStateM.bind, hget_formula, hrun] using hcorr'
+
+private theorem checkAddUniversalLoop_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat) (extVars : List Int) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    (forIn extVars (MProd.mk (none : Option (Option ProofResult)) PUnit.unit)
+      (checkAddUniversalStep lineNum) :
+      CheckM (MProd (Option (Option ProofResult)) PUnit))
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄ := by
+  refine (Spec.forIn_list_const_inv
+    (xs := extVars)
+    (init := MProd.mk (none : Option (Option ProofResult)) PUnit.unit)
+    (f := checkAddUniversalStep lineNum)
+    (inv := (⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝))
+    ?_)
+  intro cv r
+  exact Triple.entails_wp_of_post
+    (h := checkAddUniversalStep_correct_spec dqbf cs lineNum cv r)
+    (by
+      simp [PostCond.entails, SPred.entails, ExceptConds.entails]
+      intro a s hs
+      cases a <;> simpa using hs)
+
+@[spec]
+theorem checkAddUniversal_correct_spec (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extVars : List Int) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    checkAddUniversal lineNum extVars
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄ := by
+  intro s hcorr
+  simp only [WP.wp, PredTrans.apply, EStateM.run, checkAddUniversal, Bind.bind, EStateM.bind]
+  cases hloop_run :
+      (forIn extVars (MProd.mk (none : Option (Option ProofResult)) PUnit.unit)
+        (checkAddUniversalStep lineNum)) s with
+  | error e s' =>
+      have hloop := checkAddUniversalLoop_correct_spec dqbf cs lineNum extVars s hcorr
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hloop
+      rw [hloop_run] at hloop
+      exact hloop.elim
+  | ok r s' =>
+      have hloop := checkAddUniversalLoop_correct_spec dqbf cs lineNum extVars s hcorr
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hloop
+      rw [hloop_run] at hloop
+      cases hres : r.fst with
+      | none =>
+          have hreset := resetPropagationState_correct_spec dqbf cs s' hloop
+          simp only [WP.wp, PredTrans.apply, EStateM.run] at hreset
+          simp [WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind,
+            EStateM.pure]
+          simpa [hres] using hreset
+      | some res =>
+          simp [WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind,
+            EStateM.pure]
+          simpa [hres] using hloop
+
+@[spec]
+theorem checkDeleteClause_correct_spec (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extLits : List Int) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    checkDeleteClause lineNum extLits
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄ := by
+  intro s hcorr
+  have htrans := translateExistingLits_spec dqbf cs extLits s hcorr
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at htrans
+  cases hrunTrans : translateExistingLits extLits s with
+  | error e s' =>
+      rw [hrunTrans] at htrans
+      exact htrans.elim
+  | ok lits s₁ =>
+      rw [hrunTrans] at htrans
+      rcases htrans with ⟨hcorr₁, hlits⟩
+      have hget : (get : CheckM CheckState) = EStateM.get := rfl
+      simp only [WP.wp, PredTrans.apply, EStateM.run, checkDeleteClause, Bind.bind,
+        EStateM.bind, hrunTrans, hget]
+      cases hfind : s₁.clauses.findSortedClause (ClauseStore.sortLits lits) with
+      | none =>
+          simp [hfind, EStateM.get, EStateM.pure]
+          exact hcorr₁
+      | some cref =>
+          simp [hfind, EStateM.get, EStateM.pure, resetPropagationState_run]
+          exact CheckState.Correct.withDeleteClauseReset hcorr₁
 
 -- ─── Section 7: Overall Checker Soundness Stub (full checker, all rules) ────
 

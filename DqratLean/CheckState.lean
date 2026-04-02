@@ -442,11 +442,14 @@ def addDependency (of_ on_ : Var) : CheckM Unit := do
   if st.formula.isVarExistential on_ then return ()  -- C++ bug: no-op
   let deps := st.formula.depset.getD of_ #[]
   if deps.contains on_ then return ()  -- already there
-  let deps' := deps.push on_
   modify fun s => { s with
-    formula := { s.formula with depset := s.formula.depset.setIfInBounds of_ deps' }
+    formula := s.formula.addDependencyFormula of_ on_
   }
   makeIndepUnknown on_
+
+def addDependencyReset (of_ on_ : Var) : CheckM Unit := do
+  addDependency of_ on_
+  resetPropagationState
 
 -- Delete a dependency after checking via dep scheme
 -- Returns false (in Except) if deletion not allowed

@@ -251,22 +251,62 @@ inductive DQRatAction where
 
 -- ─── Individual action handlers ────────────────────────────────────────────
 
+def checkAddUniversalStep (lineNum : Nat) (cv : Int)
+    (r : MProd (Option (Option ProofResult)) PUnit) :
+    CheckM (ForInStep (MProd (Option (Option ProofResult)) PUnit)) := do
+  let _ := r.snd
+  if cv < 0 then
+    let extVar := (-cv).toNat
+    let f ← (·.formula) <$> get
+    if f.externalVarExists extVar then
+      pure (ForInStep.done
+        (MProd.mk (some (some (.Failed lineNum #["UADD"] #[cv] none))) PUnit.unit))
+    else do
+      pure PUnit.unit
+      pure (ForInStep.yield
+        (MProd.mk (none : Option (Option ProofResult)) PUnit.unit))
+  else
+    let extVar := cv.toNat
+    let f ← (·.formula) <$> get
+    if f.externalVarExists extVar then
+      pure (ForInStep.done
+        (MProd.mk (some (some (.Failed lineNum #["UADD"] #[cv] none))) PUnit.unit))
+    else do
+      let _ ← addVarForall extVar
+      pure PUnit.unit
+      pure (ForInStep.yield
+        (MProd.mk (none : Option (Option ProofResult)) PUnit.unit))
+
 def checkAddUniversal (lineNum : Nat) (extVars : List Int) : CheckM (Option ProofResult) := do
-  for cv in extVars do
-    if cv < 0 then
-      let extVar := (-cv).toNat
-      let f ← (·.formula) <$> get
-      if f.externalVarExists extVar then
-        return some (.Failed lineNum #["UADD"] #[cv] none)
-    else
-      let extVar := cv.toNat
-      let f ← (·.formula) <$> get
-      if f.externalVarExists extVar then
-        return some (.Failed lineNum #["UADD"] #[cv] none)
-      else
-        let _ ← addVarForall extVar
-  resetPropagationState
-  return none
+  let r ←
+    forIn extVars (MProd.mk (none : Option (Option ProofResult)) PUnit.unit)
+      (checkAddUniversalStep lineNum)
+  match r.fst with
+  | some res => return res
+  | none =>
+      resetPropagationState
+      return none
+
+/-- Translate already-existing external literals to internal literals.
+    Missing variables are skipped. -/
+def translateExistingLits (extLits : List Int) : CheckM (Array Literal) := do
+  let mut acc := #[]
+  for lit in extLits do
+    let f ← (·.formula) <$> get
+    match f.lookupInternal lit.natAbs with
+    | none    => pure ()
+    | some iv => acc := acc.push (mkLit iv (lit > 0))
+  pure acc
+
+def checkModifyExistentialAddStep (internalExi : Var) (cv : Int) : CheckM Unit := do
+  let extDep := cv.toNat
+  let f ← (·.formula) <$> get
+  let internalDep ←
+    if !f.externalVarExists extDep then addVarForall extDep
+    else match f.lookupInternal extDep with
+      | none   => throw s!"Dep var {extDep} not found"
+      | some v => pure v
+  addDependencyReset internalExi internalDep
 
 def checkModifyExistential (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
     CheckM (Option ProofResult) := do
@@ -289,24 +329,12 @@ def checkModifyExistential (lineNum : Nat) (extExi : Nat) (depChanges : List Int
           if !ok then
             return some (.Failed lineNum #["DPURE"] #[cv, Int.ofNat extExi] none)
     else
-      let extDep := cv.toNat
-      let f2 ← (·.formula) <$> get
-      let internalDep ←
-        if !f2.externalVarExists extDep then addVarForall extDep
-        else match f2.lookupInternal extDep with
-          | none   => throw s!"Dep var {extDep} not found"
-          | some v => pure v
-      addDependency internalExi internalDep
+      checkModifyExistentialAddStep internalExi cv
   resetPropagationState
   return none
 
 def checkDeleteClause (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofResult) := do
-  let lits ← extLits.foldlM (fun acc lit => do
-    let f ← (·.formula) <$> get
-    match f.lookupInternal lit.natAbs with
-    | none    => return acc
-    | some iv => return (acc.push (mkLit iv (lit > 0)))
-  ) #[]
+  let lits ← translateExistingLits extLits
   let st ← get
   match st.clauses.findSortedClause (ClauseStore.sortLits lits) with
   | none      => return some (.Failed lineNum #["LOCATE", "DEL"] #[] none)
@@ -344,17 +372,6 @@ def checkUniversalReduction (lineNum : Nat) (extLits : List Int) : CheckM (Optio
       let r ← addClause lits
       if r.isNone then return some (.Verified lineNum)
     return none
-
-/-- Translate already-existing external literals to internal literals.
-    Missing variables are skipped. -/
-def translateExistingLits (extLits : List Int) : CheckM (Array Literal) := do
-  let mut acc := #[]
-  for lit in extLits do
-    let f ← (·.formula) <$> get
-    match f.lookupInternal lit.natAbs with
-    | none    => pure ()
-    | some iv => acc := acc.push (mkLit iv (lit > 0))
-  pure acc
 
 /-- Translate RAT/RUP literals, creating fresh existential extension variables for
     missing external names using all current universal variables as the initial dep set. -/
