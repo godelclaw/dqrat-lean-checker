@@ -466,6 +466,14 @@ def delDependency (of_ on_ : Var) : CheckM Bool := do
   else
     return false
 
+def delDependencyReset (of_ on_ : Var) : CheckM Bool := do
+  let ok ← delDependency of_ on_
+  if ok then
+    resetPropagationState
+    return true
+  else
+    return false
+
 -- ─── Initial CheckState ────────────────────────────────────────────────────
 
 def CheckState.empty : CheckState :=

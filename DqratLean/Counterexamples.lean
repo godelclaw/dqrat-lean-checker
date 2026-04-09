@@ -27,7 +27,7 @@ def staleDeleteStore : ClauseStore := {
 
 def sigma0 : UnivAssignment := fun _ => false
 
-/-- Witness assignment used in the semantic counterexample:
+/-- Witness assignment used in the plain semantic witness:
     both existentials evaluate to `false`. -/
 def sk00 : SkolemAssignment := fun v _ =>
   if v = 1 then false else if v = 2 then false else false
@@ -42,8 +42,9 @@ theorem staleDelete_addedUnit_false :
     DQBF.clauseValue staleDeleteFormula sigma0 sk00 #[mkLit 1 true] = false := by
   native_decide
 
-/-- Semantic counterexample: after deleting `1`, the step re-adding `1`
-    is not forced by the remaining matrix. -/
+/-- Plain semantic witness: after deleting `1`, the remaining matrix is true
+    while the re-added unit clause `1` is false.
+    This is weaker than a formal failure of the full DQRAT criterion. -/
 theorem staleDelete_addedUnit_not_forced :
     ∃ σ sk,
       ClauseStore.matrixValue staleDeleteFormula staleDeleteStore σ sk = true ∧
@@ -61,8 +62,10 @@ def honestState : CheckState := {
   indepOf := #[]
 }
 
-/-- State left behind by the unfixed checker after deleting the unit clause `1`:
-    assignment arrays still remember `1 = true` at level 0. -/
+/-- Handcrafted stale state modeling the unfixed checker after deleting the unit
+    clause `1`: assignment arrays still remember `1 = true` at level 0.
+    This file proves behavior differences from this state, not reachability of
+    this state from the old executable. -/
 def staleState : CheckState := {
   formula := staleDeleteFormula
   clauses := staleDeleteStore
@@ -84,12 +87,12 @@ def fullRunUnknown (st : CheckState) : Bool :=
   | .ok .Unknown _ => true
   | _ => false
 
-/-- On an honest reset state, the bad clause is rejected. -/
+/-- On an honest reset state, the clause is rejected by `checkRatClause`. -/
 theorem staleDelete_honest_state_rejects :
     ratRejected honestState = true := by
   native_decide
 
-/-- On the stale state left by the unfixed checker, the same bad clause is not rejected. -/
+/-- On the handcrafted stale state, the same clause is not rejected. -/
 theorem staleDelete_stale_state_not_rejected :
     ratRejected staleState = false := by
   native_decide

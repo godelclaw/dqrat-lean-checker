@@ -94,6 +94,33 @@ def readDepsM (declaredMaxVar : Nat) (toks : Array String) (start : Nat) (acc : 
       return (⟨p', Nat.le_trans (Nat.le_succ _) hge⟩, acc')
 termination_by toks.size - start
 
+/-- Process one `d`-line in the prefix and return the next token position. -/
+def resolvePrefixDepVarM (declaredMaxVar extExi : Nat) : CheckM Var := do
+  ensureWithinMaxVar declaredMaxVar extExi
+  let f ← (·.formula) <$> get
+  if !f.externalVarExists extExi then
+    addVarExists extExi #[]
+  else
+    match f.lookupInternal extExi with
+    | none   => throw s!"Var {extExi} not found"
+    | some v => pure v
+
+/-- Process one `d`-line in the prefix and return the next token position. -/
+def readPrefixDepLineM (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) :
+    CheckM {p : Nat // pos < p} := do
+  match (toks.getD (pos + 1) "").toNat? with
+  | none => throw "Expected exi var in 'd' line"
+  | some extExi =>
+    let iv ← resolvePrefixDepVarM declaredMaxVar extExi
+    let (⟨pos', _hge⟩, deps) ← readDepsM declaredMaxVar toks (pos + 2) #[]
+    modify fun st =>
+      { st with formula :=
+        { st.formula with depset := st.formula.depset.setIfInBounds iv deps } }
+    for u in deps do makeIndepUnknown u
+    pure ⟨pos', by
+      have hlt : pos < pos + 2 := by omega
+      exact Nat.lt_of_lt_of_le hlt _hge⟩
+
 /-- Process DQDIMACS prefix lines until matrix start.
     Returns (first-matrix-token-pos, all-universals-seen). -/
 def readPrefixM (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) (univs : Array Var) :
@@ -108,22 +135,8 @@ def readPrefixM (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) (univs 
       let ⟨pos', _hge⟩ ← readExiVarsM declaredMaxVar toks univs (pos + 1)
       readPrefixM declaredMaxVar toks pos' univs
     else if tok = "d" then do
-      match (toks.getD (pos + 1) "").toNat? with
-      | none => throw "Expected exi var in 'd' line"
-      | some extExi =>
-        ensureWithinMaxVar declaredMaxVar extExi
-        let f ← (·.formula) <$> get
-        let iv ←
-          if !f.externalVarExists extExi then addVarExists extExi #[]
-          else match f.lookupInternal extExi with
-            | none   => throw s!"Var {extExi} not found"
-            | some v => pure v
-        let (⟨pos', _hge⟩, deps) ← readDepsM declaredMaxVar toks (pos + 2) #[]
-        modify fun st =>
-          { st with formula :=
-            { st.formula with depset := st.formula.depset.setIfInBounds iv deps } }
-        for u in deps do makeIndepUnknown u
-        readPrefixM declaredMaxVar toks pos' univs
+      let ⟨pos', _hgt⟩ ← readPrefixDepLineM declaredMaxVar toks pos
+      readPrefixM declaredMaxVar toks pos' univs
     else
       return (pos, univs)   -- start of matrix
 termination_by toks.size - pos
@@ -137,7 +150,7 @@ def readMatrixM (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) (curLit
     match tok.toInt? with
       | none   => readMatrixM declaredMaxVar toks (pos + 1) curLits
       | some 0 =>
-        let sorted := curLits.qsort (fun a b => a.x < b.x)
+        let sorted := ClauseStore.sortLits curLits
         let isTauto :=
           (List.range (if sorted.size > 0 then sorted.size - 1 else 0)).any fun i =>
             sorted.getD i ⟨0⟩ == (sorted.getD (i + 1) ⟨0⟩).negate
@@ -161,7 +174,7 @@ termination_by toks.size - pos
     comments are line comments, prefix lines are 0-terminated, and matrix clauses
     are line-delimited. The declared clause count is parsed but treated as advisory,
     matching the legacy checker and existing corpus. -/
-private def validateDQDIMACSStructure (content : String) : Except String (Nat × Nat) := do
+def validateDQDIMACSStructure (content : String) : Except String (Nat × Nat) := do
   let expectNat (lineNum : Nat) (ctx : String) (tok : String) : Except String Nat :=
     match tok.toNat? with
     | some n => pure n
@@ -249,9 +262,20 @@ private def validateDQDIMACSStructure (content : String) : Except String (Nat ×
 
 /-- Parse formula file. Returns None if formula UNSAT by UP (= already verified),
     or Some state if proof is needed. -/
-def parseDQDIMACS (content : String) : Except String (Option CheckState) := do
-  let _ ← validateDQDIMACSStructure content
-  let allToks := tokenize (stripCommentLines content)
+def parseDQDIMACSInner (declaredMaxVar : Nat) (allToks : Array String) : CheckM Bool := do
+  let (matrixStart, _) ← readPrefixM declaredMaxVar allToks 4 #[]
+  readMatrixM declaredMaxVar allToks matrixStart #[]
+
+/-- Finish token parsing once the header has already supplied `declaredMaxVar`. -/
+def parseDQDIMACSTokensAfterHeader (declaredMaxVar : Nat) (allToks : Array String) :
+    Except String (Option CheckState) :=
+  match (parseDQDIMACSInner declaredMaxVar allToks).run CheckState.empty with
+  | .error e _   => .error e
+  | .ok true _   => .ok none
+  | .ok false st => .ok (some st)
+
+/-- Parse an already tokenized DQDIMACS formula file after line-structure validation. -/
+def parseDQDIMACSTokens (allToks : Array String) : Except String (Option CheckState) := do
   if allToks.getD 0 "" != "p" || allToks.getD 1 "" != "cnf" then
     throw "Expected 'p cnf <maxVar> <numClauses>'"
   let declaredMaxVar ←
@@ -262,13 +286,13 @@ def parseDQDIMACS (content : String) : Except String (Option CheckState) := do
     match (allToks.getD 3 "").toNat? with
     | some n => pure n
     | none => throw "Expected numeric <numClauses> in header"
-  let innerOp : CheckM Bool := do
-    let (matrixStart, _) ← readPrefixM declaredMaxVar allToks 4 #[]
-    readMatrixM declaredMaxVar allToks matrixStart #[]
-  match innerOp.run CheckState.empty with
-  | .error e _   => throw e
-  | .ok true _   => return none
-  | .ok false st => return some st
+  parseDQDIMACSTokensAfterHeader declaredMaxVar allToks
+
+/-- Parse formula file. Returns None if formula UNSAT by UP (= already verified),
+    or Some state if proof is needed. -/
+def parseDQDIMACS (content : String) : Except String (Option CheckState) := do
+  let _ ← validateDQDIMACSStructure content
+  parseDQDIMACSTokens (tokenize (stripCommentLines content))
 
 -- ─── Proof action parser ───────────────────────────────────────────────────
 
@@ -373,5 +397,15 @@ def processProof (st : CheckState) (content : String) : ProofResult :=
   | .error e => .Failed 0 #[s!"PARSE: {e}"] #[] none
   | .ok actions =>
       match (checkActions actions).run st with
+      | .error e _ => .Failed 0 #[e] #[] none
+      | .ok r _    => r
+
+/-- Restricted scaffold runner: full parsing, but only the no-negative-`e`
+    action subset is accepted. Unsupported negative dependency changes throw. -/
+def processProofNoNegE (st : CheckState) (content : String) : ProofResult :=
+  match parseProofActionsStrict content with
+  | .error e => .Failed 0 #[s!"PARSE: {e}"] #[] none
+  | .ok actions =>
+      match (checkActionsNoNegE actions).run st with
       | .error e _ => .Failed 0 #[e] #[] none
       | .ok r _    => r

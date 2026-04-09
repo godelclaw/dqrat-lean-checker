@@ -66,6 +66,39 @@ def addClause (lits : Array Literal) : CheckM (Option CRef) := do
 
 -- ─── DQRATE check ─────────────────────────────────────────────────────────
 
+def runDQRATEBlockerTrial (pivot : Literal) (f : DQBF)
+    (blockerLits : Array Literal) : CheckM Bool := do
+  let isouter : Literal → Bool := fun l =>
+    l ≠ pivot.negate && f.isVarOuterOfExivar l.var pivot.var
+  let gotConflict ← negateAndPropagate blockerLits isouter
+  backtrackBefore 2
+  return gotConflict
+
+def checkDQRATEBlockerStep (pivot : Literal)
+    (acc : Option CRef) (cref : CRef) : CheckM (Option CRef) := do
+  match acc with
+  | some _ => return acc
+  | none =>
+      let st ← get
+      match st.clauses.getClauseRaw cref with
+      | none => return none
+      | some clause =>
+          if clause.deleted then return none
+          let gotConflict ← runDQRATEBlockerTrial pivot st.formula clause.lits
+          if gotConflict then
+            return none
+          else
+            return some cref
+
+def runDQRATEPivotPhase (pivot : Literal) : CheckM (Bool × Option CRef) := do
+  let st ← get
+  let occPivot := st.clauses.getOcc pivot.negate
+  let blocker ← occPivot.foldlM (checkDQRATEBlockerStep pivot) none
+  backtrackBefore 1
+  match blocker with
+  | some c => return (false, some c)
+  | none => return (true, none)
+
 -- Full DQRATE check: try RUP first, then RAT with pivot lits[0].
 -- Returns (success, blocker_cref_if_rat_failed)
 def checkDQRATE (lits : Array Literal) : CheckM (Bool × Option CRef) := do
@@ -85,40 +118,7 @@ def checkDQRATE (lits : Array Literal) : CheckM (Bool × Option CRef) := do
   if !st.formula.isVarExistential pivot.var then
     backtrackBefore 1
     return (false, none)
-
-  let negPivot := pivot.negate
-  let occPivot := st.clauses.getOcc negPivot
-
-  -- For each clause containing ~pivot, check that negating outer lits gives conflict
-  let blocker ← occPivot.foldlM (fun acc cref => do
-    match acc with
-    | some _ => return acc  -- already found a blocker
-    | none =>
-      let st ← get
-      match st.clauses.getClauseRaw cref with
-      | none => return none
-      | some clause =>
-        if clause.deleted then return none
-        -- Negate outer lits of clause (outer w.r.t. exivar pivot.var)
-        -- outer lit l ≠ ~pivot and isVarOuterOfExivar(var(l), var(pivot))
-        let f := st.formula
-        let isouter : Literal → Bool := fun l =>
-          l ≠ negPivot && f.isVarOuterOfExivar l.var pivot.var
-        -- Opens decision level 2
-        let gotConflict ← negateAndPropagate clause.lits isouter
-        if gotConflict then
-          backtrackBefore 2  -- keep level 1, remove level 2
-          return none
-        else
-          backtrackBefore 2
-          return some cref  -- RAT fails on this clause
-  ) none
-
-  backtrackBefore 1
-
-  match blocker with
-  | some c => return (false, some c)
-  | none   => return (true, none)
+  runDQRATEPivotPhase pivot
 
 -- ─── D^∀-pure path reachability to a target clause ───────────────────────
 
@@ -186,6 +186,26 @@ def checkPathC (st : CheckState) (l : Literal) (lits : Array Literal) (target : 
 -- DQRATU check: pivot must be universal; try RUP-without-pivot then RAT.
 -- Only checks blocker clauses that are connected to the proof clause via
 -- a D^∀-pure path (checkPathC), or that are the proof clause itself.
+def runDQRATUBlockerTrial (pivot : Literal) (f : DQBF)
+    (blockerLits : Array Literal) : CheckM Bool := do
+  let isouter : Literal → Bool := fun l =>
+    l ≠ pivot.negate && DQBF.isVarOuterOfUnivar f l.var pivot.var
+  let gotConflict ← negateAndPropagate blockerLits isouter
+  backtrackBefore 2
+  return gotConflict
+
+def checkDQRATUBlockerStep (pivot : Literal) (lits : Array Literal)
+    (crefOfLits : Option CRef) (allOk : Bool) (cref : CRef) : CheckM Bool := do
+  if !allOk then return false
+  let st ← get
+  match st.clauses.getClauseRaw cref with
+  | none => return true
+  | some clause =>
+    if clause.deleted then return true
+    let connected := checkPathC st pivot lits cref || crefOfLits = some cref
+    if !connected then return true
+    runDQRATUBlockerTrial pivot st.formula clause.lits
+
 def checkDQRATU (lits : Array Literal) (pivot : Literal) : CheckM Bool := do
   -- ── RUP without pivot (opens decision level 1) ──
   let isRup ← negateAndPropagate lits (fun l => l ≠ pivot)
@@ -201,23 +221,7 @@ def checkDQRATU (lits : Array Literal) (pivot : Literal) : CheckM Bool := do
   let sortedLits := ClauseStore.sortLits lits
   let crefOfLits := st.clauses.findSortedClause sortedLits
 
-  let isRat ← occPivot.foldlM (fun allOk cref => do
-    if !allOk then return false
-    let st ← get
-    match st.clauses.getClauseRaw cref with
-    | none => return true
-    | some clause =>
-      if clause.deleted then return true
-      -- Skip disconnected blocker clauses (Mixed-EUR: EUR check)
-      let connected := checkPathC st pivot lits cref || crefOfLits = some cref
-      if !connected then return true
-      let f := st.formula
-      let isouter : Literal → Bool := fun l =>
-        l ≠ negPivot && f.isVarOuterOfUnivar l.var pivot.var
-      let gotConflict ← negateAndPropagate clause.lits isouter
-      backtrackBefore 2
-      return gotConflict
-  ) true
+  let isRat ← occPivot.foldlM (checkDQRATUBlockerStep pivot lits crefOfLits) true
 
   backtrackBefore 1
   return isRat
@@ -308,6 +312,21 @@ def checkModifyExistentialAddStep (internalExi : Var) (cv : Int) : CheckM Unit :
       | some v => pure v
   addDependencyReset internalExi internalDep
 
+def checkModifyExistentialDelStep
+    (lineNum : Nat) (extExi : Nat) (internalExi : Var) (cv : Int) :
+    CheckM (Option ProofResult) := do
+  let extDep := (-cv).toNat
+  let f ← (·.formula) <$> get
+  if !f.externalVarExists extDep then
+    return none
+  match f.lookupInternal extDep with
+  | none => pure none
+  | some internalDep =>
+      let ok ← delDependencyReset internalExi internalDep
+      if !ok then
+        return some (.Failed lineNum #["DPURE"] #[cv, Int.ofNat extExi] none)
+      return none
+
 def checkModifyExistential (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
     CheckM (Option ProofResult) := do
   if extExi = 0 then return some (.Failed lineNum #["UADD"] #[] none)
@@ -319,19 +338,45 @@ def checkModifyExistential (lineNum : Nat) (extExi : Nat) (depChanges : List Int
       | some v => pure v
   for cv in depChanges do
     if cv < 0 then
-      let extDep := (-cv).toNat
-      let f2 ← (·.formula) <$> get
-      if f2.externalVarExists extDep then
-        match f2.lookupInternal extDep with
-        | none => pure ()
-        | some internalDep =>
-          let ok ← delDependency internalExi internalDep
-          if !ok then
-            return some (.Failed lineNum #["DPURE"] #[cv, Int.ofNat extExi] none)
+      match (← checkModifyExistentialDelStep lineNum extExi internalExi cv) with
+      | some res => return some res
+      | none => pure ()
     else
       checkModifyExistentialAddStep internalExi cv
   resetPropagationState
   return none
+
+/-- Positive-only existential modification core: create the existential if needed,
+    add nonnegative dependency changes, then return to the action boundary. -/
+def checkModifyExistentialAddOnlyCore (extExi : Nat) (depChanges : List Int) :
+    CheckM (Option ProofResult) := do
+  let internalExi ←
+    (do
+      let f ← (·.formula) <$> get
+      if !f.externalVarExists extExi then
+        addVarExists extExi #[]
+      else
+        match f.lookupInternal extExi with
+        | none => throw s!"Var {extExi} not found"
+        | some v => pure v)
+  let _ ←
+    (forIn depChanges PUnit.unit (fun cv _ => do
+      if cv < 0 then
+        pure (ForInStep.yield PUnit.unit)
+      else
+        let _ ← checkModifyExistentialAddStep internalExi cv
+        pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+  resetPropagationState
+  pure none
+
+/-- Restricted existential modification: negative dependency changes are unsupported. -/
+def checkModifyExistentialAddOnly (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
+    CheckM (Option ProofResult) := do
+  if extExi = 0 then
+    return some (.Failed lineNum #["UADD"] #[] none)
+  if depChanges.any (· < 0) then
+    throw s!"line {lineNum}: dependency deletion is not supported in no-negative-e mode"
+  checkModifyExistentialAddOnlyCore extExi depChanges
 
 def checkDeleteClause (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofResult) := do
   let lits ← translateExistingLits extLits
@@ -343,13 +388,25 @@ def checkDeleteClause (lineNum : Nat) (extLits : List Int) : CheckM (Option Proo
     resetPropagationState
     return none
 
-def checkUniversalReduction (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofResult) := do
-  let lits ← extLits.foldlM (fun acc lit => do
-    let f ← (·.formula) <$> get
-    match f.lookupInternal lit.natAbs with
-    | none    => return acc
-    | some iv => return (acc.push (mkLit iv (lit > 0)))
-  ) #[]
+def checkUniversalReductionLocated
+    (lineNum : Nat) (lits : Array Literal) (pivot : Literal) :
+    CheckM (Option ProofResult) := do
+  let f2 ← (·.formula) <$> get
+  -- Not reducible if clause contains ~pivot (Mixed-EUR: no tautology reductions)
+  let pivotReducible := !lits.any (· = pivot.negate) && lits.all fun l =>
+    !f2.isVarExistential l.var || !f2.isVarOuterOfExivar pivot.var l.var
+  if pivotReducible then
+    let r ← addClause (lits.filter (· ≠ pivot))
+    if r.isNone then return some (.Verified lineNum)
+  else
+    let ok ← checkDQRATU lits pivot
+    if !ok then return some (.Failed lineNum #["UR", "DQRATU"] #[] none)
+    let r ← addClause lits
+    if r.isNone then return some (.Verified lineNum)
+  return none
+
+def checkUniversalReductionTranslated
+    (lineNum : Nat) (lits : Array Literal) : CheckM (Option ProofResult) := do
   if lits.isEmpty then return some (.Failed lineNum #["UR"] #[] none)
   let pivot := lits.getD 0 ⟨0⟩
   let f ← (·.formula) <$> get
@@ -358,20 +415,11 @@ def checkUniversalReduction (lineNum : Nat) (extLits : List Int) : CheckM (Optio
   let st ← get
   match st.clauses.findSortedClause (ClauseStore.sortLits lits) with
   | none   => return some (.Failed lineNum #["LOCATE", "UR"] #[] none)
-  | some _ =>
-    let f2 ← (·.formula) <$> get
-    -- Not reducible if clause contains ~pivot (Mixed-EUR: no tautology reductions)
-    let pivotReducible := !lits.any (· = pivot.negate) && lits.all fun l =>
-      !f2.isVarExistential l.var || !f2.isVarOuterOfExivar pivot.var l.var
-    if pivotReducible then
-      let r ← addClause (lits.filter (· ≠ pivot))
-      if r.isNone then return some (.Verified lineNum)
-    else
-      let ok ← checkDQRATU lits pivot
-      if !ok then return some (.Failed lineNum #["UR", "DQRATU"] #[] none)
-      let r ← addClause lits
-      if r.isNone then return some (.Verified lineNum)
-    return none
+  | some _ => checkUniversalReductionLocated lineNum lits pivot
+
+def checkUniversalReduction (lineNum : Nat) (extLits : List Int) : CheckM (Option ProofResult) := do
+  let lits ← translateExistingLits extLits
+  checkUniversalReductionTranslated lineNum lits
 
 /-- Translate RAT/RUP literals, creating fresh existential extension variables for
     missing external names using all current universal variables as the initial dep set. -/
@@ -463,13 +511,25 @@ def checkActionBasic (action : DQRatAction) : CheckM (Option ProofResult) :=
   | .UniversalReduction lineNum extLits  => checkUniversalReductionBasic lineNum extLits
   | .RatClause         lineNum extLits   => checkRatClauseBasic lineNum extLits
 
+/-- Restricted scaffold checker: supports `a`, `d`, full `u`, and positive-only `e`,
+    while keeping clause-addition on the already-proved RUP-only path. -/
+def checkActionNoNegE (action : DQRatAction) : CheckM (Option ProofResult) :=
+  match action with
+  | .AddUniversal       lineNum extVars    => checkAddUniversal lineNum extVars
+  | .ModifyExistential  lineNum extExi ds  => checkModifyExistentialAddOnly lineNum extExi ds
+  | .DeleteClause       lineNum extLits    => checkDeleteClause lineNum extLits
+  | .UniversalReduction lineNum extLits    => checkUniversalReduction lineNum extLits
+  | .RatClause          lineNum extLits    => checkRatClauseBasic lineNum extLits
+
 -- ─── Action list checkers ──────────────────────────────────────────────────
 
 /-- Check a list of proof actions (full DQRAT), returning the first decisive result or `Unknown`. -/
-def checkActions (actions : List DQRatAction) : CheckM ProofResult := do
-  for action in actions do
-    if let some r ← checkAction action then return r
-  return .Unknown
+def checkActions : List DQRatAction → CheckM ProofResult
+  | [] => pure .Unknown
+  | action :: actions => do
+      if let some r ← checkAction action then
+        return r
+      checkActions actions
 
 /-- Check a list of proof actions (UR and RUP only; no DQRATE),
     returning the first decisive result or `Unknown`. -/
@@ -479,3 +539,11 @@ def checkActionsBasic : List DQRatAction → CheckM ProofResult
       if let some r ← checkActionBasic action then
         return r
       checkActionsBasic actions
+
+/-- Check a list of proof actions in the no-negative-`e` scaffold mode. -/
+def checkActionsNoNegE : List DQRatAction → CheckM ProofResult
+  | [] => pure .Unknown
+  | action :: actions => do
+      if let some r ← checkActionNoNegE action then
+        return r
+      checkActionsNoNegE actions

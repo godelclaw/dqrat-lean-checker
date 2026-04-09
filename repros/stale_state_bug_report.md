@@ -1,6 +1,7 @@
 # Stale Delete-State Repros
 
-These two proofs exercise the stale propagation-state bug after clause deletion.
+These two proofs exhibit a stale-state sensitivity after clause deletion.
+They do not by themselves prove a top-level DQRAT unsoundness bug.
 
 ## Repro 1: positive unit deleted, then re-added
 
@@ -10,7 +11,9 @@ Files:
 
 Formula after deletion: `(-1 v 2)`.
 
-The later proof step `1 0` is invalid, since `1 = false, 2 = false` satisfies the remaining formula.
+Plain semantic witness:
+`1 = false, 2 = false` satisfies the remaining formula while falsifying the
+re-added unit clause `1`.
 
 Observed behavior:
 - fixed Lean checker: `s FAILED`
@@ -25,11 +28,22 @@ Files:
 
 Formula after deletion: `(1 v 2)`.
 
-The later proof step `-1 0` is invalid, since `1 = true, 2 = false` satisfies the remaining formula.
+Plain semantic witness:
+`1 = true, 2 = false` satisfies the remaining formula while falsifying the
+re-added unit clause `-1`.
 
 Observed behavior:
 - fixed Lean checker: `s FAILED`
 - old Lean checker: `s UNKNOWN`
 - C checker: `s UNKNOWN`
 
-In both cases, `UNKNOWN` is already wrong: the bad lemma should be rejected at the step where it is checked.
+What is established:
+- the post-delete formula does not propositionally force the re-added unit
+  clause
+- the fixed Lean checker returns `FAILED`
+- the old Lean checker and the C checker return `UNKNOWN`
+
+What is not yet established:
+- a formal proof that the re-added clause fails the full DQRAT/DQRATU criterion
+- a formal top-level unsoundness theorem of the form `VERIFIED` on a satisfiable
+  input
