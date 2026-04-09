@@ -5377,6 +5377,103 @@ theorem ClauseLitsWellFormed.dqrateResolvent
     (ClauseLitsWellFormed.filter hlits)
     (ClauseLitsWellFormed.outerClause hblocker)
 
+/-- Two universal assignments agree on the dependency set of `pivot`. -/
+private def AgreeOnPivotDeps (f : DQBF) (pivot : Literal)
+    (σ₁ σ₂ : UnivAssignment) : Prop :=
+  ∀ u ∈ f.depset.getD pivot.var #[], σ₁ u = σ₂ u
+
+private theorem exiValue_eq_of_dep_agree
+    (f : DQBF) (pivot : Literal) (σ₁ σ₂ : UnivAssignment) (sk : SkolemAssignment)
+    {v : Var}
+    (hsub : ∀ u ∈ f.depset.getD v #[], u ∈ f.depset.getD pivot.var #[])
+    (hagree : AgreeOnPivotDeps f pivot σ₁ σ₂) :
+    f.exiValue σ₁ sk v = f.exiValue σ₂ sk v := by
+  simp only [DQBF.exiValue]
+  congr 1
+  apply Array.ext (by simp [Array.size_map])
+  intro i hi₁ _
+  simp only [Array.getElem_map]
+  have hi : i < (f.depset.getD v #[]).size := by
+    simpa [Array.size_map] using hi₁
+  have hmem : (f.depset.getD v #[])[i] ∈ f.depset.getD v #[] :=
+    Array.getElem_mem hi
+  exact hagree _ (hsub _ hmem)
+
+private theorem litValue_eq_of_outer_dep_agree
+    (f : DQBF) (pivot l : Literal) (σ₁ σ₂ : UnivAssignment) (sk : SkolemAssignment)
+    (houter : f.isVarOuterOfExivar l.var pivot.var = true)
+    (hagree : AgreeOnPivotDeps f pivot σ₁ σ₂) :
+    f.litValue σ₁ sk l = f.litValue σ₂ sk l := by
+  by_cases hex : f.isVarExistential l.var
+  · have hsubset :
+        ∀ u ∈ f.depset.getD l.var #[],
+          u ∈ f.depset.getD pivot.var #[] := by
+        intro u hu
+        have hall :
+            (f.depset.getD l.var #[]).all
+              (fun u => (f.depset.getD pivot.var #[]).contains u) = true := by
+          simpa [DQBF.isVarOuterOfExivar, hex] using houter
+        rcases Array.mem_iff_getElem.mp hu with ⟨i, hi, rfl⟩
+        exact (Array.contains_iff_mem).mp ((Array.all_eq_true.mp hall) i hi)
+    simp [DQBF.litValue, DQBF.varValue, hex,
+      exiValue_eq_of_dep_agree f pivot σ₁ σ₂ sk hsubset hagree]
+  · have hmem :
+        l.var ∈ f.depset.getD pivot.var #[] := by
+        have hcontains :
+            (f.depset.getD pivot.var #[]).contains l.var = true := by
+          simpa [DQBF.isVarOuterOfExivar, hex] using houter
+        exact (Array.contains_iff_mem).mp hcontains
+    have hσ : σ₁ l.var = σ₂ l.var := hagree l.var hmem
+    simp [DQBF.litValue, DQBF.varValue, hex, hσ]
+
+private theorem clauseValue_outerClause_eq_of_dep_agree
+    (f : DQBF) (pivot : Literal) (blockerLits : Array Literal)
+    (σ₁ σ₂ : UnivAssignment) (sk : SkolemAssignment)
+    (hagree : AgreeOnPivotDeps f pivot σ₁ σ₂) :
+    f.clauseValue σ₁ sk (outerClause f blockerLits pivot) =
+      f.clauseValue σ₂ sk (outerClause f blockerLits pivot) := by
+  have hiff :
+      f.clauseValue σ₁ sk (outerClause f blockerLits pivot) = true ↔
+        f.clauseValue σ₂ sk (outerClause f blockerLits pivot) = true := by
+    constructor
+    · intro htrue
+      simp only [DQBF.clauseValue, Array.any_eq_true] at htrue ⊢
+      rcases htrue with ⟨i, hi, hval⟩
+      refine ⟨i, hi, ?_⟩
+      have hfilter_mem :
+          (outerClause f blockerLits pivot)[i] ∈ outerClause f blockerLits pivot :=
+        Array.getElem_mem hi
+      have hpred :
+          (outerClause f blockerLits pivot)[i] ≠ pivot.negate ∧
+            f.isVarOuterOfExivar ((outerClause f blockerLits pivot)[i]).var pivot.var = true := by
+        simpa using (Array.mem_filter.mp hfilter_mem).2
+      have houter :
+          f.isVarOuterOfExivar ((outerClause f blockerLits pivot)[i]).var pivot.var = true := by
+        exact hpred.2
+      rw [litValue_eq_of_outer_dep_agree f pivot _ σ₁ σ₂ sk houter hagree] at hval
+      exact hval
+    · intro htrue
+      simp only [DQBF.clauseValue, Array.any_eq_true] at htrue ⊢
+      rcases htrue with ⟨i, hi, hval⟩
+      refine ⟨i, hi, ?_⟩
+      have hfilter_mem :
+          (outerClause f blockerLits pivot)[i] ∈ outerClause f blockerLits pivot :=
+        Array.getElem_mem hi
+      have hpred :
+          (outerClause f blockerLits pivot)[i] ≠ pivot.negate ∧
+            f.isVarOuterOfExivar ((outerClause f blockerLits pivot)[i]).var pivot.var = true := by
+        simpa using (Array.mem_filter.mp hfilter_mem).2
+      have houter :
+          f.isVarOuterOfExivar ((outerClause f blockerLits pivot)[i]).var pivot.var = true := by
+        exact hpred.2
+      rw [litValue_eq_of_outer_dep_agree f pivot _ σ₂ σ₁ sk houter (by
+        intro u hu
+        exact (hagree u hu).symm)] at hval
+      exact hval
+  cases h₁ : f.clauseValue σ₁ sk (outerClause f blockerLits pivot) <;>
+    cases h₂ : f.clauseValue σ₂ sk (outerClause f blockerLits pivot) <;>
+      simp [h₁, h₂] at hiff ⊢
+
 /-- Executable-aligned existential RAT condition:
     the pivot is existential and every non-deleted blocker clause selected by the
     checker yields a semantically implied resolvent clause. -/
@@ -5388,6 +5485,466 @@ def DQRATE_exec_Condition (f : DQBF) (cs : ClauseStore)
     c.deleted = false →
     pivot.negate ∈ c.lits.toList →
     IsSemanticConsequence f cs (dqrateResolvent f lits c.lits pivot)
+
+private theorem outerClause_true_of_exec_condition
+    (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot : Literal)
+    (cref : CRef) (c : Clause)
+    (hcond : DQRATE_exec_Condition f cs lits pivot)
+    (hget : cs.getClauseRaw cref = some c)
+    (hdeleted : c.deleted = false)
+    (hblocker : pivot.negate ∈ c.lits.toList)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment)
+    (hagree : AgreeOnPivotDeps f pivot σ₀ σ)
+    (hmat₀ : cs.matrixValue f σ₀ sk = true)
+    (hreduced_false : f.clauseValue σ₀ sk (lits.filter (· ≠ pivot)) = false) :
+    f.clauseValue σ sk (outerClause f c.lits pivot) = true := by
+  have hres := hcond.2 cref c hget hdeleted hblocker sk σ₀ hmat₀
+  have houter₀ : f.clauseValue σ₀ sk (outerClause f c.lits pivot) = true := by
+    have hreduced_false' :
+        (lits.filter (· ≠ pivot)).any (f.litValue σ₀ sk) = false := by
+      simpa [DQBF.clauseValue] using hreduced_false
+    rw [dqrateResolvent, DQBF.clauseValue, Array.any_append, hreduced_false', Bool.false_or] at hres
+    exact hres
+  have hsame :=
+    clauseValue_outerClause_eq_of_dep_agree f pivot c.lits σ₀ σ sk hagree
+  rw [← hsame]
+  exact houter₀
+
+/-- The dependency-value vector fed to the pivot Skolem function under `σ`. -/
+private def pivotDepsArgs
+    (f : DQBF) (pivot : Literal) (σ : UnivAssignment) : Array Bool :=
+  (f.depset.getD pivot.var #[]).map σ
+
+/-- Patch the pivot Skolem function at one dependency pattern, leaving all other
+    variables and patterns unchanged. This is the semantic update used in the
+    existential RAT argument. -/
+private def patchPivotSkolem
+    (f : DQBF) (pivot : Literal) (σ₀ : UnivAssignment) (b : Bool)
+    (sk : SkolemAssignment) : SkolemAssignment :=
+  fun v args =>
+    if v = pivot.var ∧ args = pivotDepsArgs f pivot σ₀ then
+      b
+    else
+      sk v args
+
+private theorem pivotDepsArgs_eq_of_dep_agree
+    (f : DQBF) (pivot : Literal) (σ₀ σ : UnivAssignment)
+    (hagree : AgreeOnPivotDeps f pivot σ₀ σ) :
+    pivotDepsArgs f pivot σ = pivotDepsArgs f pivot σ₀ := by
+  unfold pivotDepsArgs
+  apply Array.ext (by simp [Array.size_map])
+  intro i hi _
+  simp only [Array.getElem_map]
+  have hi' : i < (f.depset.getD pivot.var #[]).size := by
+    simpa [Array.size_map] using hi
+  have hmem : (f.depset.getD pivot.var #[])[i] ∈ f.depset.getD pivot.var #[] :=
+    Array.getElem_mem hi'
+  exact hagree _ hmem |>.symm
+
+private theorem agreeOnPivotDeps_of_pivotDepsArgs_eq
+    (f : DQBF) (pivot : Literal) (σ₁ σ₂ : UnivAssignment)
+    (heq : pivotDepsArgs f pivot σ₁ = pivotDepsArgs f pivot σ₂) :
+    AgreeOnPivotDeps f pivot σ₁ σ₂ := by
+  intro u hu
+  rcases Array.mem_iff_getElem.mp hu with ⟨i, hi, rfl⟩
+  have hi₁ : i < (pivotDepsArgs f pivot σ₁).size := by
+    simpa [pivotDepsArgs] using hi
+  have hget :
+      (pivotDepsArgs f pivot σ₁)[i] =
+        (pivotDepsArgs f pivot σ₂)[i]'(heq ▸ hi₁) :=
+    getElem_congr heq rfl hi₁
+  simp only [pivotDepsArgs, Array.getElem_map, hi] at hget
+  exact hget
+
+private theorem getClauseRaw_deleted_of_getClause
+    {cs : ClauseStore} {cref : CRef} {c : Clause}
+    (hget : cs.getClause cref = some c) :
+    cs.getClauseRaw cref = some c ∧ c.deleted = false := by
+  have hne : cref ≠ CRef_Undef :=
+    ClauseStore.getClause_some_imp_ne_undef cs cref c hget
+  unfold ClauseStore.getClause at hget
+  cases hraw : cs.getClauseAt cref with
+  | none =>
+      simp [ClauseStore.getClauseRaw, hne, hraw] at hget
+  | some c' =>
+      have hget' : c'.deleted = false ∧ c' = c := by
+        simpa [ClauseStore.getClauseRaw, hne, hraw] using hget
+      rcases hget' with ⟨hdeleted, hc⟩
+      cases hc
+      simp [ClauseStore.getClauseRaw, hne, hraw, hdeleted]
+
+private theorem varValue_patchPivot_eq_of_ne
+    (f : DQBF) (pivot : Literal) (σ₀ σ : UnivAssignment) (b : Bool)
+    (sk : SkolemAssignment) {v : Var}
+    (hneq : v ≠ pivot.var) :
+    f.varValue σ (patchPivotSkolem f pivot σ₀ b sk) v =
+      f.varValue σ sk v := by
+  cases hex : f.isVarExistential v <;>
+    simp [DQBF.varValue, hex, DQBF.exiValue, patchPivotSkolem, hneq]
+
+private theorem litValue_patchPivot_eq_of_ne_var
+    (f : DQBF) (pivot : Literal) (σ₀ σ : UnivAssignment) (b : Bool)
+    (sk : SkolemAssignment) (l : Literal)
+    (hneq : l.var ≠ pivot.var) :
+    f.litValue σ (patchPivotSkolem f pivot σ₀ b sk) l =
+      f.litValue σ sk l := by
+  simp [DQBF.litValue, varValue_patchPivot_eq_of_ne f pivot σ₀ σ b sk hneq]
+
+private theorem pivot_litValue_patch_true_of_dep_agree
+    (f : DQBF) (pivot : Literal) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential pivot.var = true)
+    (hagree : AgreeOnPivotDeps f pivot σ₀ σ) :
+    f.litValue σ (patchPivotSkolem f pivot σ₀ pivot.isPos sk) pivot = true := by
+  have hargs :
+      pivotDepsArgs f pivot σ = pivotDepsArgs f pivot σ₀ :=
+    pivotDepsArgs_eq_of_dep_agree f pivot σ₀ σ hagree
+  have hpatched :
+      patchPivotSkolem f pivot σ₀ pivot.isPos sk pivot.var
+          ((f.depset.getD pivot.var #[]).map σ) = pivot.isPos := by
+    unfold patchPivotSkolem
+    by_cases hc :
+        pivot.var = pivot.var ∧
+          Array.map σ (f.depset.getD pivot.var #[]) = pivotDepsArgs f pivot σ₀
+    · rw [if_pos hc]
+    · exfalso
+      exact hc ⟨rfl, by simpa [pivotDepsArgs] using hargs⟩
+  rw [DQBF.litValue, DQBF.varValue, hexi, DQBF.exiValue, hpatched]
+  cases h : pivot.isPos <;> simp [h]
+
+/-- A pivot dependency pattern is "bad" for `lits` if the reduced clause
+    `lits \\ {pivot}` is false there under the original Skolem assignment. -/
+private def BadReducedPattern
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (sk : SkolemAssignment) (args : Array Bool) : Prop :=
+  ∃ σ : UnivAssignment,
+    pivotDepsArgs f pivot σ = args ∧
+      f.clauseValue σ sk (lits.filter (· ≠ pivot)) = false
+
+/-- Global pivot patch used for the existential RAT semantic argument:
+    whenever the reduced clause is false on some pivot-dependency pattern, force the
+    pivot literal to its satisfying Boolean on that whole pattern. -/
+private noncomputable def patchPivotSkolemForClause
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (sk : SkolemAssignment) : SkolemAssignment := by
+  classical
+  exact fun v args =>
+    if v = pivot.var ∧ BadReducedPattern f lits pivot sk args then
+      pivot.isPos
+    else
+      sk v args
+
+private theorem patchPivotSkolemForClause_apply_of_active
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (sk : SkolemAssignment) (args : Array Bool)
+    (hactive : BadReducedPattern f lits pivot sk args) :
+    patchPivotSkolemForClause f lits pivot sk pivot.var args = pivot.isPos := by
+  classical
+  unfold patchPivotSkolemForClause
+  have hc : pivot.var = pivot.var ∧ BadReducedPattern f lits pivot sk args := ⟨rfl, hactive⟩
+  rw [if_pos hc]
+
+private theorem patchPivotSkolemForClause_apply_of_inactive
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (sk : SkolemAssignment) (args : Array Bool)
+    (hinactive : ¬ BadReducedPattern f lits pivot sk args) :
+    patchPivotSkolemForClause f lits pivot sk pivot.var args = sk pivot.var args := by
+  classical
+  unfold patchPivotSkolemForClause
+  have hc : ¬ (pivot.var = pivot.var ∧ BadReducedPattern f lits pivot sk args) := by
+    intro h
+    exact hinactive h.2
+  rw [if_neg hc]
+
+private theorem varValue_patchPivotForClause_eq_of_ne
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment) {v : Var}
+    (hneq : v ≠ pivot.var) :
+    f.varValue σ (patchPivotSkolemForClause f lits pivot sk) v =
+      f.varValue σ sk v := by
+  classical
+  cases hex : f.isVarExistential v <;>
+    simp [DQBF.varValue, hex, DQBF.exiValue, patchPivotSkolemForClause, hneq]
+
+private theorem varValue_patchPivotForClause_eq_of_inactive
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential pivot.var = true)
+    (hinactive :
+      ¬ BadReducedPattern f lits pivot sk (pivotDepsArgs f pivot σ)) :
+    f.varValue σ (patchPivotSkolemForClause f lits pivot sk) pivot.var =
+      f.varValue σ sk pivot.var := by
+  have happ :
+      patchPivotSkolemForClause f lits pivot sk pivot.var
+        ((f.depset.getD pivot.var #[]).map σ) =
+          sk pivot.var ((f.depset.getD pivot.var #[]).map σ) := by
+    simpa [pivotDepsArgs] using
+      (patchPivotSkolemForClause_apply_of_inactive
+        f lits pivot sk (pivotDepsArgs f pivot σ) hinactive)
+  simpa [DQBF.varValue, hexi, DQBF.exiValue] using happ
+
+private theorem litValue_patchPivotForClause_eq_of_ne_var
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal)
+    (hneq : l.var ≠ pivot.var) :
+    f.litValue σ (patchPivotSkolemForClause f lits pivot sk) l =
+      f.litValue σ sk l := by
+  simp [DQBF.litValue,
+    varValue_patchPivotForClause_eq_of_ne f lits pivot σ sk hneq]
+
+private theorem litValue_patchPivotForClause_eq_of_inactive
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal)
+    (hexi : f.isVarExistential pivot.var = true)
+    (hinactive :
+      ¬ BadReducedPattern f lits pivot sk (pivotDepsArgs f pivot σ)) :
+    f.litValue σ (patchPivotSkolemForClause f lits pivot sk) l =
+      f.litValue σ sk l := by
+  classical
+  by_cases hvar : l.var = pivot.var
+  · rcases literal_eq_or_negate_of_same_var l pivot hvar with hl | hl
+    · rw [hl]
+      simp [DQBF.litValue,
+        varValue_patchPivotForClause_eq_of_inactive f lits pivot σ sk hexi hinactive]
+    · rw [hl]
+      have hpivot :
+          f.litValue σ (patchPivotSkolemForClause f lits pivot sk) pivot =
+            f.litValue σ sk pivot := by
+        simp [DQBF.litValue,
+          varValue_patchPivotForClause_eq_of_inactive f lits pivot σ sk hexi hinactive]
+      simpa [litValue_negate] using congrArg not hpivot
+  · exact litValue_patchPivotForClause_eq_of_ne_var f lits pivot σ sk l hvar
+
+private theorem pivot_litValue_patchPivotForClause_true_of_active
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential pivot.var = true)
+    (hactive :
+      BadReducedPattern f lits pivot sk (pivotDepsArgs f pivot σ)) :
+    f.litValue σ (patchPivotSkolemForClause f lits pivot sk) pivot = true := by
+  have hpatched :
+      patchPivotSkolemForClause f lits pivot sk pivot.var
+        ((f.depset.getD pivot.var #[]).map σ) = pivot.isPos := by
+    simpa [pivotDepsArgs] using
+      (patchPivotSkolemForClause_apply_of_active
+        f lits pivot sk (pivotDepsArgs f pivot σ) hactive)
+  rw [DQBF.litValue, DQBF.varValue, hexi, DQBF.exiValue, hpatched]
+  cases h : pivot.isPos <;> simp [h]
+
+private theorem clauseValue_patchPivotForClause_true_of_original_true_no_neg
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (clauseLits : Array Literal)
+    (hexi : f.isVarExistential pivot.var = true)
+    (hnoNeg : pivot.negate ∉ clauseLits.toList)
+    (horig : f.clauseValue σ sk clauseLits = true)
+    (hactive :
+      BadReducedPattern f lits pivot sk (pivotDepsArgs f pivot σ)) :
+    f.clauseValue σ (patchPivotSkolemForClause f lits pivot sk) clauseLits = true := by
+  simp only [DQBF.clauseValue, Array.any_eq_true] at horig ⊢
+  rcases horig with ⟨i, hi, hval⟩
+  refine ⟨i, hi, ?_⟩
+  have hmem : clauseLits[i] ∈ clauseLits.toList :=
+    Array.mem_toList_iff.mpr (Array.getElem_mem hi)
+  by_cases hvar : clauseLits[i].var = pivot.var
+  · rcases literal_eq_or_negate_of_same_var (clauseLits[i]) pivot hvar with hl | hl
+    · rw [hl]
+      exact pivot_litValue_patchPivotForClause_true_of_active
+        f lits pivot σ sk hexi hactive
+    · exfalso
+      exact hnoNeg (by simpa [hl] using hmem)
+  · rw [litValue_patchPivotForClause_eq_of_ne_var
+      f lits pivot σ sk clauseLits[i] hvar]
+    exact hval
+
+private theorem outerClause_patchPivotForClause_true_of_original_true
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (blockerLits : Array Literal)
+    (hexi : f.isVarExistential pivot.var = true)
+    (horig : f.clauseValue σ sk (outerClause f blockerLits pivot) = true)
+    (hactive :
+      BadReducedPattern f lits pivot sk (pivotDepsArgs f pivot σ)) :
+    f.clauseValue σ (patchPivotSkolemForClause f lits pivot sk)
+      (outerClause f blockerLits pivot) = true := by
+  simp only [DQBF.clauseValue, Array.any_eq_true] at horig ⊢
+  rcases horig with ⟨i, hi, hval⟩
+  refine ⟨i, hi, ?_⟩
+  have hmem :
+      (outerClause f blockerLits pivot)[i] ∈ outerClause f blockerLits pivot :=
+    Array.getElem_mem hi
+  have hpred :
+      (outerClause f blockerLits pivot)[i] ≠ pivot.negate ∧
+        f.isVarOuterOfExivar ((outerClause f blockerLits pivot)[i]).var pivot.var = true := by
+    simpa using (Array.mem_filter.mp hmem).2
+  by_cases hvar : (outerClause f blockerLits pivot)[i].var = pivot.var
+  · rcases literal_eq_or_negate_of_same_var ((outerClause f blockerLits pivot)[i]) pivot hvar with
+      hl | hl
+    · rw [hl]
+      exact pivot_litValue_patchPivotForClause_true_of_active
+        f lits pivot σ sk hexi hactive
+    · exfalso
+      exact hpred.1 hl
+  · rw [litValue_patchPivotForClause_eq_of_ne_var
+      f lits pivot σ sk ((outerClause f blockerLits pivot)[i]) hvar]
+    exact hval
+
+private theorem clauseValue_eq_of_litValue_eq
+    (f : DQBF) (σ : UnivAssignment) (sk₁ sk₂ : SkolemAssignment)
+    (clauseLits : Array Literal)
+    (hvals : ∀ l ∈ clauseLits.toList, f.litValue σ sk₁ l = f.litValue σ sk₂ l) :
+    f.clauseValue σ sk₁ clauseLits = f.clauseValue σ sk₂ clauseLits := by
+  have hiff :
+      f.clauseValue σ sk₁ clauseLits = true ↔
+        f.clauseValue σ sk₂ clauseLits = true := by
+    constructor
+    · intro htrue
+      simp only [DQBF.clauseValue, Array.any_eq_true] at htrue ⊢
+      rcases htrue with ⟨i, hi, hval⟩
+      refine ⟨i, hi, ?_⟩
+      have hmem : clauseLits[i] ∈ clauseLits.toList :=
+        Array.mem_toList_iff.mpr (Array.getElem_mem hi)
+      rw [← hvals _ hmem]
+      exact hval
+    · intro htrue
+      simp only [DQBF.clauseValue, Array.any_eq_true] at htrue ⊢
+      rcases htrue with ⟨i, hi, hval⟩
+      refine ⟨i, hi, ?_⟩
+      have hmem : clauseLits[i] ∈ clauseLits.toList :=
+        Array.mem_toList_iff.mpr (Array.getElem_mem hi)
+      rw [hvals _ hmem]
+      exact hval
+  cases h₁ : f.clauseValue σ sk₁ clauseLits <;>
+    cases h₂ : f.clauseValue σ sk₂ clauseLits <;>
+      simp [h₁, h₂] at hiff ⊢
+
+private theorem clauseValue_patchPivotForClause_eq_of_inactive
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (clauseLits : Array Literal)
+    (hexi : f.isVarExistential pivot.var = true)
+    (hinactive :
+      ¬ BadReducedPattern f lits pivot sk (pivotDepsArgs f pivot σ)) :
+    f.clauseValue σ (patchPivotSkolemForClause f lits pivot sk) clauseLits =
+      f.clauseValue σ sk clauseLits := by
+  apply clauseValue_eq_of_litValue_eq
+  intro l hl
+  exact litValue_patchPivotForClause_eq_of_inactive
+    f lits pivot σ sk l hexi hinactive
+
+private theorem clauseValue_of_filter_true
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (clauseLits : Array Literal) (p : Literal → Bool)
+    (htrue : f.clauseValue σ sk (clauseLits.filter p) = true) :
+    f.clauseValue σ sk clauseLits = true := by
+  simp only [DQBF.clauseValue, Array.any_eq_true] at htrue ⊢
+  rcases htrue with ⟨i, hi, hval⟩
+  have hmemFilter : (clauseLits.filter p)[i] ∈ clauseLits.filter p :=
+    Array.getElem_mem hi
+  have hmem : (clauseLits.filter p)[i] ∈ clauseLits :=
+    (Array.mem_filter.mp hmemFilter).1
+  rcases Array.mem_iff_getElem.mp hmem with ⟨j, hj, hj_eq⟩
+  refine ⟨j, hj, ?_⟩
+  simpa [hj_eq] using hval
+
+private theorem proofClause_true_of_patch
+    (f : DQBF) (lits : Array Literal) (pivot : Literal)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential pivot.var = true)
+    (hpivot : pivot ∈ lits.toList) :
+    f.clauseValue σ (patchPivotSkolemForClause f lits pivot sk) lits = true := by
+  by_cases hactive :
+      BadReducedPattern f lits pivot sk (pivotDepsArgs f pivot σ)
+  · simp only [DQBF.clauseValue, Array.any_eq_true]
+    rcases Array.mem_iff_getElem.mp (Array.mem_toList_iff.mp hpivot) with ⟨i, hi, hi_eq⟩
+    refine ⟨i, hi, ?_⟩
+    simpa [hi_eq] using
+      (pivot_litValue_patchPivotForClause_true_of_active
+        f lits pivot σ sk hexi hactive)
+  · have hreduced_orig_true :
+        f.clauseValue σ sk (lits.filter (· ≠ pivot)) = true := by
+      cases hred : f.clauseValue σ sk (lits.filter (· ≠ pivot)) with
+      | false =>
+          exfalso
+          exact hactive ⟨σ, rfl, hred⟩
+      | true =>
+          exact rfl
+    have hreduced_patch :
+        f.clauseValue σ (patchPivotSkolemForClause f lits pivot sk)
+          (lits.filter (· ≠ pivot)) = true := by
+      rw [clauseValue_patchPivotForClause_eq_of_inactive
+        f lits pivot σ sk (lits.filter (· ≠ pivot)) hexi hactive]
+      exact hreduced_orig_true
+    exact clauseValue_of_filter_true
+      f σ (patchPivotSkolemForClause f lits pivot sk) lits (· ≠ pivot) hreduced_patch
+
+private theorem clauseValue_patchPivotForClause_true_of_matrix_clause
+    (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot : Literal)
+    (sk : SkolemAssignment)
+    (hcond : DQRATE_exec_Condition f cs lits pivot)
+    (hall : ∀ σ, cs.matrixValue f σ sk = true)
+    {cref : CRef} {c : Clause}
+    (hget : cs.getClause cref = some c)
+    (σ : UnivAssignment) :
+    f.clauseValue σ (patchPivotSkolemForClause f lits pivot sk) c.lits = true := by
+  have hexi := hcond.1
+  by_cases hactive :
+      BadReducedPattern f lits pivot sk (pivotDepsArgs f pivot σ)
+  · by_cases hblocker : pivot.negate ∈ c.lits.toList
+    · rcases getClauseRaw_deleted_of_getClause hget with ⟨hraw, hdeleted⟩
+      rcases hactive with ⟨σ₀, hargs, hreduced_false⟩
+      have hagree : AgreeOnPivotDeps f pivot σ₀ σ :=
+        agreeOnPivotDeps_of_pivotDepsArgs_eq f pivot σ₀ σ hargs
+      have houter_orig :
+          f.clauseValue σ sk (outerClause f c.lits pivot) = true :=
+        outerClause_true_of_exec_condition
+          f cs lits pivot cref c hcond hraw hdeleted hblocker σ₀ σ sk hagree
+          (hall σ₀) hreduced_false
+      have houter_patch :
+          f.clauseValue σ (patchPivotSkolemForClause f lits pivot sk)
+            (outerClause f c.lits pivot) = true :=
+        outerClause_patchPivotForClause_true_of_original_true
+          f lits pivot σ sk c.lits hexi houter_orig
+          ⟨σ₀, hargs, hreduced_false⟩
+      exact clauseValue_of_filter_true
+        f σ (patchPivotSkolemForClause f lits pivot sk) c.lits
+        (fun l => l ≠ pivot.negate && f.isVarOuterOfExivar l.var pivot.var)
+        houter_patch
+    · have horig : f.clauseValue σ sk c.lits = true :=
+        clauseValue_of_matrixValue f cs σ sk cref c (hall σ) hget
+      exact clauseValue_patchPivotForClause_true_of_original_true_no_neg
+        f lits pivot σ sk c.lits hexi hblocker horig hactive
+  · rw [clauseValue_patchPivotForClause_eq_of_inactive
+      f lits pivot σ sk c.lits hexi hactive]
+    exact clauseValue_of_matrixValue f cs σ sk cref c (hall σ) hget
+
+private theorem matrixValue_patchPivotForClause_true_of_exec_condition
+    (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot : Literal)
+    (sk : SkolemAssignment)
+    (hcond : DQRATE_exec_Condition f cs lits pivot)
+    (hall : ∀ σ, cs.matrixValue f σ sk = true) :
+    ∀ σ, cs.matrixValue f σ (patchPivotSkolemForClause f lits pivot sk) = true := by
+  intro σ
+  unfold ClauseStore.matrixValue
+  apply List.all_eq_true.mpr
+  intro i hi
+  cases hget : cs.getClause (i + 1) with
+  | none =>
+      simp [hget]
+  | some c =>
+      exact clauseValue_patchPivotForClause_true_of_matrix_clause
+        f cs lits pivot sk hcond hall hget σ
+
+private theorem DQRATE_exec_condition_soundness
+    (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot : Literal)
+    (hcond : DQRATE_exec_Condition f cs lits pivot)
+    (hpivot : pivot ∈ lits.toList)
+    (htrue : DQBFTrue f cs) :
+    DQBFTrue f (cs.addClause lits).1 := by
+  obtain ⟨sk, hall⟩ := htrue
+  refine ⟨patchPivotSkolemForClause f lits pivot sk, fun σ => ?_⟩
+  apply matrixValue_addClause_of_both
+  · exact matrixValue_patchPivotForClause_true_of_exec_condition
+      f cs lits pivot sk hcond hall σ
+  · exact proofClause_true_of_patch
+      f lits pivot σ sk hcond.1 hpivot
 
 /-- DQRAT_e condition (placeholder): clause C has the DQRAT existential property
     with pivot `y ∈ C` if for every blocker clause D containing `¬y`,
