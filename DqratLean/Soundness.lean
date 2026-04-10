@@ -9521,6 +9521,46 @@ private theorem runDQRATEPivotPhase_true_gives_exec_condition
                   intro cref c hmem hgetRaw hdeleted
                   exact hsem_occ (by simpa using hmem) hgetRaw hdeleted)
 
+private theorem runDQRATEPivotPhase_true_soundness_of_trialSem
+    (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState)
+    {s s' : CheckState} (pivot : Literal) (lits : Array Literal)
+    (hfull₀ : CheckState.FullCorrect dqbf cs s₀)
+    (htrial : TrialState s₀ s)
+    (hlits : ClauseLitsWellFormed s.formula lits)
+    (hexi : s.formula.isVarExistential pivot.var = true)
+    (hpivot : pivot ∈ lits.toList)
+    (htrialSem :
+      ∀ {st st' : CheckState} {blockerLits : Array Literal},
+        TrialState s₀ st →
+        SameFC s st →
+        runDQRATEBlockerTrial pivot s.formula blockerLits st = .ok true st' →
+        IsSemanticConsequence s.formula s.clauses
+          (dqrateResolvent s.formula lits blockerLits pivot))
+    (hrun : runDQRATEPivotPhase pivot s = .ok (true, none) s') :
+    DQBFTrue dqbf cs → DQBFTrue s'.formula (s'.clauses.addClause lits).1 := by
+  intro htrue
+  have hcond := runDQRATEPivotPhase_true_gives_exec_condition
+    dqbf cs s₀ pivot lits hfull₀ htrial hlits hexi htrialSem hrun
+  have hrestore := runDQRATEPivotPhase_restore_sameFC_spec dqbf cs s₀ pivot lits s
+    ⟨hfull₀.toCorrect, htrial, hlits⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hrestore
+  rw [hrun] at hrestore
+  rcases hrestore with ⟨_, hsame', _⟩
+  have htrue_s₀ : DQBFTrue s₀.formula s₀.clauses := hfull₀.toCorrect.formula_sound htrue
+  have htrue_s : DQBFTrue s.formula s.clauses := by
+    simpa [htrial.sameFC.1, htrial.sameFC.2] using htrue_s₀
+  have htrue_added_s : DQBFTrue s.formula (s.clauses.addClause lits).1 :=
+    DQRATE_exec_condition_soundness s.formula s.clauses lits pivot hcond hpivot htrue_s
+  have hsame_ss' : SameFC s s' := by
+    refine ⟨?_, ?_⟩
+    · calc
+        s'.formula = s₀.formula := hsame'.1
+        _ = s.formula := by simpa using htrial.sameFC.1.symm
+    · calc
+        s'.clauses = s₀.clauses := hsame'.2
+        _ = s.clauses := by simpa using htrial.sameFC.2.symm
+  simpa [hsame_ss'.1, hsame_ss'.2] using htrue_added_s
+
 private theorem runDQRATUOuterClauseTrial_restore_spec
     (dqbf : DQBF) (cs : ClauseStore)
     (s₀ sOuter : CheckState)
