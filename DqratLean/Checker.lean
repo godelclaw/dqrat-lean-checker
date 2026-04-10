@@ -191,16 +191,22 @@ def checkPathC (st : CheckState) (l : Literal) (lits : Array Literal) (target : 
 
 -- ─── DQRATU check ─────────────────────────────────────────────────────────
 
+def outerUClause (f : DQBF) (blockerLits : Array Literal) (pivot : Literal) :
+    Array Literal :=
+  blockerLits.filter fun l =>
+    l ≠ pivot.negate && DQBF.isVarOuterOfUnivar f l.var pivot.var
+
+def runDQRATUOuterClauseTrial (outerLits : Array Literal) : CheckM Bool := do
+  let gotConflict ← negateAndPropagate outerLits (fun _ => true)
+  backtrackBefore 2
+  return gotConflict
+
 -- DQRATU check: pivot must be universal; try RUP-without-pivot then RAT.
 -- Only checks blocker clauses that are connected to the proof clause via
 -- a D^∀-pure path (checkPathC), or that are the proof clause itself.
 def runDQRATUBlockerTrial (pivot : Literal) (f : DQBF)
     (blockerLits : Array Literal) : CheckM Bool := do
-  let isouter : Literal → Bool := fun l =>
-    l ≠ pivot.negate && DQBF.isVarOuterOfUnivar f l.var pivot.var
-  let gotConflict ← negateAndPropagate blockerLits isouter
-  backtrackBefore 2
-  return gotConflict
+  runDQRATUOuterClauseTrial (outerUClause f blockerLits pivot)
 
 def checkDQRATUBlockerStep (pivot : Literal) (lits : Array Literal)
     (crefOfLits : Option CRef) (allOk : Bool) (cref : CRef) : CheckM Bool := do

@@ -8860,25 +8860,23 @@ private theorem runDQRATEPivotPhase_restore_sameFC_spec
           · simp [hback_run]
             exact ⟨hcorr₃, hsame₃, hlits₃⟩
 
-private theorem runDQRATUBlockerTrial_restore_spec
+private theorem runDQRATUOuterClauseTrial_restore_spec
     (dqbf : DQBF) (cs : ClauseStore)
     (s₀ sOuter : CheckState)
-    (pivot : Literal) (blockerLits : Array Literal) :
+    (outerLits : Array Literal) :
     ⦃fun s => ⌜s = sOuter ∧ CheckState.Correct dqbf cs s₀ ∧ TrialState s₀ s⌝⦄
-    (runDQRATUBlockerTrial pivot sOuter.formula blockerLits : CheckM Bool)
+    (runDQRATUOuterClauseTrial outerLits : CheckM Bool)
     ⦃⇓? _ s' => ⌜CheckState.Correct dqbf cs s₀ ∧
         TrialState s₀ s' ∧ SameFC sOuter s'⌝⦄ := by
   intro s hs
   rcases hs with ⟨hsOuter, hcorr₀, htrial⟩
   subst s
-  simp only [runDQRATUBlockerTrial, WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind]
-  let isouter : Literal → Bool := fun l =>
-    l ≠ pivot.negate && DQBF.isVarOuterOfUnivar sOuter.formula l.var pivot.var
-  cases hneg_run : negateAndPropagate blockerLits isouter sOuter with
+  simp only [runDQRATUOuterClauseTrial, WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind]
+  cases hneg_run : negateAndPropagate outerLits (fun _ => true) sOuter with
   | error e s' =>
       simp [hneg_run]
   | ok gotConflict s₁ =>
-      have hnested := negateAndPropagate_nested_trial_spec dqbf cs s₀ sOuter blockerLits isouter
+      have hnested := negateAndPropagate_nested_trial_spec dqbf cs s₀ sOuter outerLits (fun _ => true)
         sOuter ⟨rfl, hcorr₀, htrial⟩
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hnested
       rw [hneg_run] at hnested
@@ -8894,6 +8892,19 @@ private theorem runDQRATUBlockerTrial_restore_spec
           rcases hback with ⟨htrial₂, hsame₂⟩
           simp [hback_run]
           exact ⟨hcorr₀', htrial₂, hsame₂⟩
+
+private theorem runDQRATUBlockerTrial_restore_spec
+    (dqbf : DQBF) (cs : ClauseStore)
+    (s₀ sOuter : CheckState)
+    (pivot : Literal) (blockerLits : Array Literal) :
+    ⦃fun s => ⌜s = sOuter ∧ CheckState.Correct dqbf cs s₀ ∧ TrialState s₀ s⌝⦄
+    (runDQRATUBlockerTrial pivot sOuter.formula blockerLits : CheckM Bool)
+    ⦃⇓? _ s' => ⌜CheckState.Correct dqbf cs s₀ ∧
+        TrialState s₀ s' ∧ SameFC sOuter s'⌝⦄ := by
+  simpa [runDQRATUBlockerTrial] using
+    (runDQRATUOuterClauseTrial_restore_spec
+      (dqbf := dqbf) (cs := cs) (s₀ := s₀) (sOuter := sOuter)
+      (outerLits := outerUClause sOuter.formula blockerLits pivot))
 
 private theorem checkDQRATUBlockerStep_connected_trial_spec
     (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState)
