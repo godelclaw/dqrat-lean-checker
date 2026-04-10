@@ -5751,6 +5751,96 @@ theorem RUP_soundness (st : CheckState) (lits : Array Literal)
       rw [hr] at hspec; rw [hr] at hrup
       exact absurd (hrup.symm.trans hspec.2) (by decide)
 
+private theorem clauseValue_false_implies_all_lits_false
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal)
+    (hfalse : f.clauseValue σ sk lits = false) :
+    ∀ l ∈ lits.toList, f.litValue σ sk l = false := by
+  intro l hl
+  rcases Bool.eq_false_or_eq_true (f.litValue σ sk l) with hl_true | hl_false
+  · exfalso
+    have hmem : l ∈ lits := Array.mem_toList_iff.mp hl
+    rcases Array.mem_iff_getElem.mp hmem with ⟨i, hi, rfl⟩
+    have hclause_true : f.clauseValue σ sk lits = true := by
+      simp only [DQBF.clauseValue, Array.any_eq_true]
+      exact ⟨i, hi, hl_true⟩
+    rw [hclause_true] at hfalse
+    cases hfalse
+  · exact hl_false
+
+private theorem negateAndPropagate_false_consistent_of_clause_false
+    {dqbf : DQBF} {cs : ClauseStore} {st st' : CheckState}
+    {lits : Array Literal} {σ : UnivAssignment} {sk : SkolemAssignment}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (hmat : st.clauses.matrixValue st.formula σ sk = true)
+    (hclause_false : st.formula.clauseValue σ sk lits = false)
+    (hrun : negateAndPropagate lits (fun _ => true) st = .ok false st') :
+    CheckState.ConsistentWith st.formula st.clauses σ sk st' := by
+  have hlits_false :=
+    clauseValue_false_implies_all_lits_false st.formula σ sk lits hclause_false
+  have hspec := negateAndPropagate_consistent_spec
+      st.formula st.clauses σ sk hmat lits hlits_false
+  specialize hspec st (hcorr.to_consistentWith σ sk hmat)
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
+  rw [hrun] at hspec
+  exact hspec.1
+
+private theorem runDQRATEOuterClauseTrial_true_impossible_of_consistent
+    {f : DQBF} {cs : ClauseStore} {st st' : CheckState}
+    {outerLits : Array Literal} {σ : UnivAssignment} {sk : SkolemAssignment}
+    (hcon : CheckState.ConsistentWith f cs σ sk st)
+    (hmat : cs.matrixValue f σ sk = true)
+    (houter_false : f.clauseValue σ sk outerLits = false)
+    (hrun : runDQRATEOuterClauseTrial outerLits st = .ok true st') :
+    False := by
+  have hlits_false :=
+    clauseValue_false_implies_all_lits_false f σ sk outerLits houter_false
+  unfold runDQRATEOuterClauseTrial at hrun
+  simp only [Bind.bind, EStateM.bind] at hrun
+  have hspec := negateAndPropagate_consistent_spec
+      f cs σ sk hmat outerLits hlits_false
+  specialize hspec st hcon
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
+  cases hneg_run : negateAndPropagate outerLits (fun _ => true) st with
+  | error e s =>
+      simp [runDQRATEOuterClauseTrial, hneg_run, Bind.bind, EStateM.bind] at hrun
+  | ok gotConflict s =>
+      rw [hneg_run] at hspec
+      cases gotConflict with
+      | false =>
+          cases hback_run : backtrackBefore 2 s with
+          | error e s' =>
+              simp [hneg_run, hback_run] at hrun
+          | ok _ s' =>
+              simp [hneg_run, hback_run] at hrun
+              cases hrun
+      | true =>
+          cases hspec.2
+
+private theorem runDQRATEBlockerTrial_true_implies_outerClause_true_of_clause_false
+    {dqbf : DQBF} {cs : ClauseStore}
+    {st sOuter s' : CheckState}
+    {lits blockerLits : Array Literal} {pivot : Literal}
+    {σ : UnivAssignment} {sk : SkolemAssignment}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (houter_run : negateAndPropagate lits (fun _ => true) st = .ok false sOuter)
+    (hmat : st.clauses.matrixValue st.formula σ sk = true)
+    (hclause_false : st.formula.clauseValue σ sk lits = false)
+    (hrun : runDQRATEBlockerTrial pivot sOuter.formula blockerLits sOuter = .ok true s') :
+    st.formula.clauseValue σ sk (outerClause st.formula blockerLits pivot) = true := by
+  rcases Bool.eq_false_or_eq_true
+      (st.formula.clauseValue σ sk (outerClause st.formula blockerLits pivot))
+      with houter_true | houter_false
+  · exact houter_true
+  · exfalso
+    have hcon_outer :=
+      negateAndPropagate_false_consistent_of_clause_false
+        hcorr hmat hclause_false houter_run
+    have houter_false' :
+        st.formula.clauseValue σ sk (outerClause sOuter.formula blockerLits pivot) = false := by
+      simpa [hcon_outer.formula_eq] using houter_false
+    exact runDQRATEOuterClauseTrial_true_impossible_of_consistent
+      hcon_outer hmat houter_false' (by simpa [runDQRATEBlockerTrial] using hrun)
+
 /-- The clause tested semantically by the executable existential RAT branch:
     `(C \\ {pivot}) ∪ outerClause(D, pivot)` with the same outer-clause filter as
     `runDQRATEBlockerTrial`. -/
@@ -5869,6 +5959,44 @@ private theorem clauseValue_outerClause_eq_of_dep_agree
   cases h₁ : f.clauseValue σ₁ sk (outerClause f blockerLits pivot) <;>
     cases h₂ : f.clauseValue σ₂ sk (outerClause f blockerLits pivot) <;>
       simp [h₁, h₂] at hiff ⊢
+
+private theorem runDQRATEBlockerTrial_true_implies_outerClause_true_of_consistent
+    {f : DQBF} {cs : ClauseStore} {st st' : CheckState}
+    {blockerLits : Array Literal} {pivot : Literal}
+    {σ₀ σ : UnivAssignment} {sk : SkolemAssignment}
+    (hcon : CheckState.ConsistentWith f cs σ₀ sk st)
+    (hmat : cs.matrixValue f σ₀ sk = true)
+    (hagree : AgreeOnPivotDeps f pivot σ₀ σ)
+    (hrun : runDQRATEBlockerTrial pivot f blockerLits st = .ok true st') :
+    f.clauseValue σ sk (outerClause f blockerLits pivot) = true := by
+  cases hout : f.clauseValue σ sk (outerClause f blockerLits pivot) with
+  | true =>
+      exact rfl
+  | false =>
+      exfalso
+      have hout₀ : f.clauseValue σ₀ sk (outerClause f blockerLits pivot) = false := by
+        rw [clauseValue_outerClause_eq_of_dep_agree f pivot blockerLits σ₀ σ sk hagree]
+        exact hout
+      exact runDQRATEOuterClauseTrial_true_impossible_of_consistent
+        hcon hmat hout₀ (by simpa [runDQRATEBlockerTrial] using hrun)
+
+private theorem runDQRATEBlockerTrial_true_implies_outerClause_true_of_clause_false_agree
+    {dqbf : DQBF} {cs : ClauseStore}
+    {st sOuter s' : CheckState}
+    {lits blockerLits : Array Literal} {pivot : Literal}
+    {σ₀ σ : UnivAssignment} {sk : SkolemAssignment}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (houter_run : negateAndPropagate lits (fun _ => true) st = .ok false sOuter)
+    (hmat : st.clauses.matrixValue st.formula σ₀ sk = true)
+    (hagree : AgreeOnPivotDeps st.formula pivot σ₀ σ)
+    (hclause_false : st.formula.clauseValue σ₀ sk lits = false)
+    (hrun : runDQRATEBlockerTrial pivot sOuter.formula blockerLits sOuter = .ok true s') :
+    st.formula.clauseValue σ sk (outerClause st.formula blockerLits pivot) = true := by
+  have hcon_outer :=
+    negateAndPropagate_false_consistent_of_clause_false
+      hcorr hmat hclause_false houter_run
+  exact runDQRATEBlockerTrial_true_implies_outerClause_true_of_consistent
+    hcon_outer hmat hagree (by simpa [hcon_outer.formula_eq] using hrun)
 
 /-- Executable-aligned existential RAT condition:
     the pivot is existential and every non-deleted blocker clause selected by the
