@@ -5486,6 +5486,17 @@ def DQRATE_exec_Condition (f : DQBF) (cs : ClauseStore)
     pivot.negate ∈ c.lits.toList →
     IsSemanticConsequence f cs (dqrateResolvent f lits c.lits pivot)
 
+/-- Cleaner semantic DQRATE condition over live clauses.
+    This is the condition naturally consumed by the semantic kernel; the raw
+    executable condition below can be derived from it clause-by-clause. -/
+def DQRATE_live_Condition (f : DQBF) (cs : ClauseStore)
+    (lits : Array Literal) (pivot : Literal) : Prop :=
+  f.isVarExistential pivot.var = true ∧
+  ∀ cref c,
+    cs.getClause cref = some c →
+    pivot.negate ∈ c.lits.toList →
+    IsSemanticConsequence f cs (dqrateResolvent f lits c.lits pivot)
+
 private theorem outerClause_true_of_exec_condition
     (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot : Literal)
     (cref : CRef) (c : Clause)
@@ -5572,6 +5583,75 @@ private theorem getClauseRaw_deleted_of_getClause
       rcases hget' with ⟨hdeleted, hc⟩
       cases hc
       simp [ClauseStore.getClauseRaw, hne, hraw, hdeleted]
+
+private theorem getClause_of_getClauseRaw_not_deleted
+    {cs : ClauseStore} {cref : CRef} {c : Clause}
+    (hraw : cs.getClauseRaw cref = some c)
+    (hdeleted : c.deleted = false) :
+    cs.getClause cref = some c := by
+  have hne : cref ≠ CRef_Undef := by
+    intro hzero
+    simp [ClauseStore.getClauseRaw, hzero] at hraw
+  unfold ClauseStore.getClauseRaw at hraw
+  cases hgetAt : cs.getClauseAt cref with
+  | none =>
+      simp [hne, hgetAt] at hraw
+  | some c' =>
+      have hc : c' = c := by
+        simpa [hne, hgetAt] using hraw
+      subst hc
+      simp [ClauseStore.getClause, ClauseStore.getClauseRaw, hne, hgetAt, hdeleted]
+
+private theorem blocker_mem_getOcc_of_liveOccurrencesComplete
+    {cs : ClauseStore} (hocc : ClauseStore.LiveOccurrencesComplete cs)
+    {cref : CRef} {c : Clause} {pivot : Literal}
+    (hraw : cs.getClauseRaw cref = some c)
+    (hdeleted : c.deleted = false)
+    (hblocker : pivot.negate ∈ c.lits.toList) :
+    cref ∈ cs.getOcc pivot.negate := by
+  have hget : cs.getClause cref = some c :=
+    getClause_of_getClauseRaw_not_deleted hraw hdeleted
+  exact ClauseStore.mem_getOcc_of_liveOccurrencesComplete hocc hget hblocker
+
+private theorem DQRATE_live_to_exec_condition
+    {f : DQBF} {cs : ClauseStore} {lits : Array Literal} {pivot : Literal}
+    (hcond : DQRATE_live_Condition f cs lits pivot) :
+    DQRATE_exec_Condition f cs lits pivot := by
+  refine ⟨hcond.1, ?_⟩
+  intro cref c hraw hdeleted hblocker
+  have hget : cs.getClause cref = some c :=
+    getClause_of_getClauseRaw_not_deleted hraw hdeleted
+  exact hcond.2 cref c hget hblocker
+
+private theorem DQRATE_live_condition_of_occ_semantic
+    {f : DQBF} {cs : ClauseStore} {lits : Array Literal} {pivot : Literal}
+    (hocc : ClauseStore.LiveOccurrencesComplete cs)
+    (hexi : f.isVarExistential pivot.var = true)
+    (hsem : ∀ cref c,
+      cref ∈ cs.getOcc pivot.negate →
+      cs.getClauseRaw cref = some c →
+      c.deleted = false →
+      IsSemanticConsequence f cs (dqrateResolvent f lits c.lits pivot)) :
+    DQRATE_live_Condition f cs lits pivot := by
+  refine ⟨hexi, ?_⟩
+  intro cref c hget hblocker
+  rcases getClauseRaw_deleted_of_getClause hget with ⟨hraw, hdeleted⟩
+  exact hsem cref c
+    (ClauseStore.mem_getOcc_of_liveOccurrencesComplete hocc hget hblocker)
+    hraw hdeleted
+
+private theorem DQRATE_exec_condition_of_occ_semantic
+    {f : DQBF} {cs : ClauseStore} {lits : Array Literal} {pivot : Literal}
+    (hocc : ClauseStore.LiveOccurrencesComplete cs)
+    (hexi : f.isVarExistential pivot.var = true)
+    (hsem : ∀ cref c,
+      cref ∈ cs.getOcc pivot.negate →
+      cs.getClauseRaw cref = some c →
+      c.deleted = false →
+      IsSemanticConsequence f cs (dqrateResolvent f lits c.lits pivot)) :
+    DQRATE_exec_Condition f cs lits pivot := by
+  exact DQRATE_live_to_exec_condition
+    (DQRATE_live_condition_of_occ_semantic hocc hexi hsem)
 
 private theorem varValue_patchPivot_eq_of_ne
     (f : DQBF) (pivot : Literal) (σ₀ σ : UnivAssignment) (b : Bool)
@@ -5945,6 +6025,15 @@ private theorem DQRATE_exec_condition_soundness
       f cs lits pivot sk hcond hall σ
   · exact proofClause_true_of_patch
       f lits pivot σ sk hcond.1 hpivot
+
+private theorem DQRATE_live_condition_soundness
+    (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot : Literal)
+    (hcond : DQRATE_live_Condition f cs lits pivot)
+    (hpivot : pivot ∈ lits.toList)
+    (htrue : DQBFTrue f cs) :
+    DQBFTrue f (cs.addClause lits).1 := by
+  exact DQRATE_exec_condition_soundness
+    f cs lits pivot (DQRATE_live_to_exec_condition hcond) hpivot htrue
 
 /-- DQRAT_e condition (placeholder): clause C has the DQRAT existential property
     with pivot `y ∈ C` if for every blocker clause D containing `¬y`,

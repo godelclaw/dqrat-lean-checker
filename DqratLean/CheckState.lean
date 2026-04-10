@@ -301,12 +301,11 @@ def computeDeps (v : Var) : CheckM Unit := do
 -- Check if existential exiVar does NOT depend on universal univar
 -- (using and lazily computing the independence cache)
 def notDependsOn (exiVar univar : Var) : CheckM Bool := do
+  -- Proof-alignment simplification: always recompute before reading cache.
+  -- This avoids needing a separate cache-correctness invariant for soundness.
+  computeDeps univar
   let st ← get
-  let idx := univar - 1
-  if !st.indepKnown.getD idx false then
-    computeDeps univar
-  let st ← get
-  let indep := st.indepOf.getD idx #[]
+  let indep := st.indepOf.getD (univar - 1) #[]
   return indep.contains exiVar
 
 -- Invalidate independence cache for all universals in dep-union of exi vars in clause
