@@ -9243,6 +9243,71 @@ private theorem checkDQRATEBlockerFold_trial_spec
             (dqbf := dqbf) (cs := cs) (s₀ := s₀) (sOuter := sOuter)
             (pivot := pivot) (acc := acc) (cref := cref)))
 
+private theorem checkDQRATEBlockerFold_none_gives_occ_semantic
+    (dqbf : DQBF) (cs : ClauseStore) (s₀ sOuter : CheckState)
+    (pivot : Literal) (lits : Array Literal)
+    (htrialSem :
+      ∀ {st st' : CheckState} {blockerLits : Array Literal},
+        TrialState s₀ st →
+        SameFC sOuter st →
+        runDQRATEBlockerTrial pivot sOuter.formula blockerLits st = .ok true st' →
+        IsSemanticConsequence sOuter.formula sOuter.clauses
+          (dqrateResolvent sOuter.formula lits blockerLits pivot)) :
+    ∀ (occs : List CRef) {s s' : CheckState},
+      CheckState.Correct dqbf cs s₀ →
+      TrialState s₀ s →
+      SameFC sOuter s →
+      (occs.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s = .ok none s' →
+      ∀ {cref : CRef} {c : Clause},
+        cref ∈ occs →
+        sOuter.clauses.getClauseRaw cref = some c →
+        c.deleted = false →
+        IsSemanticConsequence sOuter.formula sOuter.clauses
+          (dqrateResolvent sOuter.formula lits c.lits pivot) := by
+  intro occs
+  induction occs with
+  | nil =>
+      intro s s' hcorr₀ htrial hsame hfold cref c hmem
+      simp at hmem
+  | cons cref0 occs ih =>
+      intro s s' hcorr₀ htrial hsame hfold cref c hmem hget hdeleted
+      simp only [List.foldlM, Bind.bind, EStateM.bind] at hfold
+      cases hstep : checkDQRATEBlockerStep pivot none cref0 s with
+      | error e s1 =>
+          simp [hstep] at hfold
+      | ok acc1 s1 =>
+          cases acc1 with
+          | some blocker =>
+              have hfold' :
+                  (occs.foldlM (checkDQRATEBlockerStep pivot) (some blocker) : CheckM (Option CRef)) s1 =
+                    .ok none s' := by
+                simpa [hstep] using hfold
+              have hsome := checkDQRATEBlockerFold_some_run pivot blocker occs s1
+              rw [hsome] at hfold'
+              cases hfold'
+          | none =>
+              have hfold' :
+                  (occs.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s1 =
+                    .ok none s' := by
+                simpa [hstep] using hfold
+              have hstepSpec :=
+                checkDQRATEBlockerStep_trial_spec dqbf cs s₀ sOuter pivot none cref0 s
+                  ⟨hcorr₀, htrial, hsame⟩
+              simp only [WP.wp, PredTrans.apply, EStateM.run] at hstepSpec
+              rw [hstep] at hstepSpec
+              rcases hstepSpec with ⟨hcorr₀', htrial1, hsame1⟩
+              rcases List.mem_cons.mp hmem with hhead | hmemTail
+              · have hget_s : s.clauses.getClauseRaw cref0 = some c := by
+                  subst hhead
+                  rcases hsame with ⟨_, hclauses⟩
+                  simpa [hclauses] using hget
+                have htrial_true :
+                    runDQRATEBlockerTrial pivot sOuter.formula c.lits s = .ok true s1 := by
+                  simpa [hsame.1] using
+                    (checkDQRATEBlockerStep_none_live_means_trial_true pivot hget_s hdeleted hstep)
+                exact htrialSem htrial hsame htrial_true
+              · exact ih (s := s1) (s' := s') hcorr₀' htrial1 hsame1 hfold' hmemTail hget hdeleted
+
 private theorem runDQRATEPivotPhase_restore_spec
     (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState)
     (pivot : Literal) (lits : Array Literal) :
@@ -9375,6 +9440,86 @@ private theorem runDQRATEPivotPhase_restore_sameFC_spec
             exact ⟨hcorr₃, hsame₃, hlits₃⟩
           · simp [hback_run]
             exact ⟨hcorr₃, hsame₃, hlits₃⟩
+
+private theorem runDQRATEPivotPhase_true_gives_exec_condition
+    (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState)
+    {s s' : CheckState} (pivot : Literal) (lits : Array Literal)
+    (hfull₀ : CheckState.FullCorrect dqbf cs s₀)
+    (htrial : TrialState s₀ s)
+    (hlits : ClauseLitsWellFormed s.formula lits)
+    (hexi : s.formula.isVarExistential pivot.var = true)
+    (htrialSem :
+      ∀ {st st' : CheckState} {blockerLits : Array Literal},
+        TrialState s₀ st →
+        SameFC s st →
+        runDQRATEBlockerTrial pivot s.formula blockerLits st = .ok true st' →
+        IsSemanticConsequence s.formula s.clauses
+          (dqrateResolvent s.formula lits blockerLits pivot))
+    (hrun : runDQRATEPivotPhase pivot s = .ok (true, none) s') :
+    DQRATE_exec_Condition s.formula s.clauses lits pivot := by
+  have hget : (get : CheckM CheckState) = EStateM.get := rfl
+  let occPivot := s.clauses.getOcc pivot.negate
+  have hrun' :
+      runDQRATEPivotPhase pivot s =
+        match (occPivot.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s with
+        | .error e s' => .error e s'
+        | .ok blocker s₂ =>
+            match backtrackBefore 1 s₂ with
+            | .error e s' => .error e s'
+            | .ok _ s₃ =>
+                match blocker with
+                | some c => .ok (false, some c) s₃
+                | none => .ok (true, none) s₃ := by
+    cases hfold_run :
+        (occPivot.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s with
+    | error e s' =>
+        simp [runDQRATEPivotPhase, hget, occPivot, Bind.bind, EStateM.bind, EStateM.get,
+          EStateM.pure, Pure.pure, hfold_run]
+    | ok blocker s₂ =>
+        cases hback_run : backtrackBefore 1 s₂ with
+        | error e s' =>
+            simp [runDQRATEPivotPhase, hget, occPivot, Bind.bind, EStateM.bind, EStateM.get,
+              EStateM.pure, Pure.pure, hfold_run, hback_run]
+        | ok _ s₃ =>
+            cases blocker <;> simp [runDQRATEPivotPhase, hget, occPivot, Bind.bind,
+              EStateM.bind, EStateM.get, EStateM.pure, Pure.pure, hfold_run, hback_run]
+  rw [hrun'] at hrun
+  cases hfold_run :
+      (occPivot.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s with
+  | error e s'' =>
+      simp [hfold_run] at hrun
+  | ok blocker s₂ =>
+      cases hback_run : backtrackBefore 1 s₂ with
+      | error e s'' =>
+          simp [hfold_run, hback_run] at hrun
+      | ok _ s₃ =>
+          cases blocker with
+          | some cref =>
+              simp [hfold_run, hback_run] at hrun
+          | none =>
+              have hfold_run_list :
+                  (occPivot.toList.foldlM (checkDQRATEBlockerStep pivot) none :
+                      CheckM (Option CRef)) s = .ok none s₂ := by
+                simpa using hfold_run
+              have hsem_occ :
+                  ∀ {cref : CRef} {c : Clause},
+                    cref ∈ occPivot.toList →
+                    s.clauses.getClauseRaw cref = some c →
+                    c.deleted = false →
+                    IsSemanticConsequence s.formula s.clauses
+                      (dqrateResolvent s.formula lits c.lits pivot) :=
+                checkDQRATEBlockerFold_none_gives_occ_semantic
+                  (dqbf := dqbf) (cs := cs) (s₀ := s₀) (sOuter := s)
+                  (pivot := pivot) (lits := lits) (htrialSem := htrialSem)
+                  occPivot.toList (s := s) (s' := s₂)
+                  hfull₀.toCorrect htrial ⟨rfl, rfl⟩ hfold_run_list
+              have hocc : ClauseStore.LiveOccurrencesComplete s.clauses :=
+                liveOccurrencesComplete_of_sameFC htrial.sameFC hfull₀.liveOccurrencesComplete
+              exact DQRATE_exec_condition_of_occ_semantic
+                (f := s.formula) (cs := s.clauses) (lits := lits) (pivot := pivot)
+                hocc hexi (by
+                  intro cref c hmem hgetRaw hdeleted
+                  exact hsem_occ (by simpa using hmem) hgetRaw hdeleted)
 
 private theorem runDQRATUOuterClauseTrial_restore_spec
     (dqbf : DQBF) (cs : ClauseStore)
