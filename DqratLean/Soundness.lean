@@ -5452,12 +5452,6 @@ theorem RUP_soundness (st : CheckState) (lits : Array Literal)
       rw [hr] at hspec; rw [hr] at hrup
       exact absurd (hrup.symm.trans hspec.2) (by decide)
 
-/-- The executable DQRATE blocker trial keeps exactly these blocker literals:
-    literals from `D` whose variables are outer w.r.t. `y.var`, excluding `¬y`
-    because the outer negate-trial has already assigned it at level 1. -/
-def outerClause (f : DQBF) (D : Array Literal) (y : Literal) : Array Literal :=
-  D.filter fun l => l ≠ y.negate && f.isVarOuterOfExivar l.var y.var
-
 /-- The clause tested semantically by the executable existential RAT branch:
     `(C \\ {pivot}) ∪ outerClause(D, pivot)` with the same outer-clause filter as
     `runDQRATEBlockerTrial`. -/
@@ -8589,25 +8583,23 @@ private theorem negateAndPropagate_nested_trial_spec
           rw [hfold_run] at hfold'
           simpa [WP.wp, PredTrans.apply, EStateM.run, hneg_run] using hfold'
 
-private theorem runDQRATEBlockerTrial_restore_spec
+private theorem runDQRATEOuterClauseTrial_restore_spec
     (dqbf : DQBF) (cs : ClauseStore)
     (s₀ sOuter : CheckState)
-    (pivot : Literal) (blockerLits : Array Literal) :
+    (outerLits : Array Literal) :
     ⦃fun s => ⌜s = sOuter ∧ CheckState.Correct dqbf cs s₀ ∧ TrialState s₀ s⌝⦄
-    (runDQRATEBlockerTrial pivot sOuter.formula blockerLits : CheckM Bool)
+    (runDQRATEOuterClauseTrial outerLits : CheckM Bool)
     ⦃⇓? _ s' => ⌜CheckState.Correct dqbf cs s₀ ∧
         TrialState s₀ s' ∧ SameFC sOuter s'⌝⦄ := by
   intro s hs
   rcases hs with ⟨hsOuter, hcorr₀, htrial⟩
   subst s
-  simp only [runDQRATEBlockerTrial, WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind]
-  let isouter : Literal → Bool := fun l =>
-    l ≠ pivot.negate && sOuter.formula.isVarOuterOfExivar l.var pivot.var
-  cases hneg_run : negateAndPropagate blockerLits isouter sOuter with
+  simp only [runDQRATEOuterClauseTrial, WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind]
+  cases hneg_run : negateAndPropagate outerLits (fun _ => true) sOuter with
   | error e s' =>
       simp [hneg_run]
   | ok gotConflict s₁ =>
-      have hnested := negateAndPropagate_nested_trial_spec dqbf cs s₀ sOuter blockerLits isouter
+      have hnested := negateAndPropagate_nested_trial_spec dqbf cs s₀ sOuter outerLits (fun _ => true)
         sOuter ⟨rfl, hcorr₀, htrial⟩
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hnested
       rw [hneg_run] at hnested
@@ -8623,6 +8615,19 @@ private theorem runDQRATEBlockerTrial_restore_spec
           rcases hback with ⟨htrial₂, hsame₂⟩
           simp [hback_run]
           exact ⟨hcorr₀', htrial₂, hsame₂⟩
+
+private theorem runDQRATEBlockerTrial_restore_spec
+    (dqbf : DQBF) (cs : ClauseStore)
+    (s₀ sOuter : CheckState)
+    (pivot : Literal) (blockerLits : Array Literal) :
+    ⦃fun s => ⌜s = sOuter ∧ CheckState.Correct dqbf cs s₀ ∧ TrialState s₀ s⌝⦄
+    (runDQRATEBlockerTrial pivot sOuter.formula blockerLits : CheckM Bool)
+    ⦃⇓? _ s' => ⌜CheckState.Correct dqbf cs s₀ ∧
+        TrialState s₀ s' ∧ SameFC sOuter s'⌝⦄ := by
+  simpa [runDQRATEBlockerTrial] using
+    (runDQRATEOuterClauseTrial_restore_spec
+      (dqbf := dqbf) (cs := cs) (s₀ := s₀) (sOuter := sOuter)
+      (outerLits := outerClause sOuter.formula blockerLits pivot))
 
 private theorem checkDQRATEBlockerStep_trial_spec
     (dqbf : DQBF) (cs : ClauseStore) (s₀ sOuter : CheckState)

@@ -66,13 +66,21 @@ def addClause (lits : Array Literal) : CheckM (Option CRef) := do
 
 -- ─── DQRATE check ─────────────────────────────────────────────────────────
 
-def runDQRATEBlockerTrial (pivot : Literal) (f : DQBF)
-    (blockerLits : Array Literal) : CheckM Bool := do
-  let isouter : Literal → Bool := fun l =>
-    l ≠ pivot.negate && f.isVarOuterOfExivar l.var pivot.var
-  let gotConflict ← negateAndPropagate blockerLits isouter
+/-- The executable DQRATE blocker trial keeps exactly these blocker literals:
+    literals from `D` whose variables are outer w.r.t. `y.var`, excluding `¬y`
+    because the outer negate-trial has already assigned it at level 1. -/
+def outerClause (f : DQBF) (blockerLits : Array Literal) (pivot : Literal) :
+    Array Literal :=
+  blockerLits.filter fun l => l ≠ pivot.negate && f.isVarOuterOfExivar l.var pivot.var
+
+def runDQRATEOuterClauseTrial (outerLits : Array Literal) : CheckM Bool := do
+  let gotConflict ← negateAndPropagate outerLits (fun _ => true)
   backtrackBefore 2
   return gotConflict
+
+def runDQRATEBlockerTrial (pivot : Literal) (f : DQBF)
+    (blockerLits : Array Literal) : CheckM Bool := do
+  runDQRATEOuterClauseTrial (outerClause f blockerLits pivot)
 
 def checkDQRATEBlockerStep (pivot : Literal)
     (acc : Option CRef) (cref : CRef) : CheckM (Option CRef) := do
