@@ -1354,6 +1354,18 @@ theorem PrefixState.toMatrixCorrect
     rw [hallFalse v hpos hle] at hassign
     cases hassign
 
+theorem PrefixState.toMatrixFullCorrect
+    {st : CheckState} (hpref : PrefixState st) :
+    CheckState.FullCorrect st.formula st.clauses st := by
+  refine ⟨PrefixState.toMatrixCorrect hpref, ?_⟩
+  rcases hpref with ⟨_, hclauses, _⟩
+  intro cref c l hget hmem
+  have hget' : ({} : ClauseStore).getClause cref = some c := by
+    simpa [hclauses] using hget
+  have hocc' : cref ∈ ({} : ClauseStore).getOcc l :=
+    ClauseStore.liveOccurrencesComplete_empty hget' hmem
+  simpa [hclauses] using hocc'
+
 
 /-- Extending the formula with one fresh existential variable preserves `Correct`.
     The new variable starts unassigned and does not occur in the existing clause store
@@ -3424,6 +3436,16 @@ theorem CheckState.Correct.toSelf
         intro htrue
         exact htrue
       lookupInternal_sound := hcorr.lookupInternal_sound }
+
+theorem CheckState.FullCorrect.withSelfAddClause
+    {st : CheckState} {lits : Array Literal}
+    (hfull : CheckState.FullCorrect st.formula st.clauses st)
+    (hlits : ClauseLitsWellFormed st.formula lits) :
+    CheckState.FullCorrect st.formula (st.clauses.addClause lits).1
+      { st with clauses := (st.clauses.addClause lits).1 } := by
+  refine ⟨CheckState.Correct.withSelfAddClause hfull.toCorrect hlits, ?_⟩
+  exact ClauseStore.liveOccurrencesComplete_addClause
+    hfull.toCorrect.toSound.clauses_nonempty hfull.liveOccurrencesComplete lits
 
 theorem CheckState.Correct.withDeleteClauseReset
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {cref : CRef}
@@ -6962,6 +6984,14 @@ def ReadMatrixPost (r : Bool) (s' : CheckState) : Prop :=
   else
     CheckState.Correct s'.formula s'.clauses s'
 
+/-- Stronger parser postcondition that also tracks live-occurrence completeness
+    on the non-contradictory branch. -/
+def ReadMatrixFullPost (r : Bool) (s' : CheckState) : Prop :=
+  if r then
+    DQBFFalse s'.formula s'.clauses
+  else
+    CheckState.FullCorrect s'.formula s'.clauses s'
+
 private theorem checkModifyExistentialAddOnlyCore_full_step_spec
     (dqbf : DQBF) (cs : ClauseStore) (extExi : Nat) (depChanges : List Int) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
@@ -9619,6 +9649,13 @@ def AddClauseSelfPost (r : Option CRef) (s' : CheckState) : Prop :=
   | some _ => CheckState.Correct s'.formula s'.clauses s'
   | none => DQBFFalse s'.formula s'.clauses
 
+/-- Stronger self-relative postcondition that also records live occurrence
+    completeness on successful clause insertion. -/
+def AddClauseSelfFullPost (r : Option CRef) (s' : CheckState) : Prop :=
+  match r with
+  | some _ => CheckState.FullCorrect s'.formula s'.clauses s'
+  | none => DQBFFalse s'.formula s'.clauses
+
 @[simp] theorem addClauseSelfPost_some
     (cref : CRef) (s' : CheckState) :
     AddClauseSelfPost (some cref) s' ↔
@@ -9628,6 +9665,17 @@ def AddClauseSelfPost (r : Option CRef) (s' : CheckState) : Prop :=
 @[simp] theorem addClauseSelfPost_none
     (s' : CheckState) :
     AddClauseSelfPost none s' ↔ DQBFFalse s'.formula s'.clauses := by
+  rfl
+
+@[simp] theorem addClauseSelfFullPost_some
+    (cref : CRef) (s' : CheckState) :
+    AddClauseSelfFullPost (some cref) s' ↔
+      CheckState.FullCorrect s'.formula s'.clauses s' := by
+  rfl
+
+@[simp] theorem addClauseSelfFullPost_none
+    (s' : CheckState) :
+    AddClauseSelfFullPost none s' ↔ DQBFFalse s'.formula s'.clauses := by
   rfl
 
 private theorem addClauseSelf_of_empty
@@ -9859,6 +9907,45 @@ private theorem addClauseSelf_of_unit_success
     have hv := hcorr.lookupInternal_sound ext v hlookup₁
     simpa [s_added, hformula₂] using hv
 
+private theorem addClauseSelf_of_unit_success_full
+    {s₁ s_enq s₂ : CheckState} {lits unassigned : Array Literal}
+    (hfull : CheckState.FullCorrect s₁.formula s₁.clauses s₁)
+    (hlits : ClauseLitsWellFormed s₁.formula lits)
+    (hunassigned : unassigned = lits.filter (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ s₁.formula.maxVar &&
+        !s₁.isAssigned.getD (v - 1) false))
+    (hsat_false : lits.any (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ s₁.formula.maxVar &&
+        s₁.isAssigned.getD (v - 1) false &&
+        (s₁.value.getD (v - 1) false == lit.isPos)) = false)
+    (hsize1 : unassigned.size = 1)
+    (henq_run :
+      enqueue (unassigned.getD 0 ⟨0⟩)
+        { s₁ with clauses := (s₁.clauses.addClause lits).1 } = .ok () s_enq)
+    (hprop_run : propagate s_enq = .ok none s₂) :
+    CheckState.FullCorrect s₂.formula s₂.clauses s₂ := by
+  let s_added : CheckState := { s₁ with clauses := (s₁.clauses.addClause lits).1 }
+  have hfull_added :
+      CheckState.FullCorrect s₁.formula (s₁.clauses.addClause lits).1 s_added := by
+    dsimp [s_added]
+    exact CheckState.FullCorrect.withSelfAddClause hfull hlits
+  have henq_same := enqueue_sameFC_spec (unassigned.getD 0 ⟨0⟩) s_added
+  specialize henq_same s_added (by exact ⟨rfl, rfl⟩)
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at henq_same
+  rw [henq_run] at henq_same
+  have hsame₂ : SameFC s_added s₂ :=
+    propagate_none_sameFC henq_same hprop_run
+  have hfull₂ := CheckState.FullCorrect.ofCorrectSameFC
+    hfull_added
+    (addClauseSelf_of_unit_success
+      (s₁ := s₁) (s_enq := s_enq) (s₂ := s₂)
+      (lits := lits) (unassigned := unassigned)
+      hfull.toCorrect hlits hunassigned hsat_false hsize1 henq_run hprop_run)
+    hsame₂
+  simpa [s_added, hsame₂.1, hsame₂.2] using hfull₂
+
 theorem addClauseAfterCache_self_spec (lits : Array Literal) :
     ⦃fun s =>
       ⌜CheckState.Correct s.formula s.clauses s ∧
@@ -9954,6 +10041,102 @@ theorem addClauseAfterCache_self_spec (lits : Array Literal) :
             hunempty, hsize1, AddClauseSelfPost]
           simpa [s_added, cref] using CheckState.Correct.withSelfAddClause hcorr hlits
 
+theorem addClauseAfterCache_self_full_spec (lits : Array Literal) :
+    ⦃fun s =>
+      ⌜CheckState.FullCorrect s.formula s.clauses s ∧
+       ClauseLitsWellFormed s.formula lits⌝⦄
+    (addClauseAfterCache lits : CheckM (Option CRef))
+    ⦃⇓? r s' => ⌜AddClauseSelfFullPost r s'⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hlits⟩
+  let s_added : CheckState := { s with clauses := (s.clauses.addClause lits).1 }
+  let cref : CRef := s_added.clauses.clauses.size - 1
+  by_cases hempty : lits.isEmpty = true
+  · simp only [WP.wp, PredTrans.apply, EStateM.run, addClauseAfterCache, hempty,
+      AddClauseSelfFullPost]
+    simpa [s_added] using addClauseSelf_of_empty hfull.toCorrect hempty
+  · by_cases hsat : lits.any (fun lit =>
+        let v := lit.var
+        v > 0 && v ≤ s.formula.maxVar &&
+        s.isAssigned.getD (v - 1) false &&
+        (s.value.getD (v - 1) false == lit.isPos)) = true
+    · simp only [WP.wp, PredTrans.apply, EStateM.run, addClauseAfterCache, hempty, hsat,
+        AddClauseSelfFullPost]
+      simpa [s_added, cref] using CheckState.FullCorrect.withSelfAddClause hfull hlits
+    · have hsat_false : lits.any (fun lit =>
+          let v := lit.var
+          v > 0 && v ≤ s.formula.maxVar &&
+          s.isAssigned.getD (v - 1) false &&
+          (s.value.getD (v - 1) false == lit.isPos)) = false := by
+        cases hbool : lits.any (fun lit =>
+            let v := lit.var
+            v > 0 && v ≤ s.formula.maxVar &&
+            s.isAssigned.getD (v - 1) false &&
+            (s.value.getD (v - 1) false == lit.isPos)) with
+        | false =>
+            simpa [hbool]
+        | true =>
+            exact False.elim (hsat hbool)
+      by_cases hunempty : (lits.filter fun lit =>
+          let v := lit.var
+          v > 0 && v ≤ s.formula.maxVar &&
+          !s.isAssigned.getD (v - 1) false).isEmpty = true
+      · simp only [WP.wp, PredTrans.apply, EStateM.run, addClauseAfterCache, hempty, hsat,
+          hunempty, AddClauseSelfFullPost]
+        simpa [s_added] using addClauseSelf_of_all_false hfull.toCorrect hlits hsat_false hunempty
+      · by_cases hsize1 : (lits.filter fun lit =>
+            let v := lit.var
+            v > 0 && v ≤ s.formula.maxVar &&
+            !s.isAssigned.getD (v - 1) false).size = 1
+        · let unassigned : Array Literal := lits.filter fun lit =>
+              let v := lit.var
+              v > 0 && v ≤ s.formula.maxVar &&
+              !s.isAssigned.getD (v - 1) false
+          have hunassigned' : unassigned = lits.filter (fun lit =>
+              let v := lit.var
+              v > 0 && v ≤ s.formula.maxVar &&
+              !s.isAssigned.getD (v - 1) false) := by
+            rfl
+          have hsize1' : unassigned.size = 1 := by
+            simpa [unassigned] using hsize1
+          simp only [WP.wp, PredTrans.apply, EStateM.run, addClauseAfterCache, hempty, hsat,
+            hunempty, hsize1, AddClauseSelfFullPost]
+          cases henq_run :
+              enqueue ((lits.filter fun lit =>
+                  let v := lit.var
+                  v > 0 && v ≤ s.formula.maxVar &&
+                  !s.isAssigned.getD (v - 1) false).getD 0 ⟨0⟩)
+                { s with clauses := (s.clauses.addClause lits).1 } with
+          | error e s_err =>
+              simp [henq_run]
+          | ok _ s_enq =>
+              cases hprop_run : propagate s_enq with
+              | error e s_err =>
+                  simp [henq_run, hprop_run]
+              | ok conflict s₂ =>
+                  cases conflict with
+                  | none =>
+                      simp [henq_run, hprop_run]
+                      simpa [unassigned] using
+                        addClauseSelf_of_unit_success_full
+                          (s₁ := s) (s_enq := s_enq) (s₂ := s₂)
+                          (lits := lits) (unassigned := unassigned)
+                          hfull hlits hunassigned' hsat_false hsize1'
+                          (by simpa [unassigned] using henq_run)
+                          hprop_run
+                  | some conflict =>
+                      simp [henq_run, hprop_run]
+                      simpa [unassigned] using
+                        addClauseSelf_of_unit_conflict
+                          (s₁ := s) (s_enq := s_enq) (s₂ := s₂)
+                          (lits := lits) (unassigned := unassigned) (conflict := conflict)
+                          hfull.toCorrect hlits hunassigned' hsat_false hsize1'
+                          (by simpa [unassigned] using henq_run)
+                          hprop_run
+        · simp only [WP.wp, PredTrans.apply, EStateM.run, addClauseAfterCache, hempty, hsat,
+            hunempty, hsize1, AddClauseSelfFullPost]
+          simpa [s_added, cref] using CheckState.FullCorrect.withSelfAddClause hfull hlits
+
 theorem addClause_self_spec (lits : Array Literal) :
     ⦃fun s =>
       ⌜CheckState.Correct s.formula s.clauses s ∧
@@ -9980,6 +10163,186 @@ theorem addClause_self_spec (lits : Array Literal) :
             clauseLitsWellFormed_of_sameFC hsame' hlits⟩
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hafter
       simpa [Bind.bind, EStateM.bind, hrun] using hafter
+
+theorem addClause_self_full_spec (lits : Array Literal) :
+    ⦃fun s =>
+      ⌜CheckState.FullCorrect s.formula s.clauses s ∧
+       ClauseLitsWellFormed s.formula lits⌝⦄
+    (addClause lits : CheckM (Option CRef))
+    ⦃⇓? r s' => ⌜AddClauseSelfFullPost r s'⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hlits⟩
+  unfold addClause
+  have hcache :=
+    invalidateDepCaches_correct_sameFC_spec s.formula s.clauses lits s s
+      ⟨hfull.toCorrect, ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hcache ⊢
+  cases hrun : invalidateDepCaches lits s with
+  | error e s' =>
+      rw [hrun] at hcache
+      exact hcache.elim
+  | ok _ s' =>
+      rw [hrun] at hcache
+      rcases hcache with ⟨hcorr', hsame'⟩
+      have hfull' : CheckState.FullCorrect s'.formula s'.clauses s' :=
+        by
+          have hfull'' := CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame'
+          simpa [hsame'.1, hsame'.2] using hfull''
+      have hafter :=
+        addClauseAfterCache_self_full_spec lits s'
+          ⟨hfull', clauseLitsWellFormed_of_sameFC hsame' hlits⟩
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hafter
+      simpa [Bind.bind, EStateM.bind, hrun] using hafter
+
+private theorem readMatrixM_full_run
+    (declaredMaxVar : Nat) (toks : Array String) :
+    ∀ n pos curLits s result s',
+      CheckState.FullCorrect s.formula s.clauses s →
+      ClauseLitsWellFormed s.formula curLits →
+      toks.size - pos ≤ n →
+      readMatrixM declaredMaxVar toks pos curLits s = .ok result s' →
+      ReadMatrixFullPost result s' := by
+  intro n
+  induction n with
+  | zero =>
+      intro pos curLits s result s' hfull hcur hmeasure hrun
+      have hpos : pos ≥ toks.size := by omega
+      rw [readMatrixM.eq_def, if_pos hpos] at hrun
+      simp [Pure.pure, EStateM.pure, ReadMatrixFullPost] at hrun
+      simpa [ReadMatrixFullPost, hrun.1, hrun.2] using hfull
+  | succ n ih =>
+      intro pos curLits s result s' hfull hcur hmeasure hrun
+      rw [readMatrixM.eq_def] at hrun
+      by_cases hpos : pos ≥ toks.size
+      · rw [if_pos hpos] at hrun
+        simp [Pure.pure, EStateM.pure, ReadMatrixFullPost] at hrun
+        simpa [ReadMatrixFullPost, hrun.1, hrun.2] using hfull
+      · rw [if_neg hpos] at hrun
+        cases htok : (toks.getD pos "").toInt? with
+        | none =>
+            rw [htok] at hrun
+            have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
+            exact ih (pos + 1) curLits s result s' hfull hcur hmeasure' hrun
+        | some lit =>
+            by_cases hzero : lit = 0
+            · rw [htok, hzero] at hrun
+              simp at hrun
+              let sorted := ClauseStore.sortLits curLits
+              have hsorted : ClauseLitsWellFormed s.formula sorted := by
+                dsimp [sorted]
+                exact ClauseLitsWellFormed.sortLits hcur
+              let isTauto :=
+                (List.range (if sorted.size > 0 then sorted.size - 1 else 0)).any fun i =>
+                  sorted.getD i ⟨0⟩ == (sorted.getD (i + 1) ⟨0⟩).negate
+              by_cases hskip : !isTauto
+              · have hskip_prop :
+                    ∀ (x : Nat),
+                      x < (if 0 < (ClauseStore.sortLits curLits).size
+                        then (ClauseStore.sortLits curLits).size - 1 else 0) →
+                        ¬(ClauseStore.sortLits curLits)[x]?.getD { x := 0 } =
+                          ((ClauseStore.sortLits curLits)[x + 1]?.getD { x := 0 }).negate := by
+                    simpa [sorted, isTauto] using hskip
+                rw [if_pos hskip_prop] at hrun
+                simp [Bind.bind, EStateM.bind] at hrun
+                have haddspec := addClause_self_full_spec sorted s ⟨hfull, hsorted⟩
+                simp only [WP.wp, PredTrans.apply, EStateM.run] at haddspec
+                cases hadd : addClause sorted s with
+                | error e s1 =>
+                    have hadd' : addClause (ClauseStore.sortLits curLits) s = .error e s1 := by
+                      simpa [sorted] using hadd
+                    rw [hadd'] at hrun
+                    simp at hrun
+                | ok r s1 =>
+                    rw [hadd] at haddspec
+                    have hadd' : addClause (ClauseStore.sortLits curLits) s = .ok r s1 := by
+                      simpa [sorted] using hadd
+                    rw [hadd'] at hrun
+                    cases hr : r with
+                    | none =>
+                        rw [hr] at hrun
+                        simp [Bind.bind, EStateM.bind, Pure.pure, EStateM.pure] at hrun
+                        rcases hrun with ⟨rfl, rfl⟩
+                        simpa [ReadMatrixFullPost, hr] using haddspec
+                    | some cref =>
+                        have hfull1 : CheckState.FullCorrect s1.formula s1.clauses s1 := by
+                          simpa [hr] using haddspec
+                        rw [hr] at hrun
+                        cases hrec : readMatrixM declaredMaxVar toks (pos + 1) #[] s1 with
+                        | error e s2 =>
+                            simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
+                            rw [hrec] at hrun
+                            simp at hrun
+                        | ok r2 s2 =>
+                            have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
+                            have hpost :=
+                              ih (pos + 1) #[] s1 r2 s2 hfull1
+                                (by intro l hl; simp at hl)
+                                hmeasure' hrec
+                            simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
+                            rw [hrec] at hrun
+                            rcases hrun with ⟨rfl, rfl⟩
+                            exact hpost
+              · have hskip_prop :
+                    ¬ ∀ (x : Nat),
+                      x < (if 0 < (ClauseStore.sortLits curLits).size
+                        then (ClauseStore.sortLits curLits).size - 1 else 0) →
+                        ¬(ClauseStore.sortLits curLits)[x]?.getD { x := 0 } =
+                          ((ClauseStore.sortLits curLits)[x + 1]?.getD { x := 0 }).negate := by
+                    simpa [sorted, isTauto] using hskip
+                rw [if_neg hskip_prop] at hrun
+                cases hrec : readMatrixM declaredMaxVar toks (pos + 1) #[] s with
+                | error e s1 =>
+                    rw [hrec] at hrun
+                    simp at hrun
+                | ok r1 s1 =>
+                    have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
+                    have hpost :=
+                      ih (pos + 1) #[] s r1 s1 hfull
+                        (by intro l hl; simp at hl)
+                        hmeasure' hrec
+                    rw [hrec] at hrun
+                    injection hrun with hres hs
+                    subst hres hs
+                    exact hpost
+            · have hrun' := hrun
+              rw [htok] at hrun'
+              let extVar := lit.natAbs
+              by_cases hgt : extVar > declaredMaxVar
+              · simp [extVar, ensureWithinMaxVar, hgt, Bind.bind, EStateM.bind,
+                  throw, throwThe, MonadExceptOf.throw, EStateM.throw] at hrun'
+              · have hlt : ¬ declaredMaxVar < extVar := by simpa [extVar] using hgt
+                simp [extVar, ensureWithinMaxVar, hlt, Bind.bind, EStateM.bind] at hrun'
+                simp [Pure.pure, EStateM.pure] at hrun'
+                rw [getFormula_run] at hrun'
+                cases hlookup : s.formula.lookupInternal extVar with
+                | none =>
+                    simp [extVar, hlookup, EStateM.bind, throw, throwThe,
+                      MonadExceptOf.throw, EStateM.throw] at hrun'
+                | some iv =>
+                    rcases hfull.toCorrect.lookupInternal_sound extVar iv hlookup with ⟨hposv, hlev⟩
+                    have hmk : (mkLit iv (lit > 0)).var = iv := by
+                      unfold Literal.var mkLit
+                      by_cases hsign : lit > 0
+                      · simp [hsign]
+                        rw [Nat.add_comm (iv * 2) 1]
+                        rw [Nat.add_mul_div_right 1 iv (by decide)]
+                        simp
+                      · simp [hsign]
+                    cases hrec : readMatrixM declaredMaxVar toks (pos + 1)
+                        (curLits.push (mkLit iv (lit > 0))) s with
+                    | error e s1 =>
+                        simp [extVar, hlookup, EStateM.bind, EStateM.pure, hrec] at hrun'
+                    | ok r1 s1 =>
+                        have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
+                        have hcur1 : ClauseLitsWellFormed s.formula
+                            (curLits.push (mkLit iv (lit > 0))) := by
+                          apply ClauseLitsWellFormed.push hcur
+                          simpa [hmk] using (show 0 < iv ∧ iv ≤ s.formula.maxVar from ⟨hposv, hlev⟩)
+                        have hpost :=
+                          ih (pos + 1) (curLits.push (mkLit iv (lit > 0))) s r1 s1
+                            hfull hcur1 hmeasure' hrec
+                        simp [extVar, hlookup, EStateM.bind, EStateM.pure, hrec] at hrun'
+                        simpa [ReadMatrixFullPost, hrun'.1, hrun'.2] using hpost
 
 private theorem readMatrixM_sound_run
     (declaredMaxVar : Nat) (toks : Array String) :
@@ -10147,6 +10510,22 @@ theorem readMatrixM_sound_spec
       exact readMatrixM_sound_run declaredMaxVar toks
         (toks.size - pos) pos curLits s result s' hcorr hcur (by omega) hrun
 
+theorem readMatrixM_full_spec
+    (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) (curLits : Array Literal) :
+    ⦃fun s =>
+      ⌜CheckState.FullCorrect s.formula s.clauses s ∧
+       ClauseLitsWellFormed s.formula curLits⌝⦄
+    (readMatrixM declaredMaxVar toks pos curLits : CheckM Bool)
+    ⦃⇓? r s' => ⌜ReadMatrixFullPost r s'⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hcur⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run]
+  cases hrun : readMatrixM declaredMaxVar toks pos curLits s with
+  | error e s' => simp
+  | ok result s' =>
+      exact readMatrixM_full_run declaredMaxVar toks
+        (toks.size - pos) pos curLits s result s' hfull hcur (by omega) hrun
+
 theorem parseDQDIMACSInner_prefix_sound_spec
     (declaredMaxVar : Nat) (allToks : Array String) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -10169,12 +10548,45 @@ theorem parseDQDIMACSInner_prefix_sound_spec
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hmatrix
       simpa [Bind.bind, EStateM.bind, hpre] using hmatrix
 
+theorem parseDQDIMACSInner_prefix_full_spec
+    (declaredMaxVar : Nat) (allToks : Array String) :
+    ⦃fun s => ⌜PrefixState s⌝⦄
+    (parseDQDIMACSInner declaredMaxVar allToks : CheckM Bool)
+    ⦃⇓? r s' => ⌜ReadMatrixFullPost r s'⌝⦄ := by
+  intro s hpref
+  simp only [WP.wp, PredTrans.apply, EStateM.run, parseDQDIMACSInner]
+  have hprefix := readPrefixM_prefix_spec declaredMaxVar allToks 4 #[] s hpref
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hprefix
+  cases hpre : readPrefixM declaredMaxVar allToks 4 #[] s with
+  | error e s1 =>
+      simp [Bind.bind, EStateM.bind, hpre]
+  | ok prefixResult s1 =>
+      rw [hpre] at hprefix
+      have hpref1 : PrefixState s1 := hprefix
+      rcases prefixResult with ⟨matrixStart, _univs⟩
+      have hmatrix :=
+        readMatrixM_full_spec declaredMaxVar allToks matrixStart #[] s1
+          ⟨PrefixState.toMatrixFullCorrect hpref1, by simpa [ClauseLitsWellFormed]⟩
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hmatrix
+      simpa [Bind.bind, EStateM.bind, hpre] using hmatrix
+
 theorem parseDQDIMACSInner_sound
     (declaredMaxVar : Nat) (allToks : Array String) (result : Bool) (st : CheckState)
     (h : parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok result st) :
     ReadMatrixPost result st := by
   have hspec :=
     parseDQDIMACSInner_prefix_sound_spec declaredMaxVar allToks
+      CheckState.empty PrefixState.empty
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
+  rw [h] at hspec
+  exact hspec
+
+theorem parseDQDIMACSInner_full_sound
+    (declaredMaxVar : Nat) (allToks : Array String) (result : Bool) (st : CheckState)
+    (h : parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok result st) :
+    ReadMatrixFullPost result st := by
+  have hspec :=
+    parseDQDIMACSInner_prefix_full_spec declaredMaxVar allToks
       CheckState.empty PrefixState.empty
   simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
   rw [h] at hspec
@@ -10201,6 +10613,28 @@ theorem parseDQDIMACSTokensAfterHeader_correct
             simpa [EStateM.run] using hinner
           have hsound := parseDQDIMACSInner_sound declaredMaxVar allToks false s0 hinner'
           simpa [ReadMatrixPost] using hsound
+
+theorem parseDQDIMACSTokensAfterHeader_full_correct
+    (declaredMaxVar : Nat) (allToks : Array String) (st : CheckState)
+    (h : parseDQDIMACSTokensAfterHeader declaredMaxVar allToks = .ok (some st)) :
+    CheckState.FullCorrect st.formula st.clauses st := by
+  unfold parseDQDIMACSTokensAfterHeader at h
+  cases hinner : (parseDQDIMACSInner declaredMaxVar allToks).run CheckState.empty with
+  | error e s0 =>
+      simp [hinner] at h
+  | ok result s0 =>
+      cases hpost : result with
+      | true =>
+          simp [hinner, hpost] at h
+      | false =>
+          subst hpost
+          simp [hinner] at h
+          subst h
+          have hinner' :
+              parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok false s0 := by
+            simpa [EStateM.run] using hinner
+          have hsound := parseDQDIMACSInner_full_sound declaredMaxVar allToks false s0 hinner'
+          simpa [ReadMatrixFullPost] using hsound
 
 theorem parseDQDIMACSTokens_correct
     (allToks : Array String) (st : CheckState)
@@ -10248,6 +10682,52 @@ theorem parseDQDIMACSTokens_correct
       simpa [Except.bind] using h
     exact False.elim this
 
+theorem parseDQDIMACSTokens_full_correct
+    (allToks : Array String) (st : CheckState)
+    (h : parseDQDIMACSTokens allToks = .ok (some st)) :
+    CheckState.FullCorrect st.formula st.clauses st := by
+  unfold parseDQDIMACSTokens at h
+  by_cases hp : allToks.getD 0 "" = "p"
+  · by_cases hcnf : allToks.getD 1 "" = "cnf"
+    · simp [hp, hcnf, Bind.bind] at h
+      cases hmax : (allToks.getD 2 "").toNat? with
+      | none =>
+          have hmax' : (allToks[2]?.getD "").toNat? = none := by
+            simpa using hmax
+          simp [hmax', Bind.bind] at h
+          have h' := h
+          simp at h'
+          cases h'
+      | some declaredMaxVar =>
+          have hmax' : (allToks[2]?.getD "").toNat? = some declaredMaxVar := by
+            simpa using hmax
+          simp [hmax', Bind.bind] at h
+          cases hclauses : (allToks.getD 3 "").toNat? with
+          | none =>
+              have hclauses' : (allToks[3]?.getD "").toNat? = none := by
+                simpa using hclauses
+              simp [hclauses', Bind.bind] at h
+              have h' := h
+              simp at h'
+              cases h'
+          | some declaredNumClauses =>
+              have hclauses' : (allToks[3]?.getD "").toNat? = some declaredNumClauses := by
+                simpa using hclauses
+              simp [hclauses', Bind.bind] at h
+              exact parseDQDIMACSTokensAfterHeader_full_correct declaredMaxVar allToks st h
+    · have hcnf' : ¬allToks[1]?.getD "" = "cnf" := by
+        simpa using hcnf
+      simp [hp, hcnf', Bind.bind] at h
+      have : False := by
+        simpa [Except.bind] using h
+      exact False.elim this
+  · have hp' : ¬allToks[0]?.getD "" = "p" := by
+      simpa using hp
+    simp [hp', Bind.bind] at h
+    have : False := by
+      simpa [Except.bind] using h
+    exact False.elim this
+
 /-- The `CheckState` returned by `parseDQDIMACS` satisfies `Correct` with
     respect to its own formula and clauses whenever parsing succeeds without
     parse-time contradiction. -/
@@ -10262,6 +10742,20 @@ theorem parseDQDIMACS_correct (content : String) (st : CheckState)
   | ok header =>
       simp [hstruct] at h
       exact parseDQDIMACSTokens_correct (tokenize (stripCommentLines content)) st h
+
+/-- Stronger parser theorem: successful parsing without immediate contradiction
+    returns a self-relative `FullCorrect` state. -/
+theorem parseDQDIMACS_full_correct (content : String) (st : CheckState)
+    (h : parseDQDIMACS content = .ok (some st)) :
+    CheckState.FullCorrect st.formula st.clauses st := by
+  unfold parseDQDIMACS at h
+  cases hstruct : validateDQDIMACSStructure content with
+  | error e =>
+      simp [hstruct] at h
+      cases h
+  | ok header =>
+      simp [hstruct] at h
+      exact parseDQDIMACSTokens_full_correct (tokenize (stripCommentLines content)) st h
 
 /-- **Improved main soundness theorem**:
     if `processProof` verifies a proof, the input formula is unsatisfiable. -/
