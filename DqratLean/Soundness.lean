@@ -1961,6 +1961,34 @@ theorem resetPropagationState_correct_sameFC_spec
       (resetPropagationState_sameFC_spec s₀))
     (by simp [PostCond.entails, SPred.entails, ExceptConds.entails])
 
+theorem resetPropagationState_full_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+    (resetPropagationState : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s'⌝⦄ := by
+  intro s hfull
+  simp only [WP.wp, PredTrans.apply, EStateM.run]
+  rw [resetPropagationState_run]
+  exact CheckState.FullCorrect.ofCorrectClausesEq
+    hfull (CheckState.Correct.withResetPropagationState hfull.toCorrect) rfl
+
+private theorem resetPropagationState_full_correct_lookup_spec
+    (dqbf : DQBF) (cs : ClauseStore) (extVar : Nat) (internalVar : Var) :
+    ⦃fun s =>
+      ⌜CheckState.FullCorrect dqbf cs s ∧
+       s.formula.lookupInternal extVar = some internalVar⌝⦄
+    (resetPropagationState : CheckM Unit)
+    ⦃⇓ _ s' =>
+      ⌜CheckState.FullCorrect dqbf cs s' ∧
+       s'.formula.lookupInternal extVar = some internalVar⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hlookup⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run]
+  rw [resetPropagationState_run]
+  exact ⟨CheckState.FullCorrect.ofCorrectClausesEq
+      hfull (CheckState.Correct.withResetPropagationState hfull.toCorrect) rfl,
+    by simpa using hlookup⟩
+
 @[spec]
 theorem makeIndepUnknown_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (u : Var) :
@@ -6995,6 +7023,39 @@ private theorem checkModifyExistentialInit_correct_spec
     simpa [WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind,
       hget_formula, hmissing] using hadd
 
+private theorem checkModifyExistentialInit_full_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore) (extExi : Nat) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+    ((do
+      let f ← (·.formula) <$> get
+      if !f.externalVarExists extExi then
+        addVarExists extExi #[]
+      else
+        match f.lookupInternal extExi with
+        | none => throw s!"Var {extExi} not found"
+        | some v => pure v) : CheckM Var)
+    ⦃⇓? internalExi s' =>
+      ⌜CheckState.FullCorrect dqbf cs s' ∧
+       s'.formula.lookupInternal extExi = some internalExi⌝⦄ := by
+  intro s hfull
+  have hget_formula :
+      (((fun x => x.formula) <$> (get : CheckM CheckState)) s) = .ok s.formula s := by
+    rfl
+  by_cases hex : s.formula.externalVarExists extExi = true
+  · rcases lookupInternal_some_of_externalVarExists s.formula extExi hex with
+      ⟨internalExi, hlookupExi⟩
+    simpa [WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind,
+      hget_formula, hex, hlookupExi, EStateM.pure, Pure.pure] using
+      (show CheckState.FullCorrect dqbf cs s ∧
+          s.formula.lookupInternal extExi = some internalExi from
+        ⟨hfull, hlookupExi⟩)
+  · have hmissing : s.formula.externalVarExists extExi = false := by
+      cases hval : s.formula.externalVarExists extExi <;> simp_all
+    have hadd := addVarExists_full_correct_spec dqbf cs extExi #[] s ⟨hfull, hmissing⟩
+    simp only [WP.wp, PredTrans.apply, EStateM.run] at hadd
+    simpa [WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind,
+      hget_formula, hmissing] using hadd
+
 private theorem checkModifyExistentialAddOnlyCore_correct_spec
     (dqbf : DQBF) (cs : ClauseStore) (extExi : Nat) (depChanges : List Int) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
@@ -7026,6 +7087,38 @@ private theorem checkModifyExistentialAddOnlyCore_correct_spec
   intro s hcorr
   simp [WP.wp, PredTrans.apply, EStateM.run, Pure.pure, EStateM.pure]
   exact hcorr
+
+private theorem checkModifyExistentialAddOnlyCore_full_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore) (extExi : Nat) (depChanges : List Int) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+    ((do
+      let internalExi ←
+        (do
+          let f ← (·.formula) <$> get
+          if !f.externalVarExists extExi then
+            addVarExists extExi #[]
+          else
+            match f.lookupInternal extExi with
+            | none => throw s!"Var {extExi} not found"
+            | some v => pure v)
+      let _ ←
+        (forIn depChanges PUnit.unit (fun cv _ => do
+          if cv < 0 then
+            pure (ForInStep.yield PUnit.unit)
+          else
+            let _ ← checkModifyExistentialAddStep internalExi cv
+            pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+      resetPropagationState
+      pure (none : Option ProofResult)) : CheckM (Option ProofResult))
+    ⦃⇓? r s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ r = none⌝⦄ := by
+  mintro hfull
+  mspec (checkModifyExistentialInit_full_correct_spec dqbf cs extExi)
+  rename_i internalExi
+  mspec (checkModifyExistentialAddLoop_full_correct_spec dqbf cs extExi internalExi depChanges)
+  mspec (resetPropagationState_full_correct_lookup_spec dqbf cs extExi internalExi)
+  intro s hs
+  simp [WP.wp, PredTrans.apply, EStateM.run, Pure.pure, EStateM.pure]
+  exact hs.1
 
 private theorem checkAddUniversalLoop_correct_spec
     (dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat) (extVars : List Int) :
