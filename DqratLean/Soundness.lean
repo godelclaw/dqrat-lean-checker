@@ -9099,6 +9099,52 @@ private theorem runDQRATEBlockerTrial_restore_spec
       (dqbf := dqbf) (cs := cs) (s₀ := s₀) (sOuter := sOuter)
       (outerLits := outerClause sOuter.formula blockerLits pivot))
 
+private theorem checkDQRATEBlockerStep_some_run
+    (pivot : Literal) (acc : CRef) (cref : CRef) (s : CheckState) :
+    checkDQRATEBlockerStep pivot (some acc) cref s = .ok (some acc) s := by
+  have hgetState : (get : CheckM CheckState) = EStateM.get := rfl
+  simp [checkDQRATEBlockerStep, hgetState, Bind.bind, EStateM.bind,
+    EStateM.get, EStateM.pure, Pure.pure]
+
+private theorem checkDQRATEBlockerFold_some_run
+    (pivot : Literal) (acc : CRef) :
+    ∀ (xs : List CRef) (s : CheckState),
+      (xs.foldlM (checkDQRATEBlockerStep pivot) (some acc) : CheckM (Option CRef)) s =
+        .ok (some acc) s := by
+  intro xs
+  induction xs with
+  | nil =>
+      intro s
+      rfl
+  | cons cref xs ih =>
+      intro s
+      simp [List.foldlM, Bind.bind, EStateM.bind]
+      rw [checkDQRATEBlockerStep_some_run]
+      exact ih s
+
+private theorem checkDQRATEBlockerStep_none_live_means_trial_true
+    (pivot : Literal) {s s' : CheckState} {cref : CRef} {c : Clause}
+    (hget : s.clauses.getClauseRaw cref = some c)
+    (hdeleted : c.deleted = false)
+    (hrun : checkDQRATEBlockerStep pivot none cref s = .ok none s') :
+    runDQRATEBlockerTrial pivot s.formula c.lits s = .ok true s' := by
+  have hgetState : (get : CheckM CheckState) = EStateM.get := rfl
+  cases htrial : runDQRATEBlockerTrial pivot s.formula c.lits s with
+  | error e s'' =>
+      simp [checkDQRATEBlockerStep, hgetState, hget, hdeleted, htrial, Bind.bind,
+        EStateM.bind, EStateM.get, EStateM.pure, Pure.pure] at hrun
+  | ok gotConflict s'' =>
+      cases hgc : gotConflict with
+      | false =>
+          simp [checkDQRATEBlockerStep, hgetState, hget, hdeleted, htrial, hgc, Bind.bind,
+            EStateM.bind, EStateM.get, EStateM.pure, Pure.pure] at hrun
+      | true =>
+          simp [checkDQRATEBlockerStep, hgetState, hget, hdeleted, htrial, hgc, Bind.bind,
+            EStateM.bind, EStateM.get, EStateM.pure, Pure.pure] at hrun
+          have hs'' : s'' = s' := by simpa using hrun
+          subst hs''
+          simpa [hgc] using htrial
+
 private theorem checkDQRATEBlockerStep_trial_spec
     (dqbf : DQBF) (cs : ClauseStore) (s₀ sOuter : CheckState)
     (pivot : Literal) (acc : Option CRef) (cref : CRef) :
