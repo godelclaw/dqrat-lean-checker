@@ -12108,6 +12108,16 @@ theorem processProofBasic_sound (st : CheckState) (proofContent : String) (n : N
   rw [hrun'] at hpost
   simpa [BasicRunPost] using hpost
 
+theorem processProofBasic_sound'
+    (content formulaContent : String) (n : Nat)
+    (st : CheckState) (hparse : parseDQDIMACS formulaContent = .ok (some st))
+    (hverify : ∃ st', (checkActionsBasic (parseProofActions content)).run st
+               = .ok (.Verified n) st') :
+    DQBFFalse st.formula st.clauses := by
+  have hcorrect : CheckState.Correct st.formula st.clauses st :=
+    (parseDQDIMACS_full_correct formulaContent st hparse).toCorrect
+  exact processProofBasic_sound st content n hcorrect hverify
+
 theorem processProofNoNegE_sound (st : CheckState) (proofContent : String) (n : Nat)
     (hcorrect : CheckState.Correct st.formula st.clauses st)
     (hverify : ∃ st', (checkActionsNoNegE (parseProofActions proofContent)).run st
@@ -12123,3 +12133,30 @@ theorem processProofNoNegE_sound (st : CheckState) (proofContent : String) (n : 
     simpa using hrun
   rw [hrun'] at hpost
   simpa [FullRunPost] using hpost
+
+theorem processProofNoNegE_sound'
+    (content formulaContent : String) (n : Nat)
+    (st : CheckState) (hparse : parseDQDIMACS formulaContent = .ok (some st))
+    (hverify : processProofNoNegE st content = .Verified n) :
+    DQBFFalse st.formula st.clauses := by
+  have hcorr : CheckState.Correct st.formula st.clauses st :=
+    (parseDQDIMACS_full_correct formulaContent st hparse).toCorrect
+  unfold processProofNoNegE at hverify
+  split at hverify
+  · simp at hverify
+  · rename_i actions hactions
+    split at hverify
+    · simp at hverify
+    · rename_i r st' hrun
+      have hr : r = .Verified n := by
+        simpa using hverify
+      have hspec := checkActionsNoNegE_sound st.formula st.clauses actions
+      have hpost : FullRunPost st.formula st.clauses r st' := by
+        have hpost0 := hspec st hcorr
+        simp only [WP.wp, PredTrans.apply, EStateM.run] at hpost0
+        have hrun' : checkActionsNoNegE actions st = .ok r st' := by
+          simpa [EStateM.run] using hrun
+        rw [hrun'] at hpost0
+        exact hpost0
+      subst hr
+      simpa [FullRunPost] using hpost
