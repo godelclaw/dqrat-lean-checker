@@ -6655,6 +6655,69 @@ private theorem checkAddUniversalLoop_correct_spec
       intro a s hs
       cases a <;> simpa using hs)
 
+private def AddUniversalAccOk (lineNum : Nat)
+    (r : MProd (Option (Option ProofResult)) PUnit) : Prop :=
+  r.fst = none ∨
+    ∃ cv, r.fst = some (some (.Failed lineNum #["UADD"] #[cv] none))
+
+private theorem checkAddUniversalStep_shape_spec
+    (lineNum : Nat) (cv : Int)
+    (r : MProd (Option (Option ProofResult)) PUnit) :
+    ⦃fun s => ⌜AddUniversalAccOk lineNum r⌝⦄
+    (checkAddUniversalStep lineNum cv r)
+    ⦃⇓ a _ => ⌜match a with
+      | ForInStep.yield r' => AddUniversalAccOk lineNum r'
+      | ForInStep.done r' => AddUniversalAccOk lineNum r'⌝⦄ := by
+  intro s hs
+  have hget_formula :
+      (((fun x => x.formula) <$> (get : CheckM CheckState)) s) = .ok s.formula s := by
+    rfl
+  by_cases hneg : cv < 0
+  · by_cases hex_neg : s.formula.externalVarExists (-cv).toNat = true
+    · simp [checkAddUniversalStep, hneg, hex_neg, WP.wp, PredTrans.apply, EStateM.run,
+        Bind.bind, EStateM.bind, hget_formula, AddUniversalAccOk]
+      exact Or.inr ⟨cv, rfl⟩
+    · simp [checkAddUniversalStep, hneg, hex_neg, WP.wp, PredTrans.apply, EStateM.run,
+        Bind.bind, EStateM.bind, hget_formula, AddUniversalAccOk]
+      exact Or.inl rfl
+  · by_cases hex : s.formula.externalVarExists cv.toNat = true
+    · simp [checkAddUniversalStep, hneg, hex, WP.wp, PredTrans.apply, EStateM.run,
+        Bind.bind, EStateM.bind, hget_formula, AddUniversalAccOk]
+      exact Or.inr ⟨cv, rfl⟩
+    · simp [checkAddUniversalStep, hneg, hex, WP.wp, PredTrans.apply, EStateM.run,
+        Bind.bind, EStateM.bind, hget_formula, AddUniversalAccOk]
+      exact Or.inl rfl
+
+private theorem checkAddUniversalLoop_shape_spec
+    (lineNum : Nat) (extVars : List Int) :
+    ⦃fun s => ⌜True⌝⦄
+    (forIn extVars (MProd.mk (none : Option (Option ProofResult)) PUnit.unit)
+      (checkAddUniversalStep lineNum) :
+      CheckM (MProd (Option (Option ProofResult)) PUnit))
+    ⦃⇓ r _ => ⌜AddUniversalAccOk lineNum r⌝⦄ := by
+  have hfor :
+      ⦃fun s =>
+        ⌜AddUniversalAccOk lineNum
+          (MProd.mk (none : Option (Option ProofResult)) PUnit.unit)⌝⦄
+      (forIn extVars (MProd.mk (none : Option (Option ProofResult)) PUnit.unit)
+        (checkAddUniversalStep lineNum) :
+        CheckM (MProd (Option (Option ProofResult)) PUnit))
+      ⦃⇓ r _ => ⌜AddUniversalAccOk lineNum r⌝⦄ := by
+    refine (Spec.forIn_list_const_inv
+      (xs := extVars)
+      (init := MProd.mk (none : Option (Option ProofResult)) PUnit.unit)
+      (f := checkAddUniversalStep lineNum)
+      (inv := (⇓ r _ => ⌜AddUniversalAccOk lineNum r⌝))
+      ?_)
+    intro cv r
+    exact Triple.entails_wp_of_post
+      (h := checkAddUniversalStep_shape_spec lineNum cv r)
+      (by
+        simp [PostCond.entails, SPred.entails, ExceptConds.entails]
+        intro a s hs
+        cases a <;> simpa using hs)
+  simpa [AddUniversalAccOk] using hfor
+
 @[spec]
 theorem checkAddUniversal_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extVars : List Int) :
@@ -6747,6 +6810,59 @@ theorem checkAddUniversal_full_correct_spec (dqbf : DQBF) (cs : ClauseStore)
             EStateM.pure]
           simpa [hres] using hloop
 
+/-- Result-dependent postcondition for a single full checker action. -/
+def FullStepPost (dqbf : DQBF) (cs : ClauseStore)
+    (r : Option ProofResult) (s' : CheckState) : Prop :=
+  match r with
+  | none => CheckState.Correct dqbf cs s'
+  | some (.Verified _) => DQBFFalse dqbf cs
+  | some (.Failed ..) => CheckState.Correct dqbf cs s'
+  | some .Unknown => CheckState.Correct dqbf cs s'
+
+/-- Result-dependent postcondition for the full action loop. -/
+def FullRunPost (dqbf : DQBF) (cs : ClauseStore)
+    (r : ProofResult) (s' : CheckState) : Prop :=
+  match r with
+  | .Unknown => CheckState.Correct dqbf cs s'
+  | .Verified _ => DQBFFalse dqbf cs
+  | .Failed .. => CheckState.Correct dqbf cs s'
+
+private theorem checkAddUniversal_full_step_spec (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extVars : List Int) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    checkAddUniversal lineNum extVars
+    ⦃⇓? r s' => ⌜FullStepPost dqbf cs r s'⌝⦄ := by
+  intro s hcorr
+  simp only [WP.wp, PredTrans.apply, EStateM.run, checkAddUniversal, Bind.bind, EStateM.bind]
+  have hloop := checkAddUniversalLoop_correct_spec dqbf cs lineNum extVars s hcorr
+  have hshape := checkAddUniversalLoop_shape_spec lineNum extVars s trivial
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hloop hshape
+  cases hloop_run :
+      (forIn extVars (MProd.mk (none : Option (Option ProofResult)) PUnit.unit)
+        (checkAddUniversalStep lineNum)) s with
+  | error e s' =>
+      rw [hloop_run] at hloop
+      exact hloop.elim
+  | ok r s' =>
+      rw [hloop_run] at hloop hshape
+      cases hres : r.fst with
+      | none =>
+          have hreset := resetPropagationState_correct_spec dqbf cs s' hloop
+          simp only [WP.wp, PredTrans.apply, EStateM.run] at hreset
+          simpa [hres, FullStepPost, WP.wp, PredTrans.apply, EStateM.run, Bind.bind,
+            EStateM.bind, EStateM.pure, resetPropagationState_run] using hreset
+      | some res =>
+          rcases hshape with hnone | ⟨cv, hfailed⟩
+          · rw [hres] at hnone
+            cases hnone
+          · have hres' : res = some (.Failed lineNum #["UADD"] #[cv] none) := by
+              rw [hres] at hfailed
+              cases hfailed
+              rfl
+            simp [WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind,
+              EStateM.pure, hres, hres', FullStepPost]
+            exact hloop
+
 @[spec]
 theorem checkDeleteClause_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extLits : List Int) :
@@ -6807,6 +6923,32 @@ theorem checkDeleteClause_full_correct_spec (dqbf : DQBF) (cs : ClauseStore)
               hfull₁.liveOccurrencesComplete cref
           }
 
+private theorem checkDeleteClause_full_step_spec (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extLits : List Int) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    checkDeleteClause lineNum extLits
+    ⦃⇓? r s' => ⌜FullStepPost dqbf cs r s'⌝⦄ := by
+  intro s hcorr
+  have htrans := translateExistingLits_spec dqbf cs extLits s hcorr
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at htrans
+  cases hrunTrans : translateExistingLits extLits s with
+  | error e s' =>
+      rw [hrunTrans] at htrans
+      exact htrans.elim
+  | ok lits s₁ =>
+      rw [hrunTrans] at htrans
+      rcases htrans with ⟨hcorr₁, _hlits⟩
+      have hget : (get : CheckM CheckState) = EStateM.get := rfl
+      simp only [WP.wp, PredTrans.apply, EStateM.run, checkDeleteClause, Bind.bind,
+        EStateM.bind, hrunTrans, hget]
+      cases hfind : s₁.clauses.findSortedClause (ClauseStore.sortLits lits) with
+      | none =>
+          simp [hfind, EStateM.get, EStateM.pure, FullStepPost]
+          exact hcorr₁
+      | some cref =>
+          simp [hfind, EStateM.get, EStateM.pure, resetPropagationState_run, FullStepPost]
+          exact CheckState.Correct.withDeleteClauseReset hcorr₁
+
 -- ─── Section 7: Overall Checker Soundness Stub (full checker, all rules) ────
 
 -- ─── Section 7: Overall Checker Soundness Stub ───────────────────────────────
@@ -6819,23 +6961,6 @@ def ReadMatrixPost (r : Bool) (s' : CheckState) : Prop :=
     DQBFFalse s'.formula s'.clauses
   else
     CheckState.Correct s'.formula s'.clauses s'
-
-/-- Result-dependent postcondition for a single full checker action. -/
-def FullStepPost (dqbf : DQBF) (cs : ClauseStore)
-    (r : Option ProofResult) (s' : CheckState) : Prop :=
-  match r with
-  | none => CheckState.Correct dqbf cs s'
-  | some (.Verified _) => DQBFFalse dqbf cs
-  | some (.Failed ..) => CheckState.Correct dqbf cs s'
-  | some .Unknown => CheckState.Correct dqbf cs s'
-
-/-- Result-dependent postcondition for the full action loop. -/
-def FullRunPost (dqbf : DQBF) (cs : ClauseStore)
-    (r : ProofResult) (s' : CheckState) : Prop :=
-  match r with
-  | .Unknown => CheckState.Correct dqbf cs s'
-  | .Verified _ => DQBFFalse dqbf cs
-  | .Failed .. => CheckState.Correct dqbf cs s'
 
 private theorem checkModifyExistentialAddOnlyCore_full_step_spec
     (dqbf : DQBF) (cs : ClauseStore) (extExi : Nat) (depChanges : List Int) :
@@ -6867,6 +6992,46 @@ private theorem checkModifyExistentialAddOnlyCore_full_step_spec
       intro a s hcorr hnone
       subst a
       exact ⟨by simpa [FullStepPost] using hcorr, rfl⟩)
+
+private theorem checkModifyExistentialAddOnlyCore_full_step_named_spec
+    (dqbf : DQBF) (cs : ClauseStore) (extExi : Nat) (depChanges : List Int) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    checkModifyExistentialAddOnlyCore extExi depChanges
+    ⦃⇓? r s' => ⌜FullStepPost dqbf cs r s' ∧ r = none⌝⦄ := by
+  simpa [checkModifyExistentialAddOnlyCore] using
+    (checkModifyExistentialAddOnlyCore_full_step_spec dqbf cs extExi depChanges)
+
+theorem checkModifyExistentialAddOnly_sound
+    (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    checkModifyExistentialAddOnly lineNum extExi depChanges
+    ⦃⇓? r s' => ⌜FullStepPost dqbf cs r s'⌝⦄ := by
+  by_cases hzero : extExi = 0
+  · intro s hcorr
+    simp [checkModifyExistentialAddOnly, hzero, WP.wp, PredTrans.apply, EStateM.run,
+      Bind.bind, EStateM.bind, EStateM.pure, Pure.pure, FullStepPost]
+    exact hcorr
+  · cases hneg : depChanges.any (· < 0) with
+    | true =>
+        intro s hcorr
+        simp [checkModifyExistentialAddOnly, hzero, hneg, WP.wp, PredTrans.apply,
+          EStateM.run, Bind.bind, EStateM.bind, throw, MonadExceptOf.throw, EStateM.throw]
+        trivial
+    | false =>
+        intro s hcorr
+        have hcore :=
+          checkModifyExistentialAddOnlyCore_full_step_named_spec dqbf cs extExi depChanges s hcorr
+        simp only [WP.wp, PredTrans.apply, EStateM.run] at hcore
+        simp [checkModifyExistentialAddOnly, hzero, hneg, WP.wp, PredTrans.apply,
+          EStateM.run, Bind.bind, EStateM.bind, EStateM.pure, Pure.pure]
+        cases hrun : checkModifyExistentialAddOnlyCore extExi depChanges s with
+        | error e s' =>
+            rw [hrun] at hcore
+            exact hcore
+        | ok r s' =>
+            rw [hrun] at hcore
+            exact hcore.1
 
 -- ─── Checker soundness theorems ───────────────────────────────────────────────
 
@@ -11358,6 +11523,49 @@ theorem checkActionBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     ⦃⇓? r s' => ⌜BasicStepPost dqbf cs r s'⌝⦄ := by
   mvcgen [checkActionBasic, checkUniversalReductionBasic_sound, checkRatClauseBasic_sound]
 
+theorem checkActionNoNegE_sound (dqbf : DQBF) (cs : ClauseStore)
+    (action : DQRatAction) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    checkActionNoNegE action
+    ⦃⇓? r s' => ⌜FullStepPost dqbf cs r s'⌝⦄ := by
+  cases action with
+  | AddUniversal lineNum extVars =>
+      simpa [checkActionNoNegE] using
+        checkAddUniversal_full_step_spec dqbf cs lineNum extVars
+  | ModifyExistential lineNum extExi depChanges =>
+      simpa [checkActionNoNegE] using
+        checkModifyExistentialAddOnly_sound dqbf cs lineNum extExi depChanges
+  | DeleteClause lineNum extLits =>
+      simpa [checkActionNoNegE] using
+        checkDeleteClause_full_step_spec dqbf cs lineNum extLits
+  | UniversalReduction lineNum extLits =>
+      simpa [checkActionNoNegE] using
+        checkUniversalReduction_sound dqbf cs lineNum extLits
+  | RatClause lineNum extLits =>
+      simpa [checkActionNoNegE, BasicStepPost, FullStepPost] using
+        checkRatClauseBasic_sound dqbf cs lineNum extLits
+
+theorem checkActionsNoNegE_sound (dqbf : DQBF) (cs : ClauseStore)
+    (actions : List DQRatAction) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    checkActionsNoNegE actions
+    ⦃⇓? r s' => ⌜FullRunPost dqbf cs r s'⌝⦄ := by
+  induction actions with
+  | nil =>
+      mvcgen [checkActionsNoNegE]
+  | cons action actions ih =>
+      mvcgen [checkActionsNoNegE, checkActionNoNegE_sound, ih]
+      case vc4.cons.post.success.h_1 =>
+        rename_i _ _ _ _ r _ _ hpost
+        cases r <;> simpa [FullRunPost, FullStepPost] using hpost
+      case vc5.cons.post.success.h_2 =>
+        rename_i _ _ _ _ opt hnone _ _ hpost
+        cases hx : opt with
+        | none =>
+            simpa [FullStepPost, hx] using hpost
+        | some r =>
+            exact False.elim (hnone r hx)
+
 /-- **Action-list soundness** (main theorem): `checkActionsBasic` has a
     result-dependent run postcondition.
 
@@ -11405,3 +11613,19 @@ theorem processProofBasic_sound (st : CheckState) (proofContent : String) (n : N
     simpa using hrun
   rw [hrun'] at hpost
   simpa [BasicRunPost] using hpost
+
+theorem processProofNoNegE_sound (st : CheckState) (proofContent : String) (n : Nat)
+    (hcorrect : CheckState.Correct st.formula st.clauses st)
+    (hverify : ∃ st', (checkActionsNoNegE (parseProofActions proofContent)).run st
+               = .ok (.Verified n) st') :
+    DQBFFalse st.formula st.clauses := by
+  rcases hverify with ⟨st', hrun⟩
+  have hspec :=
+    checkActionsNoNegE_sound st.formula st.clauses (parseProofActions proofContent)
+  have hpost := hspec st hcorrect
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hpost
+  have hrun' :
+      checkActionsNoNegE (parseProofActions proofContent) st = .ok (.Verified n) st' := by
+    simpa using hrun
+  rw [hrun'] at hpost
+  simpa [FullRunPost] using hpost
