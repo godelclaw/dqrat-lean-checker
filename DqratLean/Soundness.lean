@@ -1240,6 +1240,20 @@ theorem CheckState.FullCorrect.ofCorrectSameFC
     CheckState.FullCorrect dqbf cs s₁ := by
   exact ⟨hcorr, liveOccurrencesComplete_of_sameFC hsame hfull.liveOccurrencesComplete⟩
 
+theorem CheckState.FullCorrect.ofCorrectClausesEq
+    {dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs s₀)
+    (hcorr : CheckState.Correct dqbf cs s₁)
+    (hclauses : s₁.clauses = s₀.clauses) :
+    CheckState.FullCorrect dqbf cs s₁ := by
+  refine ⟨hcorr, ?_⟩
+  intro cref c l hget hmem
+  have hget₀ : s₀.clauses.getClause cref = some c := by
+    simpa [hclauses] using hget
+  have hocc₀ : cref ∈ s₀.clauses.getOcc l :=
+    hfull.liveOccurrencesComplete hget₀ hmem
+  simpa [hclauses] using hocc₀
+
 /-- Parser-side invariant during prefix loading.
 
     Before matrix parsing starts, the checker state is still relative to the empty
@@ -2016,6 +2030,46 @@ theorem makeIndepUnknown_correct_lookup_spec
     rcases hsame with ⟨hformula, _⟩
     exact ⟨hcorr', by simpa [hformula] using hlookup⟩
 
+theorem makeIndepUnknown_full_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore) (u : Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+    (makeIndepUnknown u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s'⌝⦄ := by
+  intro s hfull
+  have hspec :=
+    makeIndepUnknown_correct_sameFC_spec dqbf cs u s s ⟨hfull.toCorrect, ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec ⊢
+  cases hrun : makeIndepUnknown u s with
+  | error e s' =>
+      rw [hrun] at hspec
+      exact hspec.elim
+  | ok _ s' =>
+      rw [hrun] at hspec
+      rcases hspec with ⟨hcorr', hsame⟩
+      exact CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame
+
+theorem makeIndepUnknown_full_correct_lookup_spec
+    (dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (makeIndepUnknown u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hlookup⟩
+  have hspec :=
+    makeIndepUnknown_correct_sameFC_spec dqbf cs u s s ⟨hfull.toCorrect, ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec ⊢
+  cases hrun : makeIndepUnknown u s with
+  | error e s' =>
+      rw [hrun] at hspec
+      exact hspec.elim
+  | ok _ s' =>
+      rw [hrun] at hspec
+      rcases hspec with ⟨hcorr', hsame⟩
+      have hsame' := hsame
+      rcases hsame with ⟨hformula, _⟩
+      exact ⟨CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame',
+        by simpa [hformula] using hlookup⟩
+
 theorem makeIndepUnknown_prefix_lookup_spec
     (u : Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜PrefixState s ∧ s.formula.lookupInternal ext = some v⌝⦄
@@ -2746,6 +2800,35 @@ theorem addVarExists_loop_spec
       mspec (makeIndepUnknown_correct_lookup_spec dqbf cs u ext v)
       mleave)
 
+theorem addVarExists_loop_full_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore) (deps : Array Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (forIn deps PUnit.unit (fun u _ => do
+      makeIndepUnknown u
+      pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  simpa [Array.forIn_toList] using
+    (show
+      ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+      (forIn deps.toList PUnit.unit (fun u _ => do
+        makeIndepUnknown u
+        pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+      ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ from by
+      refine (Spec.forIn_list_const_inv
+        (xs := deps.toList)
+        (init := PUnit.unit)
+        (f := fun u _ => do
+          makeIndepUnknown u
+          pure (ForInStep.yield PUnit.unit))
+        (inv := (⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧
+          s'.formula.lookupInternal ext = some v⌝))
+        ?_)
+      intro u b
+      cases b
+      mintro hpre
+      mspec (makeIndepUnknown_full_correct_lookup_spec dqbf cs u ext v)
+      mleave)
+
 @[spec]
 theorem addVarExists_loop_wf_spec
     (dqbf : DQBF) (cs : ClauseStore) (deps : Array Var)
@@ -2909,11 +2992,93 @@ theorem addVarForall_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
     rename_i s hs v f
     rcases hs with ⟨hcorr, hfresh, hlookupKeep⟩
     refine ⟨CheckState.Correct.withAddVarForall hcorr extNew hfresh, ?_⟩
-    have hlookupKeep' :
-        (addForallFormula s.formula extNew).lookupInternal extKeep = some vKeep := by
-      simpa [lookupInternal_addForallFormula_ne s.formula extNew extKeep hkeep] using
-        hlookupKeep
-    simpa [f, v] using hlookupKeep'
+    change (addForallFormula s.formula extNew).lookupInternal extKeep = some vKeep
+    rw [lookupInternal_addForallFormula_ne s.formula extNew extKeep hkeep]
+    exact hlookupKeep
+  simpa [addVarForall] using hprefix
+
+theorem addVarForall_full_correct_spec (dqbf : DQBF) (cs : ClauseStore)
+    (ext : Nat) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+                  s.formula.externalVarExists ext = false⌝⦄
+    (addVarForall ext : CheckM Var)
+    ⦃⇓ v s' => ⌜CheckState.FullCorrect dqbf cs s' ∧
+        s'.formula.lookupInternal ext = some v⌝⦄ := by
+  have hprefix :
+      ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+                    s.formula.externalVarExists ext = false⌝⦄
+      ((do
+        let st ← get
+        let v := st.formula.maxVar + 1
+        let f := { st.formula with
+          maxVar        := v
+          internalName  := st.formula.internalName.push (ext, v)
+          externalName  := st.formula.externalName.push ext
+          isExistential := st.formula.isExistential.push false
+          univars       := st.formula.univars.push v
+          depset        := st.formula.depset.push #[] }
+        set { st with
+          formula    := f
+          isAssigned := st.isAssigned.push false
+          value      := st.value.push false
+          indepKnown := st.indepKnown.push false
+          indepOf    := st.indepOf.push #[] }
+        pure v) : CheckM Var)
+      ⦃⇓ v s' => ⌜CheckState.FullCorrect dqbf cs s' ∧
+          s'.formula.lookupInternal ext = some v⌝⦄ := by
+    mvcgen
+    rename_i s hs v f
+    rcases hs with ⟨hfull, hfresh⟩
+    refine ⟨?_, ?_⟩
+    · exact CheckState.FullCorrect.ofCorrectClausesEq
+        hfull (CheckState.Correct.withAddVarForall hfull.toCorrect ext hfresh) rfl
+    · simpa [f, v] using lookupInternal_addForallFormula_self s.formula ext hfresh
+  simpa [addVarForall] using hprefix
+
+theorem addVarForall_full_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
+    (extNew extKeep : Nat) (vKeep : Var) (hkeep : extKeep ≠ extNew) :
+    ⦃fun s =>
+      ⌜CheckState.FullCorrect dqbf cs s ∧
+       s.formula.externalVarExists extNew = false ∧
+       s.formula.lookupInternal extKeep = some vKeep⌝⦄
+    (addVarForall extNew : CheckM Var)
+    ⦃⇓ _ s' =>
+      ⌜CheckState.FullCorrect dqbf cs s' ∧
+       s'.formula.lookupInternal extKeep = some vKeep⌝⦄ := by
+  have hprefix :
+      ⦃fun s =>
+        ⌜CheckState.FullCorrect dqbf cs s ∧
+         s.formula.externalVarExists extNew = false ∧
+         s.formula.lookupInternal extKeep = some vKeep⌝⦄
+      ((do
+        let st ← get
+        let v := st.formula.maxVar + 1
+        let f := { st.formula with
+          maxVar        := v
+          internalName  := st.formula.internalName.push (extNew, v)
+          externalName  := st.formula.externalName.push extNew
+          isExistential := st.formula.isExistential.push false
+          univars       := st.formula.univars.push v
+          depset        := st.formula.depset.push #[] }
+        set { st with
+          formula    := f
+          isAssigned := st.isAssigned.push false
+          value      := st.value.push false
+          indepKnown := st.indepKnown.push false
+          indepOf    := st.indepOf.push #[] }
+        pure v) : CheckM Var)
+      ⦃⇓ _ s' =>
+        ⌜CheckState.FullCorrect dqbf cs s' ∧
+         s'.formula.lookupInternal extKeep = some vKeep⌝⦄ := by
+    mvcgen
+    rename_i s hs v f
+    rcases hs with ⟨hfull, hfresh, hlookupKeep⟩
+    refine ⟨?_, ?_⟩
+    · exact CheckState.FullCorrect.ofCorrectClausesEq
+        hfull (CheckState.Correct.withAddVarForall hfull.toCorrect extNew hfresh) rfl
+    · change (addForallFormula s.formula extNew).lookupInternal extKeep = some vKeep
+      rw [lookupInternal_addForallFormula_ne s.formula extNew extKeep hkeep]
+      exact hlookupKeep
   simpa [addVarForall] using hprefix
 
 @[spec]
@@ -2975,6 +3140,69 @@ theorem addVarExists_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     mspec hprefix
     rename_i v
     mspec (addVarExists_loop_spec dqbf cs deps ext v)
+    mleave
+  simpa [addVarExists] using hbody
+
+theorem addVarExists_full_correct_spec (dqbf : DQBF) (cs : ClauseStore)
+    (ext : Nat) (deps : Array Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄
+    (addVarExists ext deps : CheckM Var)
+    ⦃⇓ v s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  have hprefix :
+      ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄
+      ((do
+        let st ← get
+        let v := st.formula.maxVar + 1
+        let f := { st.formula with
+          maxVar        := v
+          internalName  := st.formula.internalName.push (ext, v)
+          externalName  := st.formula.externalName.push ext
+          isExistential := st.formula.isExistential.push true
+          exivars       := st.formula.exivars.push v
+          depset        := st.formula.depset.push deps }
+        set { st with
+          formula    := f
+          isAssigned := st.isAssigned.push false
+          value      := st.value.push false
+          indepKnown := st.indepKnown.push false
+          indepOf    := st.indepOf.push #[] }
+        pure v) : CheckM Var)
+      ⦃⇓ v s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+    mvcgen
+    rename_i s hs v f
+    rcases hs with ⟨hfull, hfresh⟩
+    refine ⟨?_, ?_⟩
+    · exact CheckState.FullCorrect.ofCorrectClausesEq
+        hfull (CheckState.Correct.withAddVarExists hfull.toCorrect ext deps hfresh) rfl
+    · simpa [f, v] using lookupInternal_addExistsFormula_self s.formula ext deps hfresh
+  have hbody :
+      ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄
+      ((do
+          let v ← ((do
+            let st ← get
+            let v := st.formula.maxVar + 1
+            let f := { st.formula with
+              maxVar        := v
+              internalName  := st.formula.internalName.push (ext, v)
+              externalName  := st.formula.externalName.push ext
+              isExistential := st.formula.isExistential.push true
+              exivars       := st.formula.exivars.push v
+              depset        := st.formula.depset.push deps }
+            set { st with
+              formula    := f
+              isAssigned := st.isAssigned.push false
+              value      := st.value.push false
+              indepKnown := st.indepKnown.push false
+              indepOf    := st.indepOf.push #[] }
+            pure v) : CheckM Var)
+          for u in deps do
+            makeIndepUnknown u
+          pure v) : CheckM Var)
+      ⦃⇓ v s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+    mintro hs
+    mspec hprefix
+    rename_i v
+    mspec (addVarExists_loop_full_correct_spec dqbf cs deps ext v)
     mleave
   simpa [addVarExists] using hbody
 
@@ -3651,6 +3879,49 @@ theorem addDependencyReset_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
               exact
                 ⟨CheckState.Correct.withAddDependencyReset hcorr hof hof_le,
                   by simpa [lookupInternal_addDependencyFormula] using hlookup⟩
+
+theorem addDependencyReset_full_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
+    (of_ on_ : Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+                  0 < of_ ∧ of_ ≤ s.formula.maxVar ∧ 0 < on_ ∧
+                  s.formula.lookupInternal ext = some v⌝⦄
+    (addDependencyReset of_ on_ : CheckM Unit)
+    ⦃⇓ _ s' =>
+      ⌜CheckState.FullCorrect dqbf cs s' ∧
+       s'.formula.lookupInternal ext = some v⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hof, hof_le, hon, hlookup⟩
+  have hget : (get : CheckM CheckState) = EStateM.get := rfl
+  simp only [WP.wp, PredTrans.apply, EStateM.run, addDependencyReset, Bind.bind, EStateM.bind,
+    addDependency, hget, EStateM.get]
+  cases hof_exi : s.formula.isVarExistential of_ with
+  | false =>
+      simp [hof_exi, resetPropagationState_run]
+      refine ⟨?_, by simpa using hlookup⟩
+      exact CheckState.FullCorrect.ofCorrectClausesEq
+        hfull (CheckState.Correct.withResetPropagationState hfull.toCorrect) rfl
+  | true =>
+      cases hon_exi : s.formula.isVarExistential on_ with
+      | true =>
+          simp [hof_exi, hon_exi, resetPropagationState_run]
+          refine ⟨?_, by simpa using hlookup⟩
+          exact CheckState.FullCorrect.ofCorrectClausesEq
+            hfull (CheckState.Correct.withResetPropagationState hfull.toCorrect) rfl
+      | false =>
+          cases hcontains : (s.formula.depset.getD of_ #[]).contains on_ with
+          | true =>
+              simp [hof_exi, hon_exi, hcontains, resetPropagationState_run]
+              refine ⟨?_, by simpa using hlookup⟩
+              exact CheckState.FullCorrect.ofCorrectClausesEq
+                hfull (CheckState.Correct.withResetPropagationState hfull.toCorrect) rfl
+          | false =>
+              have hon_ne : on_ ≠ 0 := Nat.ne_of_gt hon
+              simp [hof_exi, hon_exi, hcontains, makeIndepUnknown, hon_ne,
+                resetPropagationState_run]
+              refine ⟨?_, ?_⟩
+              · exact CheckState.FullCorrect.ofCorrectClausesEq
+                  hfull (CheckState.Correct.withAddDependencyReset hfull.toCorrect hof hof_le) rfl
+              · simpa [lookupInternal_addDependencyFormula] using hlookup
 
 theorem CheckState.PropStruct.withAddClause
     {st : CheckState} {lits : Array Literal}
@@ -6507,6 +6778,65 @@ private theorem checkModifyExistentialAddStep_correct_spec
         simpa [checkModifyExistentialAddStep, extDep, hmissing, WP.wp, PredTrans.apply,
           EStateM.run, Bind.bind, EStateM.bind, hget_formula, hrun] using hadd
 
+private theorem checkModifyExistentialAddStep_full_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore)
+    (extExi : Nat) (internalExi : Var) (cv : Int) :
+    ⦃fun s =>
+      ⌜CheckState.FullCorrect dqbf cs s ∧
+       s.formula.lookupInternal extExi = some internalExi⌝⦄
+    (checkModifyExistentialAddStep internalExi cv)
+    ⦃⇓ _ s' =>
+      ⌜CheckState.FullCorrect dqbf cs s' ∧
+       s'.formula.lookupInternal extExi = some internalExi⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hlookupExi⟩
+  rcases hfull.toCorrect.lookupInternal_sound extExi internalExi hlookupExi with ⟨hExiPos, hExiLe⟩
+  let extDep := cv.toNat
+  have hget_formula :
+      (((fun x => x.formula) <$> (get : CheckM CheckState)) s) = .ok s.formula s := by
+    rfl
+  by_cases hex : s.formula.externalVarExists extDep = true
+  · rcases lookupInternal_some_of_externalVarExists s.formula extDep hex with ⟨internalDep, hlookup⟩
+    rcases hfull.toCorrect.lookupInternal_sound extDep internalDep hlookup with ⟨hDepPos, _⟩
+    have hadd := addDependencyReset_full_correct_lookup_spec
+      dqbf cs internalExi internalDep extExi internalExi s
+      ⟨hfull, hExiPos, hExiLe, hDepPos, hlookupExi⟩
+    simp only [WP.wp, PredTrans.apply, EStateM.run] at hadd
+    simpa [checkModifyExistentialAddStep, extDep, hex, hlookup, WP.wp, PredTrans.apply,
+      EStateM.run, Bind.bind, EStateM.bind, hget_formula] using hadd
+  · have hmissing : s.formula.externalVarExists extDep = false := by
+      cases hval : s.formula.externalVarExists extDep <;> simp_all
+    have hExiExists : s.formula.externalVarExists extExi = true :=
+      externalVarExists_of_lookupInternal_some s.formula extExi hlookupExi
+    have hne : extExi ≠ extDep := by
+      intro heq
+      have hcontra : s.formula.externalVarExists extExi = false := by
+        simpa [heq] using hmissing
+      rw [hExiExists] at hcontra
+      cases hcontra
+    have haddForall := addVarForall_full_correct_lookup_spec dqbf cs extDep extExi internalExi hne s
+      ⟨hfull, hmissing, hlookupExi⟩
+    have haddForallFresh := addVarForall_full_correct_spec dqbf cs extDep s ⟨hfull, hmissing⟩
+    simp only [WP.wp, PredTrans.apply, EStateM.run] at haddForall haddForallFresh
+    cases hrun : addVarForall extDep s with
+    | error e s' =>
+        rw [hrun] at haddForall
+        exact haddForall.elim
+    | ok internalDep s₁ =>
+        rw [hrun] at haddForall
+        rw [hrun] at haddForallFresh
+        rcases haddForall with ⟨hfull₁, hlookupExi₁⟩
+        rcases haddForallFresh with ⟨_, hlookupDep⟩
+        rcases hfull₁.toCorrect.lookupInternal_sound extDep internalDep hlookupDep with ⟨hDepPos, _⟩
+        rcases hfull₁.toCorrect.lookupInternal_sound extExi internalExi hlookupExi₁ with
+          ⟨hExiPos₁, hExiLe₁⟩
+        have hadd := addDependencyReset_full_correct_lookup_spec
+          dqbf cs internalExi internalDep extExi internalExi s₁
+          ⟨hfull₁, hExiPos₁, hExiLe₁, hDepPos, hlookupExi₁⟩
+        simp only [WP.wp, PredTrans.apply, EStateM.run] at hadd
+        simpa [checkModifyExistentialAddStep, extDep, hmissing, WP.wp, PredTrans.apply,
+          EStateM.run, Bind.bind, EStateM.bind, hget_formula, hrun] using hadd
+
 private theorem checkModifyExistentialAddLoop_correct_spec
     (dqbf : DQBF) (cs : ClauseStore)
     (extExi : Nat) (internalExi : Var)
@@ -6544,6 +6874,53 @@ private theorem checkModifyExistentialAddLoop_correct_spec
     exact hs
   · intro s hs
     have hstep := checkModifyExistentialAddStep_correct_spec dqbf cs extExi internalExi cv s hs
+    simp only [WP.wp, PredTrans.apply, EStateM.run] at hstep
+    cases hrun : checkModifyExistentialAddStep internalExi cv s with
+    | error e s' =>
+        simp [hneg, WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind,
+          EStateM.pure, Pure.pure, hrun] at hstep ⊢
+    | ok a s' =>
+        simp [hneg, WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind,
+          EStateM.pure, Pure.pure, hrun] at hstep ⊢
+        exact hstep
+
+private theorem checkModifyExistentialAddLoop_full_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore)
+    (extExi : Nat) (internalExi : Var)
+    (depChanges : List Int) :
+    ⦃fun s =>
+      ⌜CheckState.FullCorrect dqbf cs s ∧
+       s.formula.lookupInternal extExi = some internalExi⌝⦄
+    (forIn depChanges PUnit.unit (fun cv _ => do
+      if cv < 0 then
+        pure (ForInStep.yield PUnit.unit)
+      else
+        let _ ← checkModifyExistentialAddStep internalExi cv
+        pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+    ⦃⇓ _ s' =>
+      ⌜CheckState.FullCorrect dqbf cs s' ∧
+       s'.formula.lookupInternal extExi = some internalExi⌝⦄ := by
+  refine (Spec.forIn_list_const_inv
+    (xs := depChanges)
+    (init := PUnit.unit)
+    (f := fun cv _ => do
+      if cv < 0 then
+        pure (ForInStep.yield PUnit.unit)
+      else
+        let _ ← checkModifyExistentialAddStep internalExi cv
+        pure (ForInStep.yield PUnit.unit))
+    (inv := (⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧
+      s'.formula.lookupInternal extExi = some internalExi⌝))
+    ?_)
+  intro cv u
+  cases u
+  by_cases hneg : cv < 0
+  · intro s hs
+    simp [hneg, WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind,
+      EStateM.pure, Pure.pure]
+    exact hs
+  · intro s hs
+    have hstep := checkModifyExistentialAddStep_full_correct_spec dqbf cs extExi internalExi cv s hs
     simp only [WP.wp, PredTrans.apply, EStateM.run] at hstep
     cases hrun : checkModifyExistentialAddStep internalExi cv s with
     | error e s' =>

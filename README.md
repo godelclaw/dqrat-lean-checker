@@ -50,6 +50,7 @@ Core Lean modules:
 - `DqratLean/Basic.lean`: re-export module
 
 Support directories:
+- `docs/`: short factual notes for reviewers, including upstream-facing bugfix notes
 - `tests/`: main example formulas/proofs used for executable checking
 - `repros/`: parser and checker repro cases, including stale-state bug repro material
 - `scripts/run_parser_regressions.sh`: parser regression runner
@@ -88,6 +89,9 @@ Focused repros live in `repros/`, including:
 - parser edge cases
 - header / max-var / missing-terminator cases
 - stale-state checker repros and report material
+
+Reviewer-facing notes live in `docs/`, including:
+- `docs/upstream_bugfix_notes.md`
 
 ## Proof Map
 
