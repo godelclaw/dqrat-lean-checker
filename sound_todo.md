@@ -1,265 +1,126 @@
 # Soundness TODO
 
-This file tracks the shortest solid path from the current state to full soundness.
+This file tracks the shortest still-honest path from the current branch state to
+full soundness of the executable-aligned checker.
 
 ## Current state
 
-- `lake build` passes.
-- Parser/executable milestone is green.
-- Basic checker soundness is closed.
-- `CheckState.empty_correct` is proved.
+- `lake build DqratLean.Soundness` passes.
+- Parser/executable regressions are green.
+- `parseDQDIMACS_correct` and `processProof_sound'` are proved.
+- The no-negative-`e` scaffold is proved:
+  - `checkActionNoNegE_sound`
+  - `checkActionsNoNegE_sound`
+  - `processProofNoNegE_sound'`
+- `checkDQRATE_sound_spec` is now proved on the executable-aligned
+  `FullCorrect` surface.
+- The only remaining explicit theorem-body `sorry` in
+  `DqratLean/Soundness.lean` is `checkAction_sound`.
 
-Remaining real `sorry` bodies in `DqratLean/Soundness.lean`:
+## Real blockers
 
-1. `checkDQRATE_sound_spec`
-2. `checkDQRATU_restore_spec`
-3. `processProof_sound`
-4. `checkAction_sound`
-5. `checkActions_sound`
-6. `parseDQDIMACS_correct`
-7. `processProof_sound'`
+The remaining work is no longer split across DQRATE and action-wrapper seams.
+The live blocker is the negative-`e` rule family.
 
-## Important route correction
+### 1. DQRATE closure is done, but the guardrails matter
 
-Not every remaining `sorry` should be proved as written.
+`checkDQRATE_sound_spec` is closed. The repo should still preserve the facts
+that made the direct route necessary:
 
-The following theorem statements are still placeholders or obsolete proof targets:
+- `CheckState.FullCorrect.liveOccurrencesComplete`
+- the outer/blocker scan over actual occurrence lists
 
-- `checkDQRATE_sound_spec`
-  This is now the right theorem boundary, but it is still unproved.
-  The old abstract `DQRAT_e_Condition` remains only as background, not as the
-  next proof target.
+The old `Correct`-only surface was false. That is now backed by a concrete
+executable witness in
+`DqratLean/Counterexamples.lean`: `occurrenceHoleStore_not_liveOccurrencesComplete`
+plus `occurrenceHoleAccepted_true` and `occurrenceHole_addedMatrix_false` show
+that a live blocker clause missing from occurrence lists lets `checkDQRATE`
+accept an unsound clause addition.
 
-- `checkDQRATU_restore_spec`
-  This is the right theorem for top-level soundness of the current executable.
-  The old abstract `DQRATU_soundness` route was too broad because the program's
-  non-trivial `u` branch re-adds an already-located clause.
+There is now a second auditable witness showing that the older finishing route
+was too strong for the executable checker. The `dqrateBridge*` family in
+`DqratLean/Counterexamples.lean` proves:
 
-- `processProof_sound`
-  This is not the best top theorem anymore.
-  `processProof_sound'` is the real parser-to-checker endpoint.
+- `dqrateBridgeAccepted_true`
+- `dqrateBridge_not_exec_condition`
 
-So the correct strategy is:
+So an accepted executable DQRATE step need not satisfy the legacy
+`DQRATE_exec_Condition` / per-blocker-resolvent bridge. This means the remaining
+work is not "finish the old bridge theorem"; that repair has already happened by
+switching to the direct patched-model argument.
 
-1. finish the parser and action-boundary foundation,
-2. repair the full-rule theorem boundaries to match the executable,
-3. prove the repaired rule theorems,
-4. compose the final checker theorems.
+The blocker-trial state package remains the key local infrastructure:
 
-## Step-by-step plan
+- `OuterStateShadow`
+- `runDQRATEBlockerTrial_restore_shadow_of_shadow_spec`
+- `checkDQRATEBlockerFold_trial_shadow_spec`
+- `checkDQRATEBlockerFold_none_gives_occ_semantic_shadow`
+- `runDQRATEBlockerTrial_true_implies_outerClause_true_of_clause_false_agree_shadow`
+- the pivot-phase private theorems now consume the shadow/queue-empty package directly
 
-### Phase 1: Parser-side foundation
+Compile-green direct-route support that now feeds the closed theorem:
+- `clauseValue_patchPivotForClause_true_of_live_blocker_trial`
+- `checkDQRATEBlockerFold_none_gives_patch_clause_true_shadow`
+- `matrixValue_patchPivotForClause_true_of_successful_pivot_phase`
+- `runDQRATEPivotPhase_true_soundness_direct`
 
-Goal: prove `parseDQDIMACS_correct`.
+### 2. Negative-`e` preservation
 
-This is now the best next milestone because it is a real theorem with a stable statement.
+The positive-only existential modification path is already proved:
 
-Steps:
+- `checkModifyExistentialAddOnly_sound`
 
-1. Prefix-reader layer: done.
-   Proved:
-   - `readUniVarsM_prefix_spec`
-   - `readExiVarsM_prefix_spec`
-   - `readDepsM_prefix_spec`
-   - `readPrefixDepLineM_prefix_spec`
-   - `readPrefixM_prefix_spec`
+The remaining full-checker gap is the deletion side:
 
-2. Prove a result-dependent spec for `readMatrixM`.
-   Required shape:
-   - if it returns `false`, the final state is `Correct`
-   - if it returns `true`, parsing found UP-unsat and `parseDQDIMACS` returns `none`
-   New structure:
-   - use `ReadMatrixPost`
-   - do not require `Correct` on the conflict/`true` branch
-   Route correction:
-   - do not invent another prefix-to-`Correct` bridge;
-     `PrefixState` already contains `Correct CheckState.empty.formula CheckState.empty.clauses`
-   - use the new matrix substrate:
-     - `PrefixState.toMatrixCorrect`
-     - `CheckState.Correct.toSelf`
-     - `CheckState.Correct.withSelfAddClause`
-     - `AddClauseSelfPost`
-     - `addClauseAfterCache_self_spec`
-     - `addClause_self_spec`
-     - `ClauseLitsWellFormed.sortLits`
-   - the parser now uses `ClauseStore.sortLits`, so the executable/proof boundary is aligned
-   - the next real design choice is the smallest recursive theorem over `readMatrixM`;
-     the earlier direct theorem attempt degraded into monad-reduction noise and was
-     intentionally backed out
+- `checkModifyExistentialDelStep`
+- `delDependencyReset`
+- `notDependsOn`
+- `forceDelDep`
 
-3. Prove `parseDQDIMACS_correct`.
-   Route:
-   - `validateDQDIMACSStructure` gives well-formed line discipline
-   - `readPrefixM` keeps the parser in `PrefixState`
-   - `readMatrixM` preserves `Correct` on the non-unsat branch
+This is the missing rule-family needed before the final `checkAction_sound`
+wrapper can close for the full executable.
 
-### Phase 2: Full action-boundary specs
+## Shortest path from here
 
-Goal: remove full-checker state mutation ambiguity before proving rule semantics.
+### Phase 1: Close negative-`e`
+
+Goal: prove full soundness of `checkModifyExistential`, not just the add-only fragment.
 
 Steps:
 
-1. Positive modify-existential path:
-   - prove a clean spec for `checkModifyExistentialAddStep`
-   - then prove the positive-only loop fragment of `checkModifyExistential`
+1. Prove a result-dependent deletion-step spec for `checkModifyExistentialDelStep`.
+2. Isolate the state/formula preservation theorem for successful `delDependencyReset`.
+3. Show failed dep deletions return `.Failed ...` without breaking the action-boundary invariant.
+4. Combine the add and delete sides into the full modify-existential action theorem.
 
-2. Negative modify-existential path:
-   - executable alignment is now better: successful deletions go through `delDependencyReset`
-   - executable seam is now explicit in `checkModifyExistentialDelStep`
-   - isolate the deletion side condition around `checkModifyExistentialDelStep` / `notDependsOn` / `delDependencyReset`
-   - prove a result-dependent spec for the negative branch
+### Phase 2: Promote the loop invariant if needed
 
-3. Combine the two into a full `checkModifyExistential_correct_spec`.
+Goal: keep the full checker on the stronger invariant that the DQRATE branch
+actually consumes.
 
-4. Keep using the existing proved action-boundary specs:
-   - `checkAddUniversal_correct_spec`
-   - `checkDeleteClause_correct_spec`
+Expected route:
 
-### Phase 3: Repair full rule semantics
+1. Prove a stronger single-action theorem for the full checker, likely on
+   `FullCorrect` rather than bare `Correct`.
+2. Prove the corresponding action-list theorem by induction.
+3. Derive the existing end-to-end theorem from the parser's already-proved
+   `parseDQDIMACS_full_correct`.
 
-Goal: replace placeholder theorem statements with executable-aligned ones.
-
-This is the most important design step left.
-
-#### 3A. DQRATE
-
-Do not go back to the old abstract `DQRATE_soundness` target.
-
-Needed work:
-
-1. Prove `checkDQRATE_sound_spec`.
-2. Reuse the already-proved RUP/basic trial infrastructure where possible.
-3. Keep the theorem executable-aligned:
-   - restore `Correct`
-   - preserve literal well-formedness
-   - on success, justify `addClause lits`
-
-Expected helper seam:
-
-- a full blocker-trial theorem around the `negateAndPropagate ... ; backtrackBefore 2` pattern
-- executable refactor already landed:
-  - `runDQRATEBlockerTrial` now exists in `Checker.lean`
-
-#### 3B. DQRATU
-
-Do not revive the old broad `DQRATU_soundness` target before the executable is closed.
-
-Needed work:
-
-1. Prove `checkDQRATU_restore_spec`, matching the actual `checkDQRATU` path:
-   - RUP without pivot
-   - connected blocker scan via `checkPathC`
-   - blocker trial via `negateAndPropagate`
-   - restore action-boundary `Correct`
-
-2. Use the earlier UR permutation/lookup cleanup already in the branch.
-3. In `checkUniversalReduction_sound`, treat the non-trivial `u` branch as
-   restoration + duplicate-add of an already-located clause.
-4. Executable alignment already landed:
-   - full `checkUniversalReduction` now reuses `translateExistingLits`
-
-Expected helper seam:
-
-- `checkDQRATU_restore_spec`, not bare `URCondition`
-
-### Phase 4: Full checker composition
-
-Once Phases 1-3 are done:
-
-1. Prove `checkAction_sound`
-   by case split on `DQRatAction` using:
-   - proved action-boundary specs
-   - `checkDQRATE_sound_spec`
-   - `checkDQRATU_restore_spec`
-   - existing RUP / delete / addClause lemmas
-
-2. Prove `checkActions_sound`
-   by induction on the action list.
-
-3. Prove `processProof_sound'`
-   using:
-   - `parseDQDIMACS_correct`
-   - `checkActions_sound`
+This is cleaner than trying to re-derive live-occurrence completeness ad hoc
+inside the RAT branch.
 
 ## What to avoid
 
-These are likely time sinks:
-
-- reviving the old abstract `DQRATE_soundness` theorem before the executable-aligned spec
-- proving a broad semantic `DQRATU_soundness` theorem before the restoration theorem
-- proving `processProof_sound` before `processProof_sound'`
-- proving large generic theorems when a smaller executable seam is available
-- forcing more proof through a boundary once it degrades into monad-reduction noise
-- blindly removing the parser readers' `{p // start ≤ p}` return witness before replacing
-  the termination argument for `readPrefixM`
+- Do not prove `checkDQRATE_sound_spec` against a precondition that is weaker
+  than the semantic lift actually needs.
+- Do not reopen parser work; the parser side is already closed enough.
+- Do not broaden the target back into old abstract DQRATE/DQRATU statements.
+- Do not spend time on watched literals or other performance refactors before
+  the simple checker is fully verified.
 
 ## Immediate next action
 
-Prove the prefix-reader side of `parseDQDIMACS_correct` through the parser-specific
-invariant `PrefixState`, not directly through `Correct`.
-
-Already landed:
-
-- `PrefixState`
-- `PrefixState.withSetDepset`
-- `PrefixState.withIndepCaches`
-- `PrefixState.withAddVarForall`
-- `PrefixState.withAddVarExists`
-- `setDepset_prefix_spec`
-- `makeIndepUnknown_prefix_spec`
-- `makeIndepUnknown_prefix_loop_spec`
-- `ensureWithinMaxVar_prefix_spec`
-- `addVarForall_prefix_spec`
-- `addVarExists_prefix_spec`
-
-Next:
-
-1. done: `readUniVarsM` preserves `PrefixState`
-2. done: `readExiVarsM` preserves `PrefixState`
-3. done: `readDepsM` preserves `PrefixState`
-4. done: factor the `d`-branch of `readPrefixM` into a proof-aligned helper theorem
-5. done: `readPrefixM` preserves `PrefixState`
-6. done: prove the right `readMatrixM` result-dependent theorem (`ReadMatrixPost`)
-7. next: prove the inner parser kernel theorem for `parseDQDIMACSInner`
-8. then derive small wrappers for `parseDQDIMACSTokensAfterHeader` /
-   `parseDQDIMACSTokens`
-9. then finish `parseDQDIMACS_correct`
-10. then move the full-checker theorems onto the parser-complete boundary
-
-Tactical note:
-
-- use the generated `readUniVarsM.eq_def` / `readExiVarsM.eq_def` / `readPrefixM.eq_def`
-  equations as the proof surface
-- keep the reader proofs result-dependent (`⇓?`) so parse errors stay vacuous
-- do not re-open parser API refactors until the recursive reader proofs are in
-- the direct `readPrefixM` recursion was the wrong proof boundary until the `d`-branch helper
-  was extracted; that helper is now in place
-- `readMatrixM_sound_spec` is now the matrix-side parser kernel
-- `parseDQDIMACS` has now been split into the executable helpers
-  `parseDQDIMACSInner`, `parseDQDIMACSTokensAfterHeader`, and `parseDQDIMACSTokens`
-- a direct outer-shell proof attempt for `parseDQDIMACS_correct` was backed out;
-  the next parser proof surface should be `parseDQDIMACSInner`
-  so the next parser proof should target the post-header helper or inner `CheckM`
-  run, not the full outer `Except` shell directly
-- the next boundary to choose carefully is the final parser theorem order, not more matrix substrate
-- keep `parseDQDIMACS_correct` after `readMatrixM_sound_spec`; proving it earlier forces a bad forward-reference shape
-- once parser work resumes, the better next executable-aligned semantic seam is the `checkDQRATU` RUP phase, now isolated by `checkDQRATU_rup_phase_restore_spec`
-- for the remaining `checkDQRATU` branch, prove the named nested helper
-  `runDQRATUBlockerTrial` instead of the old inline `negateAndPropagate ...; backtrackBefore 2` block
-- the blocker fold is now factored into the executable cases:
-  missing clause, deleted clause, disconnected clause, and connected blocker
-  reducing to `runDQRATUBlockerTrial`; only the last one is still semantically hard
-- the missing/deleted/disconnected blocker cases are now lifted to outer-trial
-  preservation specs; next for `checkDQRATU` is a nested restore theorem for
-  `runDQRATUBlockerTrial`
-- nested blocker-trial substrate now exists: `NestedTrialState`,
-  `newDecisionLevel_nested_trial_spec`, and preservation of outer assignments
-  into the nested state; next is `backtrackBefore 2` restoring the outer trial
-- attempted route (failed): proving `propagateOne_nested_trial_spec` with `mvcgen`
-  currently gets pulled into semantic `enqueue_consistent_spec` obligations
-  (`ConsistentWith` witness goals) instead of the structural nested invariant
-- Lean 4.29 in this file rejects removing `[spec]` via `attribute [-spec] enqueue_consistent_spec`,
-  so that workaround is unavailable here
-- practical next route: prove the connected nested blocker boundary without relying
-  on `mvcgen` spec selection for `propagateOne`, then resume
-  `runDQRATUBlockerTrial` restoration and `checkDQRATU_restore_spec`
+1. Prove a result-dependent correctness/full-correctness spec for
+   `delDependencyReset`.
+2. Lift that into `checkModifyExistentialDelStep`.
+3. Then close the remaining `ModifyExistential` case of `checkAction_sound`.

@@ -21,12 +21,22 @@ What is already done on this branch:
   - `processProofBasic_sound`
 
 What is not finished yet:
-- Full existential RAT soundness:
-  - `checkDQRATE_sound_spec`
 - Full single-action wrapper soundness for the complete checker:
   - `checkAction_sound`
 
-As of the current green branch state, the remaining explicit theorem-body `sorry`s in `DqratLean/Soundness.lean` are those two theorems above.
+The real proof blocker underneath that remaining theorem is:
+- the negative-`e` / dependency-deletion proof path
+
+The DQRATE seam was substantive, not just inconvenient:
+`DqratLean/Counterexamples.lean` contains an occurrence-hole witness showing that
+if live blocker clauses are missing from occurrence lists, `checkDQRATE` can
+accept an unsound addition. The branch now carries the stronger
+live-occurrence invariant where the RAT proof actually needs it, and
+`checkDQRATE_sound_spec` is proved on that executable-aligned route.
+
+As of the current green branch state, the only remaining explicit theorem-body
+`sorry` in `DqratLean/Soundness.lean` is `checkAction_sound`, specifically its
+negative-`e` `ModifyExistential` branch.
 
 ## Repository Layout
 
@@ -83,6 +93,12 @@ Run parser regressions:
 ./scripts/run_parser_regressions.sh
 ```
 
+Run the main build/test bundle used for handoff packaging:
+
+```bash
+./scripts/build_and_test.sh
+```
+
 Main checker examples live in `tests/`.
 
 Focused repros live in `repros/`, including:
@@ -91,6 +107,7 @@ Focused repros live in `repros/`, including:
 - stale-state checker repros and report material
 
 Reviewer-facing notes live in `docs/`, including:
+- `docs/dqrate_fullcorrect_audit.md`
 - `docs/upstream_bugfix_notes.md`
 
 ## Proof Map
@@ -112,7 +129,6 @@ Useful milestones inside `DqratLean/Soundness.lean`:
 - `processProofBasic_sound`
 
 Current full-checker frontier:
-- `checkDQRATE_sound_spec`
 - `checkAction_sound`
 
 ## Notes For Reviewers
