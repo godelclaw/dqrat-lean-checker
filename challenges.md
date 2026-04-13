@@ -163,6 +163,22 @@ formula, not just the checker state. So the proof has to show both:
 - successful deletions return to a clean action-boundary state with a formula
   that still soundly relates models back to the old one.
 
+There is now a cleaner semantic split for that remaining work. The repo already
+has a build-green patched witness for the weakened formula:
+
+- `BadDeletePattern`
+- `patchDeleteSkolemForFormula`
+- `matrixValue_forceDelDep_patchDeleteForFormula_true_of_no_both_bad`
+- `dqbfTrue_forceDelDep_of_no_both_bad`
+
+So the unresolved content is no longer "find some Skolem witness after
+deletion". The unresolved content is narrower:
+
+- connect successful `notDependsOn` execution to the statement that no reduced
+  dependency pattern has both Boolean choices bad;
+- then lift that semantic fact through `delDependencyReset`;
+- then wrap the checker step/result shape.
+
 ## What To Avoid
 
 - Do not weaken the theorem surface back to `Correct`.
@@ -174,10 +190,11 @@ formula, not just the checker state. So the proof has to show both:
 
 ## Recommended Order
 
-1. Prove a correctness/full-correctness spec for successful `delDependencyReset`.
-2. Add the corresponding result-sensitive wrapper for `checkModifyExistentialDelStep`.
-3. Use that to close the remaining `ModifyExistential` branch of `checkAction_sound`.
-4. Then let `checkActions_sound` and the end-to-end full checker wrapper stand on that.
+1. Prove the `notDependsOn` -> no-both-bad reduced-pattern bridge.
+2. Use that to get the successful semantic theorem for `delDependencyReset`.
+3. Add the corresponding result-sensitive wrapper for `checkModifyExistentialDelStep`.
+4. Use that to close the remaining `ModifyExistential` branch of `checkAction_sound`.
+5. Then let `checkActions_sound` and the end-to-end full checker wrapper stand on that.
 
 That is the shortest still-honest path to full correctness of the current
 checker.

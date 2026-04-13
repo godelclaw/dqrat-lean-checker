@@ -947,6 +947,546 @@ theorem lookupInternal_addDependencyFormula
     (f.addDependencyFormula of_ on_).lookupInternal ext = f.lookupInternal ext := by
   simp [DQBF.addDependencyFormula, DQBF.lookupInternal]
 
+theorem lookupInternal_forceDelDep
+    (f : DQBF) (of_ on_ : Var) (ext : Nat) :
+    (f.forceDelDep of_ on_).lookupInternal ext = f.lookupInternal ext := by
+  simp [DQBF.forceDelDep, DQBF.lookupInternal]
+
+private def deleteDepArgs
+    (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) : Array Bool :=
+  ((f.depset.getD of_ #[]).filter (· ≠ on_)).map σ
+
+/-- Two universal assignments agree on the dependency set of `of_` with `on_` removed. -/
+private def AgreeOnDeleteDeps
+    (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment) : Prop :=
+  ∀ u ∈ (f.depset.getD of_ #[]).filter (· ≠ on_), σ₁ u = σ₂ u
+
+private theorem deleteDepArgs_eq_of_dep_agree
+    (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂) :
+    deleteDepArgs f of_ on_ σ₁ = deleteDepArgs f of_ on_ σ₂ := by
+  unfold deleteDepArgs
+  apply Array.ext (by simp [Array.size_map])
+  intro i hi₁ _
+  simp only [Array.getElem_map]
+  have hi :
+      i < ((f.depset.getD of_ #[]).filter (· ≠ on_)).size := by
+    simpa [Array.size_map] using hi₁
+  have hmem :
+      (((f.depset.getD of_ #[]).filter (· ≠ on_))[i]) ∈
+        (f.depset.getD of_ #[]).filter (· ≠ on_) :=
+    Array.getElem_mem hi
+  exact hagree _ hmem
+
+private theorem agreeOnDeleteDeps_of_deleteDepArgs_eq
+    (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
+    (heq : deleteDepArgs f of_ on_ σ₁ = deleteDepArgs f of_ on_ σ₂) :
+    AgreeOnDeleteDeps f of_ on_ σ₁ σ₂ := by
+  intro u hu
+  rcases Array.mem_iff_getElem.mp hu with ⟨i, hi, rfl⟩
+  have hi₁ : i < (deleteDepArgs f of_ on_ σ₁).size := by
+    simpa [deleteDepArgs] using hi
+  have hget :
+      (deleteDepArgs f of_ on_ σ₁)[i] =
+        (deleteDepArgs f of_ on_ σ₂)[i]'(heq ▸ hi₁) :=
+    getElem_congr heq rfl hi₁
+  simp only [deleteDepArgs, Array.getElem_map, hi] at hget
+  exact hget
+
+/-- Local deletion patch for one reduced-dependency pattern.
+    For `of_`, the new formula only supplies the dependency vector with `on_`
+    removed, so away from the active pattern we use an arbitrary Boolean
+    fallback instead of calling the old Skolem function on a mismatched arity. -/
+private def patchDeleteSkolem
+    (f : DQBF) (of_ on_ : Var) (σ₀ : UnivAssignment) (b : Bool)
+    (sk : SkolemAssignment) : SkolemAssignment :=
+  fun v args =>
+    if v = of_ then
+      if args = deleteDepArgs f of_ on_ σ₀ then b else false
+    else
+      sk v args
+
+private theorem varValue_forceDelDep_patchDelete_eq_of_ne
+    (f : DQBF) (of_ on_ : Var) (σ₀ σ : UnivAssignment) (b : Bool)
+    (sk : SkolemAssignment) {v : Var}
+    (hneq : v ≠ of_) :
+    (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolem f of_ on_ σ₀ b sk) v =
+      f.varValue σ sk v := by
+  by_cases hex : f.isVarExistential v = true
+  · have hex' : (f.forceDelDep of_ on_).isVarExistential v = true := by
+      simpa [DQBF.forceDelDep, DQBF.isVarExistential] using hex
+    rw [DQBF.varValue, DQBF.varValue, hex', hex]
+    have hget :
+        (f.forceDelDep of_ on_).depset.getD v #[] = f.depset.getD v #[] := by
+      unfold DQBF.forceDelDep
+      by_cases hlt : of_ < f.depset.size
+      · simp [Array.setIfInBounds_def, hlt]
+        rw [Array.getElem?_set_ne hlt (Ne.symm hneq)]
+      · simp [Array.setIfInBounds_def, hlt]
+    simp [DQBF.exiValue, patchDeleteSkolem, hneq, hget]
+  · have hex_false : f.isVarExistential v = false := by
+      cases hval : f.isVarExistential v <;> simp_all
+    have hex' : (f.forceDelDep of_ on_).isVarExistential v = false := by
+      simpa [DQBF.forceDelDep, DQBF.isVarExistential] using hex_false
+    simp [DQBF.varValue, hex', hex_false]
+
+private theorem varValue_forceDelDep_patchDelete_eq
+    (f : DQBF) (of_ on_ : Var) (σ₀ σ : UnivAssignment) (b : Bool)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ) :
+    (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolem f of_ on_ σ₀ b sk) of_ = b := by
+  have hargs :
+      deleteDepArgs f of_ on_ σ = deleteDepArgs f of_ on_ σ₀ :=
+    (deleteDepArgs_eq_of_dep_agree f of_ on_ σ₀ σ hagree).symm
+  have hexi' : (f.forceDelDep of_ on_).isVarExistential of_ = true := by
+    simpa [DQBF.forceDelDep, DQBF.isVarExistential] using hexi
+  rw [DQBF.varValue, hexi']
+  have hmap :
+      ((f.forceDelDep of_ on_).depset.getD of_ #[]).map σ =
+        deleteDepArgs f of_ on_ σ₀ := by
+    calc
+      ((f.forceDelDep of_ on_).depset.getD of_ #[]).map σ
+          = deleteDepArgs f of_ on_ σ := by
+              unfold deleteDepArgs DQBF.forceDelDep
+              by_cases hlt : of_ < f.depset.size
+              · simp [Array.setIfInBounds_def, hlt]
+              · simp [Array.setIfInBounds_def, hlt]
+      _ = deleteDepArgs f of_ on_ σ₀ := hargs
+  have hpatched :
+      patchDeleteSkolem f of_ on_ σ₀ b sk of_
+        (((f.forceDelDep of_ on_).depset.getD of_ #[]).map σ) = b := by
+    unfold patchDeleteSkolem
+    rw [if_pos rfl, if_pos hmap]
+  simpa [DQBF.exiValue] using hpatched
+
+private theorem litValue_forceDelDep_patchDelete_eq_of_ne_var
+    (f : DQBF) (of_ on_ : Var) (σ₀ σ : UnivAssignment) (b : Bool)
+    (sk : SkolemAssignment) (l : Literal)
+    (hneq : l.var ≠ of_) :
+    (f.forceDelDep of_ on_).litValue σ (patchDeleteSkolem f of_ on_ σ₀ b sk) l =
+      f.litValue σ sk l := by
+  simp [DQBF.litValue,
+    varValue_forceDelDep_patchDelete_eq_of_ne f of_ on_ σ₀ σ b sk hneq]
+
+private theorem clauseValue_forceDelDep_patchDelete_true_of_true_witness_ne
+    (f : DQBF) (of_ on_ : Var) (σ₀ σ : UnivAssignment) (b : Bool)
+    (sk : SkolemAssignment) (clauseLits : Array Literal)
+    {i : Nat}
+    (hi : i < clauseLits.size)
+    (hneq : clauseLits[i].var ≠ of_)
+    (hval : f.litValue σ sk clauseLits[i] = true) :
+    (f.forceDelDep of_ on_).clauseValue σ
+      (patchDeleteSkolem f of_ on_ σ₀ b sk) clauseLits = true := by
+  simp only [DQBF.clauseValue, Array.any_eq_true]
+  refine ⟨i, hi, ?_⟩
+  rw [litValue_forceDelDep_patchDelete_eq_of_ne_var
+    f of_ on_ σ₀ σ b sk clauseLits[i] hneq]
+  exact hval
+
+private theorem clauseValue_forceDelDep_patchDelete_eq_of_no_of_var
+    (f : DQBF) (of_ on_ : Var) (σ₀ σ : UnivAssignment) (b : Bool)
+    (sk : SkolemAssignment) (clauseLits : Array Literal)
+    (hno : ∀ l ∈ clauseLits.toList, l.var ≠ of_) :
+    (f.forceDelDep of_ on_).clauseValue σ
+      (patchDeleteSkolem f of_ on_ σ₀ b sk) clauseLits =
+        f.clauseValue σ sk clauseLits := by
+  unfold DQBF.clauseValue
+  apply Bool.eq_iff_iff.mpr
+  constructor <;> intro htrue <;> simp only [Array.any_eq_true] at htrue ⊢
+  · rcases htrue with ⟨i, hi, hli⟩
+    refine ⟨i, hi, ?_⟩
+    have hmem : clauseLits[i] ∈ clauseLits.toList :=
+      Array.mem_toList_iff.mpr (Array.getElem_mem hi)
+    rw [litValue_forceDelDep_patchDelete_eq_of_ne_var
+      f of_ on_ σ₀ σ b sk clauseLits[i] (hno _ hmem)] at hli
+    exact hli
+  · rcases htrue with ⟨i, hi, hli⟩
+    refine ⟨i, hi, ?_⟩
+    have hmem : clauseLits[i] ∈ clauseLits.toList :=
+      Array.mem_toList_iff.mpr (Array.getElem_mem hi)
+    rw [litValue_forceDelDep_patchDelete_eq_of_ne_var
+      f of_ on_ σ₀ σ b sk clauseLits[i] (hno _ hmem)]
+    exact hli
+
+/-- A reduced dependency pattern is bad for Boolean choice `b` if some live
+    clause becomes false when `of_` is forced to `b` on that pattern. -/
+private def BadDeletePattern
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (sk : SkolemAssignment) (args : Array Bool) (b : Bool) : Prop :=
+  ∃ σ : UnivAssignment, ∃ cref c,
+    deleteDepArgs f of_ on_ σ = args ∧
+      cs.getClause cref = some c ∧
+      (f.forceDelDep of_ on_).clauseValue σ
+        (patchDeleteSkolem f of_ on_ σ b sk) c.lits = false
+
+/-- Global patched Skolem witness candidate for dependency deletion:
+    choose `true` exactly on reduced patterns where `false` is bad. -/
+private noncomputable def patchDeleteSkolemForFormula
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (sk : SkolemAssignment) : SkolemAssignment := by
+  classical
+  exact fun v args =>
+    if v = of_ then
+      if BadDeletePattern f cs of_ on_ sk args false then true else false
+    else
+      sk v args
+
+private theorem patchDeleteSkolemForFormula_apply_of_ne
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (sk : SkolemAssignment) {v : Var} {args : Array Bool}
+    (hneq : v ≠ of_) :
+    patchDeleteSkolemForFormula f cs of_ on_ sk v args = sk v args := by
+  classical
+  unfold patchDeleteSkolemForFormula
+  simp [hneq]
+
+private theorem patchDeleteSkolemForFormula_apply_of_badFalse
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (sk : SkolemAssignment) (args : Array Bool)
+    (hbad : BadDeletePattern f cs of_ on_ sk args false) :
+    patchDeleteSkolemForFormula f cs of_ on_ sk of_ args = true := by
+  classical
+  unfold patchDeleteSkolemForFormula
+  simp [hbad]
+
+private theorem patchDeleteSkolemForFormula_apply_of_not_badFalse
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (sk : SkolemAssignment) (args : Array Bool)
+    (hgood : ¬ BadDeletePattern f cs of_ on_ sk args false) :
+    patchDeleteSkolemForFormula f cs of_ on_ sk of_ args = false := by
+  classical
+  unfold patchDeleteSkolemForFormula
+  simp [hgood]
+
+private theorem varValue_forceDelDep_patchDeleteForFormula_eq_of_ne
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) {v : Var}
+    (hneq : v ≠ of_) :
+    (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolemForFormula f cs of_ on_ sk) v =
+      f.varValue σ sk v := by
+  by_cases hex : f.isVarExistential v = true
+  · have hex' : (f.forceDelDep of_ on_).isVarExistential v = true := by
+      simpa [DQBF.forceDelDep, DQBF.isVarExistential] using hex
+    have hget :
+        (f.forceDelDep of_ on_).depset.getD v #[] = f.depset.getD v #[] := by
+      unfold DQBF.forceDelDep
+      by_cases hlt : of_ < f.depset.size
+      · simp [Array.setIfInBounds_def, hlt]
+        rw [Array.getElem?_set_ne hlt (Ne.symm hneq)]
+      · simp [Array.setIfInBounds_def, hlt]
+    rw [DQBF.varValue, DQBF.varValue, hex', hex, DQBF.exiValue, DQBF.exiValue, hget]
+    have happ :
+        patchDeleteSkolemForFormula f cs of_ on_ sk v
+          ((f.depset.getD v #[]).map σ) =
+          sk v ((f.depset.getD v #[]).map σ) := by
+      simpa using
+        (patchDeleteSkolemForFormula_apply_of_ne
+          f cs of_ on_ sk (v := v) (args := (f.depset.getD v #[]).map σ) hneq)
+    exact happ
+  · have hex_false : f.isVarExistential v = false := by
+      cases hval : f.isVarExistential v <;> simp_all
+    have hex' : (f.forceDelDep of_ on_).isVarExistential v = false := by
+      simpa [DQBF.forceDelDep, DQBF.isVarExistential] using hex_false
+    simp [DQBF.varValue, hex', hex_false]
+
+private theorem varValue_forceDelDep_patchDeleteForFormula_true_of_badFalse
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ)
+    (hbad : BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ₀) false) :
+    (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolemForFormula f cs of_ on_ sk) of_ = true := by
+  have hargs :
+      ((f.forceDelDep of_ on_).depset.getD of_ #[]).map σ =
+        deleteDepArgs f of_ on_ σ₀ := by
+    calc
+      ((f.forceDelDep of_ on_).depset.getD of_ #[]).map σ
+          = deleteDepArgs f of_ on_ σ := by
+              unfold deleteDepArgs DQBF.forceDelDep
+              by_cases hlt : of_ < f.depset.size
+              · simp [Array.setIfInBounds_def, hlt]
+              · simp [Array.setIfInBounds_def, hlt]
+      _ = deleteDepArgs f of_ on_ σ₀ :=
+        (deleteDepArgs_eq_of_dep_agree f of_ on_ σ₀ σ hagree).symm
+  have hexi' : (f.forceDelDep of_ on_).isVarExistential of_ = true := by
+    simpa [DQBF.forceDelDep, DQBF.isVarExistential] using hexi
+  rw [DQBF.varValue, hexi', DQBF.exiValue]
+  calc
+    patchDeleteSkolemForFormula f cs of_ on_ sk of_
+      (((f.forceDelDep of_ on_).depset.getD of_ #[]).map σ)
+      = patchDeleteSkolemForFormula f cs of_ on_ sk of_
+          (deleteDepArgs f of_ on_ σ₀) := by rw [hargs]
+    _ = true :=
+      patchDeleteSkolemForFormula_apply_of_badFalse f cs of_ on_ sk _ hbad
+
+private theorem varValue_forceDelDep_patchDeleteForFormula_false_of_not_badFalse
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ)
+    (hgood : ¬ BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ₀) false) :
+    (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolemForFormula f cs of_ on_ sk) of_ = false := by
+  have hargs :
+      ((f.forceDelDep of_ on_).depset.getD of_ #[]).map σ =
+        deleteDepArgs f of_ on_ σ₀ := by
+    calc
+      ((f.forceDelDep of_ on_).depset.getD of_ #[]).map σ
+          = deleteDepArgs f of_ on_ σ := by
+              unfold deleteDepArgs DQBF.forceDelDep
+              by_cases hlt : of_ < f.depset.size
+              · simp [Array.setIfInBounds_def, hlt]
+              · simp [Array.setIfInBounds_def, hlt]
+      _ = deleteDepArgs f of_ on_ σ₀ :=
+        (deleteDepArgs_eq_of_dep_agree f of_ on_ σ₀ σ hagree).symm
+  have hexi' : (f.forceDelDep of_ on_).isVarExistential of_ = true := by
+    simpa [DQBF.forceDelDep, DQBF.isVarExistential] using hexi
+  rw [DQBF.varValue, hexi', DQBF.exiValue]
+  calc
+    patchDeleteSkolemForFormula f cs of_ on_ sk of_
+      (((f.forceDelDep of_ on_).depset.getD of_ #[]).map σ)
+      = patchDeleteSkolemForFormula f cs of_ on_ sk of_
+          (deleteDepArgs f of_ on_ σ₀) := by rw [hargs]
+    _ = false :=
+      patchDeleteSkolemForFormula_apply_of_not_badFalse f cs of_ on_ sk _ hgood
+
+private theorem litValue_forceDelDep_patchDeleteForFormula_eq_of_ne_var
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal)
+    (hneq : l.var ≠ of_) :
+    (f.forceDelDep of_ on_).litValue σ (patchDeleteSkolemForFormula f cs of_ on_ sk) l =
+      f.litValue σ sk l := by
+  simp [DQBF.litValue,
+    varValue_forceDelDep_patchDeleteForFormula_eq_of_ne f cs of_ on_ σ sk hneq]
+
+private theorem clauseValue_forceDelDep_patchDeleteForFormula_true_of_true_witness_ne
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (clauseLits : Array Literal)
+    {i : Nat}
+    (hi : i < clauseLits.size)
+    (hneq : clauseLits[i].var ≠ of_)
+    (hval : f.litValue σ sk clauseLits[i] = true) :
+    (f.forceDelDep of_ on_).clauseValue σ
+      (patchDeleteSkolemForFormula f cs of_ on_ sk) clauseLits = true := by
+  simp only [DQBF.clauseValue, Array.any_eq_true]
+  refine ⟨i, hi, ?_⟩
+  rw [litValue_forceDelDep_patchDeleteForFormula_eq_of_ne_var
+    f cs of_ on_ σ sk clauseLits[i] hneq]
+  exact hval
+
+private theorem clauseValue_forceDelDep_patchDeleteForFormula_eq_of_no_of_var
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (clauseLits : Array Literal)
+    (hno : ∀ l ∈ clauseLits.toList, l.var ≠ of_) :
+    (f.forceDelDep of_ on_).clauseValue σ
+      (patchDeleteSkolemForFormula f cs of_ on_ sk) clauseLits =
+        f.clauseValue σ sk clauseLits := by
+  unfold DQBF.clauseValue
+  apply Bool.eq_iff_iff.mpr
+  constructor <;> intro htrue <;> simp only [Array.any_eq_true] at htrue ⊢
+  · rcases htrue with ⟨i, hi, hli⟩
+    refine ⟨i, hi, ?_⟩
+    have hmem : clauseLits[i] ∈ clauseLits.toList :=
+      Array.mem_toList_iff.mpr (Array.getElem_mem hi)
+    rw [litValue_forceDelDep_patchDeleteForFormula_eq_of_ne_var
+      f cs of_ on_ σ sk clauseLits[i] (hno _ hmem)] at hli
+    exact hli
+  · rcases htrue with ⟨i, hi, hli⟩
+    refine ⟨i, hi, ?_⟩
+    have hmem : clauseLits[i] ∈ clauseLits.toList :=
+      Array.mem_toList_iff.mpr (Array.getElem_mem hi)
+    rw [litValue_forceDelDep_patchDeleteForFormula_eq_of_ne_var
+      f cs of_ on_ σ sk clauseLits[i] (hno _ hmem)]
+    exact hli
+
+private theorem varValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_badFalse
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment) {v : Var}
+    (hexi : f.isVarExistential of_ = true)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ)
+    (hbad : BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ₀) false) :
+    (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolemForFormula f cs of_ on_ sk) v =
+      (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolem f of_ on_ σ₀ true sk) v := by
+  by_cases hov : v = of_
+  · subst v
+    rw [varValue_forceDelDep_patchDeleteForFormula_true_of_badFalse
+          f cs of_ on_ σ₀ σ sk hexi hagree hbad,
+        varValue_forceDelDep_patchDelete_eq
+          f of_ on_ σ₀ σ true sk hexi hagree]
+  · rw [varValue_forceDelDep_patchDeleteForFormula_eq_of_ne f cs of_ on_ σ sk hov,
+        varValue_forceDelDep_patchDelete_eq_of_ne f of_ on_ σ₀ σ true sk hov]
+
+private theorem varValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_not_badFalse
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment) {v : Var}
+    (hexi : f.isVarExistential of_ = true)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ)
+    (hgood : ¬ BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ₀) false) :
+    (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolemForFormula f cs of_ on_ sk) v =
+      (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolem f of_ on_ σ₀ false sk) v := by
+  by_cases hov : v = of_
+  · subst v
+    rw [varValue_forceDelDep_patchDeleteForFormula_false_of_not_badFalse
+          f cs of_ on_ σ₀ σ sk hexi hagree hgood,
+        varValue_forceDelDep_patchDelete_eq
+          f of_ on_ σ₀ σ false sk hexi hagree]
+  · rw [varValue_forceDelDep_patchDeleteForFormula_eq_of_ne f cs of_ on_ σ sk hov,
+        varValue_forceDelDep_patchDelete_eq_of_ne f of_ on_ σ₀ σ false sk hov]
+
+private theorem litValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_badFalse
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal)
+    (hexi : f.isVarExistential of_ = true)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ)
+    (hbad : BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ₀) false) :
+    (f.forceDelDep of_ on_).litValue σ (patchDeleteSkolemForFormula f cs of_ on_ sk) l =
+      (f.forceDelDep of_ on_).litValue σ (patchDeleteSkolem f of_ on_ σ₀ true sk) l := by
+  simp [DQBF.litValue,
+    varValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_badFalse
+      f cs of_ on_ σ₀ σ sk hexi hagree hbad]
+
+private theorem litValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_not_badFalse
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal)
+    (hexi : f.isVarExistential of_ = true)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ)
+    (hgood : ¬ BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ₀) false) :
+    (f.forceDelDep of_ on_).litValue σ (patchDeleteSkolemForFormula f cs of_ on_ sk) l =
+      (f.forceDelDep of_ on_).litValue σ (patchDeleteSkolem f of_ on_ σ₀ false sk) l := by
+  simp [DQBF.litValue,
+    varValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_not_badFalse
+      f cs of_ on_ σ₀ σ sk hexi hagree hgood]
+
+private theorem clauseValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_badFalse
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment) (clauseLits : Array Literal)
+    (hexi : f.isVarExistential of_ = true)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ)
+    (hbad : BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ₀) false) :
+    (f.forceDelDep of_ on_).clauseValue σ
+      (patchDeleteSkolemForFormula f cs of_ on_ sk) clauseLits =
+        (f.forceDelDep of_ on_).clauseValue σ
+          (patchDeleteSkolem f of_ on_ σ₀ true sk) clauseLits := by
+  unfold DQBF.clauseValue
+  simpa using
+    (Array.any_congr
+      (w := rfl)
+      (h := fun l =>
+        litValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_badFalse
+          f cs of_ on_ σ₀ σ sk l hexi hagree hbad)
+      (wstart := rfl) (wstop := rfl))
+
+private theorem clauseValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_not_badFalse
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment) (clauseLits : Array Literal)
+    (hexi : f.isVarExistential of_ = true)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ)
+    (hgood : ¬ BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ₀) false) :
+    (f.forceDelDep of_ on_).clauseValue σ
+      (patchDeleteSkolemForFormula f cs of_ on_ sk) clauseLits =
+        (f.forceDelDep of_ on_).clauseValue σ
+          (patchDeleteSkolem f of_ on_ σ₀ false sk) clauseLits := by
+  unfold DQBF.clauseValue
+  simpa using
+    (Array.any_congr
+      (w := rfl)
+      (h := fun l =>
+        litValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_not_badFalse
+          f cs of_ on_ σ₀ σ sk l hexi hagree hgood)
+      (wstart := rfl) (wstop := rfl))
+
+private theorem clauseValue_forceDelDep_patchDeleteForFormula_true_of_no_both_bad
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (cref : CRef) (c : Clause)
+    (hexi : f.isVarExistential of_ = true)
+    (hclause : cs.getClause cref = some c)
+    (hnoBoth :
+      ¬ (BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ) false ∧
+         BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ) true)) :
+    (f.forceDelDep of_ on_).clauseValue σ
+      (patchDeleteSkolemForFormula f cs of_ on_ sk) c.lits = true := by
+  by_cases hbad :
+      BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ) false
+  · by_cases hcur :
+        (f.forceDelDep of_ on_).clauseValue σ
+          (patchDeleteSkolemForFormula f cs of_ on_ sk) c.lits = true
+    · exact hcur
+    · have hfalse :
+          (f.forceDelDep of_ on_).clauseValue σ
+            (patchDeleteSkolemForFormula f cs of_ on_ sk) c.lits = false := by
+        cases hval :
+            (f.forceDelDep of_ on_).clauseValue σ
+              (patchDeleteSkolemForFormula f cs of_ on_ sk) c.lits <;> simp_all
+      have hagree : AgreeOnDeleteDeps f of_ on_ σ σ := by
+        intro u hu
+        rfl
+      have hlocalFalse :
+          (f.forceDelDep of_ on_).clauseValue σ
+            (patchDeleteSkolem f of_ on_ σ true sk) c.lits = false := by
+        rw [← clauseValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_badFalse
+          f cs of_ on_ σ σ sk c.lits hexi hagree hbad]
+        exact hfalse
+      have hbadTrue :
+          BadDeletePattern f cs of_ on_ sk (deleteDepArgs f of_ on_ σ) true :=
+        ⟨σ, cref, c, rfl, hclause, hlocalFalse⟩
+      exact False.elim (hnoBoth ⟨hbad, hbadTrue⟩)
+  · by_cases hcur :
+        (f.forceDelDep of_ on_).clauseValue σ
+          (patchDeleteSkolemForFormula f cs of_ on_ sk) c.lits = true
+    · exact hcur
+    · have hfalse :
+          (f.forceDelDep of_ on_).clauseValue σ
+            (patchDeleteSkolemForFormula f cs of_ on_ sk) c.lits = false := by
+        cases hval :
+            (f.forceDelDep of_ on_).clauseValue σ
+              (patchDeleteSkolemForFormula f cs of_ on_ sk) c.lits <;> simp_all
+      have hagree : AgreeOnDeleteDeps f of_ on_ σ σ := by
+        intro u hu
+        rfl
+      have hlocalFalse :
+          (f.forceDelDep of_ on_).clauseValue σ
+            (patchDeleteSkolem f of_ on_ σ false sk) c.lits = false := by
+        rw [← clauseValue_forceDelDep_patchDeleteForFormula_eq_patchDelete_of_not_badFalse
+          f cs of_ on_ σ σ sk c.lits hexi hagree hbad]
+        exact hfalse
+      exact False.elim (hbad ⟨σ, cref, c, rfl, hclause, hlocalFalse⟩)
+
+private theorem matrixValue_forceDelDep_patchDeleteForFormula_true_of_no_both_bad
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hnoBoth :
+      ∀ args,
+        ¬ (BadDeletePattern f cs of_ on_ sk args false ∧
+           BadDeletePattern f cs of_ on_ sk args true)) :
+    cs.matrixValue (f.forceDelDep of_ on_) σ
+      (patchDeleteSkolemForFormula f cs of_ on_ sk) = true := by
+  unfold ClauseStore.matrixValue
+  apply List.all_eq_true.mpr
+  intro i hi
+  cases hclause : cs.getClause (i + 1) with
+  | none =>
+      simp [hclause]
+  | some c =>
+      simp [hclause]
+      exact clauseValue_forceDelDep_patchDeleteForFormula_true_of_no_both_bad
+        f cs of_ on_ σ sk (i + 1) c hexi hclause
+        (hnoBoth (deleteDepArgs f of_ on_ σ))
+
+private theorem dqbfTrue_forceDelDep_of_no_both_bad
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hnoBoth :
+      ∀ args,
+        ¬ (BadDeletePattern f cs of_ on_ sk args false ∧
+           BadDeletePattern f cs of_ on_ sk args true)) :
+    DQBFTrue (f.forceDelDep of_ on_) cs := by
+  refine ⟨patchDeleteSkolemForFormula f cs of_ on_ sk, ?_⟩
+  intro σ
+  exact matrixValue_forceDelDep_patchDeleteForFormula_true_of_no_both_bad
+    f cs of_ on_ σ sk hexi hnoBoth
+
 theorem varValue_addDependencyFormula_old
     (f : DQBF) (of_ on_ v : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hdeps : f.depset.size = f.maxVar + 1)

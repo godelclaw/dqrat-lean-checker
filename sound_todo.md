@@ -80,6 +80,23 @@ The remaining full-checker gap is the deletion side:
 This is the missing rule-family needed before the final `checkAction_sound`
 wrapper can close for the full executable.
 
+There is now a build-green semantic foothold for the deletion side. The repo
+contains:
+
+- `BadDeletePattern`
+- `patchDeleteSkolemForFormula`
+- `matrixValue_forceDelDep_patchDeleteForFormula_true_of_no_both_bad`
+- `dqbfTrue_forceDelDep_of_no_both_bad`
+
+So the semantic half is no longer "invent a witness for the weakened formula".
+It is now:
+
+1. prove that a successful `notDependsOn` check rules out any reduced-dependency
+   pattern on which both Boolean choices are bad;
+2. plug that into the patched-model theorem above;
+3. only then lift the result through `delDependencyReset` and
+   `checkModifyExistentialDelStep`.
+
 ## Shortest path from here
 
 ### Phase 1: Close negative-`e`
@@ -88,10 +105,15 @@ Goal: prove full soundness of `checkModifyExistential`, not just the add-only fr
 
 Steps:
 
-1. Prove a result-dependent deletion-step spec for `checkModifyExistentialDelStep`.
-2. Isolate the state/formula preservation theorem for successful `delDependencyReset`.
-3. Show failed dep deletions return `.Failed ...` without breaking the action-boundary invariant.
-4. Combine the add and delete sides into the full modify-existential action theorem.
+1. Prove the syntactic bridge from successful `notDependsOn` to the semantic
+   "no both-bad reduced pattern" condition.
+2. Use that to obtain the successful deletion theorem for `forceDelDep` /
+   `delDependencyReset`.
+3. Lift that into a result-dependent deletion-step spec for
+   `checkModifyExistentialDelStep`.
+4. Show failed dep deletions return `.Failed ...` without breaking the
+   action-boundary invariant.
+5. Combine the add and delete sides into the full modify-existential action theorem.
 
 ### Phase 2: Promote the loop invariant if needed
 
@@ -120,7 +142,7 @@ inside the RAT branch.
 
 ## Immediate next action
 
-1. Prove a result-dependent correctness/full-correctness spec for
-   `delDependencyReset`.
-2. Lift that into `checkModifyExistentialDelStep`.
-3. Then close the remaining `ModifyExistential` case of `checkAction_sound`.
+1. Prove the `notDependsOn` -> no-both-bad bridge.
+2. Package the resulting successful `delDependencyReset` theorem.
+3. Lift that into `checkModifyExistentialDelStep`.
+4. Then close the remaining `ModifyExistential` case of `checkAction_sound`.
