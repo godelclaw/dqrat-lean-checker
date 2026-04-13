@@ -200,11 +200,13 @@ That route is now refuted in-repo.
 The real unresolved content is:
 
 - identify the right semantic transport after deletion;
-- use it to prove that successful `notDependsOn` yields the set-level truth /
-  bridge fact for the whole cached `indepOf[u - 1]` slice, then recover the
-  single-variable `DeleteIndependenceBridge` by membership;
-- then instantiate the already-built `delDependencyReset` and single-step
-  wrappers;
+- use it to prove that successful `notDependsOn` yields truth of the formula
+  obtained by deleting `u` from every existential in the cached
+  `indepOf[u - 1]` slice on the recomputed post-`computeDeps` state;
+- then instantiate the already-built
+  `delDependencyReset_full_correct_lookup_spec_of_forceDelDepsTrue` and
+  `checkModifyExistentialDelStep_full_sound_of_forceDelDepsTrue` wrappers,
+  which already recover the single-variable bridge by membership;
 - then wrap the full modify-existential action.
 
 ## What To Avoid
@@ -222,7 +224,8 @@ The real unresolved content is:
    deleted-variable-only patching is too strong.
 2. Replace it with the right semantic object:
    either a recursive patch over the relevant dependency cone, or a proof that
-   old truth yields a better witness for the weakened formula than an arbitrary
+   old truth yields a better witness for the weakened set-deleted formula than
+   an arbitrary
    old Skolem assignment.
 3. Prove that successful `notDependsOn` yields `DeleteIndependenceBridge`.
 4. Feed that into the existing successful semantic theorem for `delDependencyReset`.

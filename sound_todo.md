@@ -120,12 +120,13 @@ The real remaining task is to find the right stronger transport principle:
    truth proof, not from an arbitrary old satisfying witness.
 
 This means the wrapper side is now mostly in place. The deletion-step layer can
-already be proved from an explicit `DeleteIndependenceBridge`; the remaining
-content is to derive that bridge from successful `notDependsOn`. The new
-set-level scaffold means this no longer has to be phrased one existential at a
-time: the paper-aligned target is now to show truth of the formula where `u`
-has been removed from every existential in the cached `indepOf[u - 1]` set,
-and then recover the single-variable bridge by membership.
+already be proved from an explicit `DeleteIndependenceBridge`, and the wrapper
+reduction now goes one step further: `delDependencyReset` and the single-step
+negative-`e` theorem can be derived directly from the paper-shaped assumption
+that after successful `notDependsOn`, the formula with `u` removed from the
+whole cached `indepOf[u - 1]` slice is true. The remaining content is therefore
+no longer bridge packaging; it is the set-level deleted-formula truth theorem
+itself.
 
 ## Shortest path from here
 
@@ -136,10 +137,12 @@ Goal: prove full soundness of `checkModifyExistential`, not just the add-only fr
 Steps:
 
 1. Formalize the correct semantic replacement for the refuted fixed-witness
-   bridge, i.e. prove that successful `notDependsOn` yields
-   `DeleteIndependenceBridge`.
-2. Feed that theorem into the existing build-green wrappers for
-   `delDependencyReset` and `checkModifyExistentialDelStep`.
+   bridge, i.e. prove that successful `notDependsOn` yields truth of
+   `forceDelDeps s₁.formula (s₁.indepOf.getD (u - 1) #[]) u` on the recomputed
+   post-`computeDeps` state `s₁`.
+2. Feed that theorem into the existing build-green wrappers
+   `delDependencyReset_full_correct_lookup_spec_of_forceDelDepsTrue` and
+   `checkModifyExistentialDelStep_full_sound_of_forceDelDepsTrue`.
 3. Show failed dep deletions return `.Failed ...` without breaking the
    action-boundary invariant.
 4. Combine the add and delete sides into the full modify-existential action theorem.
