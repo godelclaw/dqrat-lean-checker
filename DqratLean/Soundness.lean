@@ -135,6 +135,58 @@ theorem clauseValue_of_matrixValue
   rw [heq, hget] at key
   exact key
 
+private theorem clauseValue_false_implies_all_lits_false_early
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal)
+    (hfalse : f.clauseValue σ sk lits = false) :
+    ∀ l ∈ lits.toList, f.litValue σ sk l = false := by
+  intro l hl
+  rcases Bool.eq_false_or_eq_true (f.litValue σ sk l) with hl_true | hl_false
+  · exfalso
+    have hmem : l ∈ lits := Array.mem_toList_iff.mp hl
+    rcases Array.mem_iff_getElem.mp hmem with ⟨i, hi, rfl⟩
+    have hclause_true : f.clauseValue σ sk lits = true := by
+      simp only [DQBF.clauseValue, Array.any_eq_true]
+      exact ⟨i, hi, hl_true⟩
+    rw [hclause_true] at hfalse
+    cases hfalse
+  · exact hl_false
+
+private theorem mkLit_var_early (v : Var) (pos : Bool) :
+    (mkLit v pos).var = v := by
+  unfold Literal.var mkLit
+  by_cases hpos : pos
+  · simp [hpos]
+    rw [Nat.add_comm (v * 2) 1]
+    rw [Nat.add_mul_div_right 1 v (by decide)]
+    simp
+  · simp [hpos]
+
+private theorem litValue_negate_early
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal) :
+    f.litValue σ sk l.negate = !(f.litValue σ sk l) := by
+  simp only [DQBF.litValue, Literal.negate, Literal.var, Literal.isPos]
+  have hvar : (l.x ^^^ 1) / 2 = l.x / 2 := by
+    apply Nat.eq_of_testBit_eq
+    intro k
+    simp only [← Nat.testBit_succ, Nat.testBit_xor]
+    have h1 : Nat.testBit 1 (k + 1) = false := by
+      rw [Bool.eq_false_iff]
+      exact fun h => Nat.succ_ne_zero k (Nat.testBit_one_eq_true_iff_self_eq_zero.mp h)
+    simp [h1]
+  have hpos : ((l.x ^^^ 1) % 2 == 1) = !(l.x % 2 == 1) := by
+    have h0 : (l.x ^^^ 1).testBit 0 = !l.x.testBit 0 := by
+      rw [Nat.testBit_xor, Nat.testBit_one_zero]
+      simp [Bool.xor_comm]
+    cases hb : l.x.testBit 0
+    · have hm : l.x % 2 = 0 := Nat.mod_two_eq_zero_iff_testBit_zero.mpr hb
+      have hxm : (l.x ^^^ 1) % 2 = 1 := Nat.mod_two_eq_one_iff_testBit_zero.mpr (by rw [h0, hb]; decide)
+      simp [hm, hxm]
+    · have hm : l.x % 2 = 1 := Nat.mod_two_eq_one_iff_testBit_zero.mpr hb
+      have hxm : (l.x ^^^ 1) % 2 = 0 := Nat.mod_two_eq_zero_iff_testBit_zero.mpr (by rw [h0, hb]; decide)
+      simp [hm, hxm]
+  rw [hvar, hpos]
+  cases h : (l.x % 2 == 1) <;> simp
+
 theorem clauseValue_perm
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
     {lits₁ lits₂ : Array Literal}
@@ -961,6 +1013,74 @@ private def AgreeOnDeleteDeps
     (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment) : Prop :=
   ∀ u ∈ (f.depset.getD of_ #[]).filter (· ≠ on_), σ₁ u = σ₂ u
 
+/-- A Skolem witness exhibits deletion-independence for `of_` from `on_` if
+    the value assigned to `of_` depends only on the reduced dependency pattern. -/
+private def ExhibitsDeleteIndependence
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment) : Prop :=
+  ∀ σ₁ σ₂, AgreeOnDeleteDeps f of_ on_ σ₁ σ₂ →
+    f.varValue σ₁ sk of_ = f.varValue σ₂ sk of_
+
+private def DeleteIndependenceBridge
+    (st : CheckState) (of_ on_ : Var) : Prop :=
+  DQBFTrue st.formula st.clauses →
+    ∃ sk,
+      (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
+      ExhibitsDeleteIndependence st.formula of_ on_ sk
+
+private def ExhibitsDeleteIndependenceSet
+    (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment) : Prop :=
+  ∀ of_ ∈ vars.toList, ExhibitsDeleteIndependence f of_ on_ sk
+
+private def DeleteIndependenceSetBridge
+    (st : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  DQBFTrue st.formula st.clauses →
+    ∃ sk,
+      (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
+      ExhibitsDeleteIndependenceSet st.formula vars on_ sk
+
+private theorem DeleteIndependenceBridge.of_sameFC
+    {s₀ s : CheckState} {of_ on_ : Var}
+    (hbridge : DeleteIndependenceBridge s₀ of_ on_)
+    (hsame : SameFC s₀ s) :
+    DeleteIndependenceBridge s of_ on_ := by
+  rcases hsame with ⟨hformula, hclauses⟩
+  intro htrue
+  have htrue₀ : DQBFTrue s₀.formula s₀.clauses := by
+    simpa [hformula, hclauses] using htrue
+  rcases hbridge htrue₀ with ⟨sk, hall, hexhibit⟩
+  refine ⟨sk, ?_, ?_⟩
+  · intro σ
+    simpa [hformula, hclauses] using hall σ
+  · intro σ₁ σ₂ hagree
+    have hagree₀ : AgreeOnDeleteDeps s₀.formula of_ on_ σ₁ σ₂ := by
+      simpa [hformula] using hagree
+    simpa [hformula] using hexhibit σ₁ σ₂ hagree₀
+
+private theorem DeleteIndependenceSetBridge.of_sameFC
+    {s₀ s : CheckState} {vars : Array Var} {on_ : Var}
+    (hbridge : DeleteIndependenceSetBridge s₀ vars on_)
+    (hsame : SameFC s₀ s) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  rcases hsame with ⟨hformula, hclauses⟩
+  intro htrue
+  have htrue₀ : DQBFTrue s₀.formula s₀.clauses := by
+    simpa [hformula, hclauses] using htrue
+  rcases hbridge htrue₀ with ⟨sk, hall, hexhibit⟩
+  refine ⟨sk, ?_, ?_⟩
+  · intro σ
+    simpa [hformula, hclauses] using hall σ
+  · intro of_ hof_
+    simpa [hformula] using hexhibit of_ hof_
+
+private theorem DeleteIndependenceBridge.of_setBridge
+    {st : CheckState} {vars : Array Var} {of_ on_ : Var}
+    (hbridge : DeleteIndependenceSetBridge st vars on_)
+    (hmem : of_ ∈ vars.toList) :
+    DeleteIndependenceBridge st of_ on_ := by
+  intro htrue
+  rcases hbridge htrue with ⟨sk, hall, hexhibit⟩
+  exact ⟨sk, hall, hexhibit of_ hmem⟩
+
 private theorem deleteDepArgs_eq_of_dep_agree
     (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
     (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂) :
@@ -1119,6 +1239,170 @@ private def BadDeletePattern
       cs.getClause cref = some c ∧
       (f.forceDelDep of_ on_).clauseValue σ
         (patchDeleteSkolem f of_ on_ σ b sk) c.lits = false
+
+private theorem badDeletePattern_false_clause_shape
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (sk : SkolemAssignment) (args : Array Bool)
+    (hexi : f.isVarExistential of_ = true)
+    (hall : ∀ σ, cs.matrixValue f σ sk = true)
+    (hbad : BadDeletePattern f cs of_ on_ sk args false) :
+    ∃ σ cref c,
+      deleteDepArgs f of_ on_ σ = args ∧
+      cs.getClause cref = some c ∧
+      f.litValue σ sk (mkLit of_ true) = true ∧
+      mkLit of_ true ∈ c.lits.toList ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ true → f.litValue σ sk l = false) := by
+  rcases hbad with ⟨σ, cref, c, hargs, hget, hfalse⟩
+  have hclause_true : f.clauseValue σ sk c.lits = true :=
+    clauseValue_of_matrixValue f cs σ sk cref c (hall σ) hget
+  have hpatched_false :
+      ∀ l ∈ c.lits.toList,
+        (f.forceDelDep of_ on_).litValue σ
+          (patchDeleteSkolem f of_ on_ σ false sk) l = false :=
+    clauseValue_false_implies_all_lits_false_early
+      (f.forceDelDep of_ on_) σ (patchDeleteSkolem f of_ on_ σ false sk) c.lits hfalse
+  have hagree : AgreeOnDeleteDeps f of_ on_ σ σ := by
+    intro u hu
+    rfl
+  have hvar_false :
+      (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolem f of_ on_ σ false sk) of_ = false := by
+    simpa using varValue_forceDelDep_patchDelete_eq f of_ on_ σ σ false sk hexi hagree
+  have hpos_patched_false :
+      (f.forceDelDep of_ on_).litValue σ
+        (patchDeleteSkolem f of_ on_ σ false sk) (mkLit of_ true) = false := by
+    unfold DQBF.litValue
+    rw [mkLit_var_early]
+    simp [Literal.isPos, mkLit, hvar_false]
+  simp only [DQBF.clauseValue, Array.any_eq_true] at hclause_true
+  rcases hclause_true with ⟨i, hi, hli_true⟩
+  have hmem_i : c.lits[i] ∈ c.lits.toList :=
+    Array.mem_toList_iff.mpr (Array.getElem_mem hi)
+  have hli_patched_false :
+      (f.forceDelDep of_ on_).litValue σ
+        (patchDeleteSkolem f of_ on_ σ false sk) c.lits[i] = false :=
+    hpatched_false _ hmem_i
+  have hli_var : c.lits[i].var = of_ := by
+    by_cases hov : c.lits[i].var = of_
+    · exact hov
+    · have hsame :=
+        litValue_forceDelDep_patchDelete_eq_of_ne_var
+          f of_ on_ σ σ false sk c.lits[i] hov
+      rw [hsame] at hli_patched_false
+      rw [hli_true] at hli_patched_false
+      cases hli_patched_false
+  have hmk_var : (mkLit of_ true).var = of_ := mkLit_var_early of_ true
+  have hsame_var : c.lits[i].var = (mkLit of_ true).var := by
+    simpa [hmk_var] using hli_var
+  have hli_pos : c.lits[i] = mkLit of_ true := by
+    rcases literal_eq_or_negate_of_same_var c.lits[i] (mkLit of_ true) hsame_var with hEq | hNeg
+    · exact hEq
+    · rw [hNeg] at hli_patched_false
+      rw [litValue_negate_early (f.forceDelDep of_ on_) σ
+            (patchDeleteSkolem f of_ on_ σ false sk) (mkLit of_ true)] at hli_patched_false
+      rw [hpos_patched_false] at hli_patched_false
+      cases hli_patched_false
+  have hpos_true : f.litValue σ sk (mkLit of_ true) = true := by
+    simpa [hli_pos] using hli_true
+  refine ⟨σ, cref, c, hargs, hget, hpos_true, ?_, ?_⟩
+  · exact Array.mem_toList_iff.mpr (Array.mem_iff_getElem.mpr ⟨i, hi, hli_pos⟩)
+  · intro l hl hne
+    by_cases hov : l.var = of_
+    · have hsame_var' : l.var = (mkLit of_ true).var := by
+        simpa [hmk_var] using hov
+      rcases literal_eq_or_negate_of_same_var l (mkLit of_ true) hsame_var' with hEq | hNeg
+      · exact False.elim (hne hEq)
+      · rw [hNeg]
+        rw [litValue_negate_early f σ sk (mkLit of_ true), hpos_true]
+        rfl
+    · have hpatched_l_false :
+          (f.forceDelDep of_ on_).litValue σ
+            (patchDeleteSkolem f of_ on_ σ false sk) l = false :=
+        hpatched_false l hl
+      rw [litValue_forceDelDep_patchDelete_eq_of_ne_var
+          f of_ on_ σ σ false sk l hov] at hpatched_l_false
+      exact hpatched_l_false
+
+private theorem badDeletePattern_true_clause_shape
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (sk : SkolemAssignment) (args : Array Bool)
+    (hexi : f.isVarExistential of_ = true)
+    (hall : ∀ σ, cs.matrixValue f σ sk = true)
+    (hbad : BadDeletePattern f cs of_ on_ sk args true) :
+    ∃ σ cref c,
+      deleteDepArgs f of_ on_ σ = args ∧
+      cs.getClause cref = some c ∧
+      f.litValue σ sk (mkLit of_ false) = true ∧
+      mkLit of_ false ∈ c.lits.toList ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ false → f.litValue σ sk l = false) := by
+  rcases hbad with ⟨σ, cref, c, hargs, hget, hfalse⟩
+  have hclause_true : f.clauseValue σ sk c.lits = true :=
+    clauseValue_of_matrixValue f cs σ sk cref c (hall σ) hget
+  have hpatched_false :
+      ∀ l ∈ c.lits.toList,
+        (f.forceDelDep of_ on_).litValue σ
+          (patchDeleteSkolem f of_ on_ σ true sk) l = false :=
+    clauseValue_false_implies_all_lits_false_early
+      (f.forceDelDep of_ on_) σ (patchDeleteSkolem f of_ on_ σ true sk) c.lits hfalse
+  have hagree : AgreeOnDeleteDeps f of_ on_ σ σ := by
+    intro u hu
+    rfl
+  have hvar_true :
+      (f.forceDelDep of_ on_).varValue σ (patchDeleteSkolem f of_ on_ σ true sk) of_ = true := by
+    simpa using varValue_forceDelDep_patchDelete_eq f of_ on_ σ σ true sk hexi hagree
+  have hneg_patched_false :
+      (f.forceDelDep of_ on_).litValue σ
+        (patchDeleteSkolem f of_ on_ σ true sk) (mkLit of_ false) = false := by
+    unfold DQBF.litValue
+    rw [mkLit_var_early]
+    simp [Literal.isPos, mkLit, hvar_true]
+  simp only [DQBF.clauseValue, Array.any_eq_true] at hclause_true
+  rcases hclause_true with ⟨i, hi, hli_true⟩
+  have hmem_i : c.lits[i] ∈ c.lits.toList :=
+    Array.mem_toList_iff.mpr (Array.getElem_mem hi)
+  have hli_patched_false :
+      (f.forceDelDep of_ on_).litValue σ
+        (patchDeleteSkolem f of_ on_ σ true sk) c.lits[i] = false :=
+    hpatched_false _ hmem_i
+  have hli_var : c.lits[i].var = of_ := by
+    by_cases hov : c.lits[i].var = of_
+    · exact hov
+    · have hsame :=
+        litValue_forceDelDep_patchDelete_eq_of_ne_var
+          f of_ on_ σ σ true sk c.lits[i] hov
+      rw [hsame] at hli_patched_false
+      rw [hli_true] at hli_patched_false
+      cases hli_patched_false
+  have hmk_var : (mkLit of_ false).var = of_ := mkLit_var_early of_ false
+  have hsame_var : c.lits[i].var = (mkLit of_ false).var := by
+    simpa [hmk_var] using hli_var
+  have hli_neg : c.lits[i] = mkLit of_ false := by
+    rcases literal_eq_or_negate_of_same_var c.lits[i] (mkLit of_ false) hsame_var with hEq | hNeg
+    · exact hEq
+    · rw [hNeg] at hli_patched_false
+      rw [litValue_negate_early (f.forceDelDep of_ on_) σ
+            (patchDeleteSkolem f of_ on_ σ true sk) (mkLit of_ false)] at hli_patched_false
+      rw [hneg_patched_false] at hli_patched_false
+      cases hli_patched_false
+  have hneg_true : f.litValue σ sk (mkLit of_ false) = true := by
+    simpa [hli_neg] using hli_true
+  refine ⟨σ, cref, c, hargs, hget, hneg_true, ?_, ?_⟩
+  · exact Array.mem_toList_iff.mpr (Array.mem_iff_getElem.mpr ⟨i, hi, hli_neg⟩)
+  · intro l hl hne
+    by_cases hov : l.var = of_
+    · have hsame_var' : l.var = (mkLit of_ false).var := by
+        simpa [hmk_var] using hov
+      rcases literal_eq_or_negate_of_same_var l (mkLit of_ false) hsame_var' with hEq | hNeg
+      · exact False.elim (hne hEq)
+      · rw [hNeg]
+        rw [litValue_negate_early f σ sk (mkLit of_ false), hneg_true]
+        rfl
+    · have hpatched_l_false :
+          (f.forceDelDep of_ on_).litValue σ
+            (patchDeleteSkolem f of_ on_ σ true sk) l = false :=
+        hpatched_false l hl
+      rw [litValue_forceDelDep_patchDelete_eq_of_ne_var
+          f of_ on_ σ σ true sk l hov] at hpatched_l_false
+      exact hpatched_l_false
 
 /-- Global patched Skolem witness candidate for dependency deletion:
     choose `true` exactly on reduced patterns where `false` is bad. -/
@@ -1486,6 +1770,67 @@ private theorem dqbfTrue_forceDelDep_of_no_both_bad
   intro σ
   exact matrixValue_forceDelDep_patchDeleteForFormula_true_of_no_both_bad
     f cs of_ on_ σ sk hexi hnoBoth
+
+private theorem no_both_bad_of_exhibits_delete_independence
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hall : ∀ σ, cs.matrixValue f σ sk = true)
+    (hexhibit : ExhibitsDeleteIndependence f of_ on_ sk) :
+    ∀ args,
+      ¬ (BadDeletePattern f cs of_ on_ sk args false ∧
+         BadDeletePattern f cs of_ on_ sk args true) := by
+  intro args hboth
+  rcases hboth with ⟨hbadFalse, hbadTrue⟩
+  rcases badDeletePattern_false_clause_shape f cs of_ on_ sk args hexi hall hbadFalse with
+    ⟨σ₀, _, _, hargs₀, _, hpos_true, _, _⟩
+  rcases badDeletePattern_true_clause_shape f cs of_ on_ sk args hexi hall hbadTrue with
+    ⟨σ₁, _, _, hargs₁, _, hneg_true, _, _⟩
+  have hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ₁ := by
+    apply agreeOnDeleteDeps_of_deleteDepArgs_eq f of_ on_ σ₀ σ₁
+    exact hargs₀.trans hargs₁.symm
+  have hindep := hexhibit σ₀ σ₁ hagree
+  have hvar_true : f.varValue σ₀ sk of_ = true := by
+    unfold DQBF.litValue at hpos_true
+    rw [mkLit_var_early] at hpos_true
+    simpa [DQBF.varValue, DQBF.exiValue, hexi, Literal.isPos, mkLit] using hpos_true
+  have hvar_false : f.varValue σ₁ sk of_ = false := by
+    unfold DQBF.litValue at hneg_true
+    rw [mkLit_var_early] at hneg_true
+    simpa [DQBF.varValue, DQBF.exiValue, hexi, Literal.isPos, mkLit] using hneg_true
+  rw [hvar_true, hvar_false] at hindep
+  cases hindep
+
+theorem DQBFTrue_forceDelDep_of_exhibiting_bridge
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (hexi : f.isVarExistential of_ = true)
+    (hbridge :
+      DQBFTrue f cs →
+        ∃ sk,
+          (∀ σ, cs.matrixValue f σ sk = true) ∧
+          ExhibitsDeleteIndependence f of_ on_ sk)
+    (htrue : DQBFTrue f cs) :
+    DQBFTrue (f.forceDelDep of_ on_) cs := by
+  rcases hbridge htrue with ⟨sk, hall, hexhibit⟩
+  exact dqbfTrue_forceDelDep_of_no_both_bad
+    f cs of_ on_ sk hexi
+    (no_both_bad_of_exhibits_delete_independence f cs of_ on_ sk hexi hall hexhibit)
+
+theorem DQBFTrue_forceDelDep_of_bridge
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (hexi : f.isVarExistential of_ = true)
+    (hbridge :
+      DQBFTrue f cs →
+        ∃ sk,
+          (∀ σ, cs.matrixValue f σ sk = true) ∧
+          (∀ args,
+            ¬ (BadDeletePattern f cs of_ on_ sk args false ∧
+               BadDeletePattern f cs of_ on_ sk args true)))
+    (htrue : DQBFTrue f cs) :
+    DQBFTrue (f.forceDelDep of_ on_) cs := by
+  rcases hbridge htrue with ⟨sk, hsk, hnoBoth⟩
+  exact dqbfTrue_forceDelDep_of_no_both_bad
+    f cs of_ on_ sk hexi hnoBoth
 
 theorem varValue_addDependencyFormula_old
     (f : DQBF) (of_ on_ v : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
@@ -2637,6 +2982,252 @@ theorem makeIndepUnknown_full_correct_lookup_spec
       rcases hsame with ⟨hformula, _⟩
       exact ⟨CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame',
         by simpa [hformula] using hlookup⟩
+
+theorem computeDeps_sameFC_spec (u : Var) (s₀ : CheckState) :
+    ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (computeDeps u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄ := by
+  intro s hsame
+  rcases hsame with ⟨hformula, hclauses⟩
+  unfold computeDeps
+  by_cases hu : s.formula.isVarExistential u
+  · have hu₀ : s₀.formula.isVarExistential u = true := by
+      simpa [hformula] using hu
+    simp [hu, hu₀, SameFC, hformula, hclauses]
+  · have hu₀ : s₀.formula.isVarExistential u = false := by
+      simpa [hformula] using hu
+    simp [hu, hu₀, SameFC, hformula, hclauses]
+
+@[spec]
+theorem computeDeps_correct_spec (dqbf : DQBF) (cs : ClauseStore)
+    (u : Var) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    (computeDeps u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄ := by
+  intro s hcorr
+  unfold computeDeps
+  by_cases hu : s.formula.isVarExistential u
+  · simp [hu]
+    exact hcorr
+  · simp [hu]
+    let reachPos := getReachable s (mkLit u true)
+    let reachNeg := getReachable s (mkLit u false)
+    let indep := s.formula.exivars.filter fun xvar =>
+      if xvar <= u then false
+      else
+        let xNeg := xvar * 2
+        let xPos := xvar * 2 + 1
+        !((reachPos.getD xNeg false && reachNeg.getD xPos false) ||
+          (reachPos.getD xPos false && reachNeg.getD xNeg false))
+    simpa [indep, reachPos, reachNeg] using
+      (CheckState.Correct.withIndepCaches hcorr
+        (s.indepKnown.setIfInBounds (u - 1) true)
+        (s.indepOf.setIfInBounds (u - 1) indep)
+        (by simp [Array.size_setIfInBounds, hcorr.toSound.indepKnown_size])
+        (by simp [Array.size_setIfInBounds, hcorr.toSound.indepOf_size]))
+
+theorem computeDeps_correct_sameFC_spec
+    (dqbf : DQBF) (cs : ClauseStore) (u : Var) (s₀ : CheckState) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄
+    (computeDeps u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ SameFC s₀ s'⌝⦄ := by
+  exact Triple.entails_wp_of_post
+    (h := Triple.and (computeDeps u : CheckM Unit)
+      (computeDeps_correct_spec dqbf cs u)
+      (computeDeps_sameFC_spec u s₀))
+    (by simp [PostCond.entails, SPred.entails, ExceptConds.entails])
+
+theorem computeDeps_correct_lookup_spec
+    (dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (computeDeps u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hcorr, hlookup⟩
+  have hspec := computeDeps_correct_sameFC_spec dqbf cs u s s ⟨hcorr, ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec ⊢
+  cases hrun : computeDeps u s with
+  | error e s' =>
+      rw [hrun] at hspec
+      exact hspec.elim
+  | ok _ s' =>
+      rw [hrun] at hspec
+      rcases hspec with ⟨hcorr', hsame⟩
+      rcases hsame with ⟨hformula, _⟩
+      exact ⟨hcorr', by simpa [hformula] using hlookup⟩
+
+theorem computeDeps_full_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore) (u : Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+    (computeDeps u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s'⌝⦄ := by
+  intro s hfull
+  have hspec :=
+    computeDeps_correct_sameFC_spec dqbf cs u s s ⟨hfull.toCorrect, ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec ⊢
+  cases hrun : computeDeps u s with
+  | error e s' =>
+      rw [hrun] at hspec
+      exact hspec.elim
+  | ok _ s' =>
+      rw [hrun] at hspec
+      rcases hspec with ⟨hcorr', hsame⟩
+      exact CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame
+
+theorem computeDeps_full_correct_lookup_spec
+    (dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (computeDeps u : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hlookup⟩
+  have hspec :=
+    computeDeps_correct_sameFC_spec dqbf cs u s s ⟨hfull.toCorrect, ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec ⊢
+  cases hrun : computeDeps u s with
+  | error e s' =>
+      rw [hrun] at hspec
+      exact hspec.elim
+  | ok _ s' =>
+      rw [hrun] at hspec
+      rcases hspec with ⟨hcorr', hsame⟩
+      have hsame' := hsame
+      rcases hsame with ⟨hformula, _⟩
+      exact ⟨CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame',
+        by simpa [hformula] using hlookup⟩
+
+theorem notDependsOn_correct_lookup_spec
+    (dqbf : DQBF) (cs : ClauseStore) (exiVar univar : Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (notDependsOn exiVar univar : CheckM Bool)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hcorr, hlookup⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run, notDependsOn, Bind.bind, EStateM.bind]
+  have hdeps := computeDeps_correct_lookup_spec dqbf cs univar ext v s ⟨hcorr, hlookup⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hdeps
+  cases hrun : computeDeps univar s with
+  | error e s' =>
+      rw [hrun] at hdeps
+      exact hdeps.elim
+  | ok _ s' =>
+      rw [hrun] at hdeps
+      rcases hdeps with ⟨hcorr', hlookup'⟩
+      simp [EStateM.get, hrun]
+      exact ⟨hcorr', hlookup'⟩
+
+theorem notDependsOn_full_correct_lookup_spec
+    (dqbf : DQBF) (cs : ClauseStore) (exiVar univar : Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (notDependsOn exiVar univar : CheckM Bool)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hlookup⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run, notDependsOn, Bind.bind, EStateM.bind]
+  have hdeps := computeDeps_full_correct_lookup_spec dqbf cs univar ext v s ⟨hfull, hlookup⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hdeps
+  cases hrun : computeDeps univar s with
+  | error e s' =>
+      rw [hrun] at hdeps
+      exact hdeps.elim
+  | ok _ s' =>
+      rw [hrun] at hdeps
+      rcases hdeps with ⟨hfull', hlookup'⟩
+      simp [EStateM.get, hrun]
+      exact ⟨hfull', hlookup'⟩
+
+theorem notDependsOn_sameFC_spec
+    (exiVar univar : Var) (s₀ : CheckState) :
+    ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (notDependsOn exiVar univar : CheckM Bool)
+    ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄ := by
+  intro s hsame
+  simp only [WP.wp, PredTrans.apply, EStateM.run, notDependsOn, Bind.bind, EStateM.bind]
+  have hdeps := computeDeps_sameFC_spec univar s₀ s hsame
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hdeps
+  cases hrun : computeDeps univar s with
+  | error e s' =>
+      rw [hrun] at hdeps
+      exact hdeps.elim
+  | ok _ s' =>
+      rw [hrun] at hdeps
+      simp [EStateM.get, hrun]
+      exact hdeps
+
+theorem notDependsOn_full_correct_spec
+    (dqbf : DQBF) (cs : ClauseStore) (exiVar univar : Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+    (notDependsOn exiVar univar : CheckM Bool)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s'⌝⦄ := by
+  intro s hfull
+  simp only [WP.wp, PredTrans.apply, EStateM.run, notDependsOn, Bind.bind, EStateM.bind]
+  have hdeps := computeDeps_full_correct_spec dqbf cs univar s hfull
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hdeps
+  cases hrun : computeDeps univar s with
+  | error e s' =>
+      rw [hrun] at hdeps
+      exact hdeps.elim
+  | ok _ s' =>
+      rw [hrun] at hdeps
+      simp [EStateM.get, hrun]
+      exact hdeps
+
+theorem notDependsOn_full_correct_sameFC_spec
+    (dqbf : DQBF) (cs : ClauseStore) (exiVar univar : Var) (s₀ : CheckState) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ SameFC s₀ s⌝⦄
+    (notDependsOn exiVar univar : CheckM Bool)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ SameFC s₀ s'⌝⦄ := by
+  exact Triple.entails_wp_of_post
+    (h := Triple.and (notDependsOn exiVar univar : CheckM Bool)
+      (notDependsOn_full_correct_spec dqbf cs exiVar univar)
+      (notDependsOn_sameFC_spec exiVar univar s₀))
+    (by simp [PostCond.entails, SPred.entails, ExceptConds.entails])
+
+private theorem notDependsOn_true_member_indepOf
+    {s s' : CheckState} {exiVar univar : Var}
+    (hrun : notDependsOn exiVar univar s = .ok true s') :
+    exiVar ∈ (s'.indepOf.getD (univar - 1) #[]).toList := by
+  unfold notDependsOn at hrun
+  cases hdeps : computeDeps univar s with
+  | error e s₁ =>
+      simp [Bind.bind, EStateM.bind, hdeps] at hrun
+  | ok _ s₁ =>
+      have hrun' := hrun
+      simp [Bind.bind, EStateM.bind, hdeps, EStateM.get, EStateM.pure, Pure.pure] at hrun'
+      injection hrun' with hmem hs
+      subst hs
+      simpa using hmem
+
+private theorem notDependsOn_false_not_member_indepOf
+    {s s' : CheckState} {exiVar univar : Var}
+    (hrun : notDependsOn exiVar univar s = .ok false s') :
+    exiVar ∉ (s'.indepOf.getD (univar - 1) #[]).toList := by
+  unfold notDependsOn at hrun
+  cases hdeps : computeDeps univar s with
+  | error e s₁ =>
+      simp [Bind.bind, EStateM.bind, hdeps] at hrun
+  | ok _ s₁ =>
+      have hrun' := hrun
+      simp [Bind.bind, EStateM.bind, hdeps, EStateM.get, EStateM.pure, Pure.pure] at hrun'
+      injection hrun' with hmem hs
+      subst hs
+      intro hmember
+      have hmemTrue :
+          decide (exiVar ∈ (s₁.indepOf.getD (univar - 1) #[]).toList) = true := by
+        simpa using hmember
+      simp [hmemTrue] at hmem
+      have hmember' : exiVar ∈ s₁.indepOf[univar - 1]?.getD #[] := by
+        simpa using hmember
+      exact hmem hmember'
+
+private theorem DeleteIndependenceBridge.of_notDependsOn_true_setBridge
+    {s s' : CheckState} {exiVar univar : Var}
+    (hrun : notDependsOn exiVar univar s = .ok true s')
+    (hbridge : DeleteIndependenceSetBridge s'
+      (s'.indepOf.getD (univar - 1) #[]) univar) :
+    DeleteIndependenceBridge s' exiVar univar := by
+  exact DeleteIndependenceBridge.of_setBridge hbridge
+    (notDependsOn_true_member_indepOf hrun)
 
 theorem makeIndepUnknown_prefix_lookup_spec
     (u : Var) (ext : Nat) (v : Var) :
@@ -4535,6 +5126,162 @@ theorem CheckState.Correct.withAddDependencyReset
       hformula_sound₁
       hlookup₁)
 
+theorem CheckState.Correct.withForceDelDepReset
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {of_ on_ : Var}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (hexi : st.formula.isVarExistential of_ = true)
+    (hon : 0 < on_)
+    (hbridge :
+      DQBFTrue st.formula st.clauses →
+        ∃ sk,
+          (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
+          (∀ args,
+            ¬ (BadDeletePattern st.formula st.clauses of_ on_ sk args false ∧
+               BadDeletePattern st.formula st.clauses of_ on_ sk args true))) :
+    CheckState.Correct dqbf cs
+      { st with
+        formula := st.formula.forceDelDep of_ on_
+        isAssigned := Array.replicate st.formula.maxVar false
+        value := Array.replicate st.formula.maxVar false
+        trail := #[#[]]
+        propQueue := #[]
+        indepKnown := st.indepKnown.setIfInBounds (on_ - 1) false
+        indepOf := st.indepOf.setIfInBounds (on_ - 1) #[] } := by
+  let st₁ : CheckState :=
+    { st with
+      formula := st.formula.forceDelDep of_ on_
+      indepKnown := st.indepKnown.setIfInBounds (on_ - 1) false
+      indepOf := st.indepOf.setIfInBounds (on_ - 1) #[] }
+  have hsound₁ : CheckState.Sound st₁ := by
+    refine
+      { isAssigned_size := by
+          simpa [st₁, DQBF.forceDelDep] using hcorr.toSound.isAssigned_size
+        value_size := by
+          simpa [st₁, DQBF.forceDelDep] using hcorr.toSound.value_size
+        indepKnown_size := by
+          simp [st₁, DQBF.forceDelDep, Array.size_setIfInBounds,
+            hcorr.toSound.indepKnown_size]
+        indepOf_size := by
+          simp [st₁, DQBF.forceDelDep, Array.size_setIfInBounds,
+            hcorr.toSound.indepOf_size]
+        externalName_size := by
+          simpa [st₁, DQBF.forceDelDep] using hcorr.toSound.externalName_size
+        isExistential_size := by
+          simpa [st₁, DQBF.forceDelDep] using hcorr.toSound.isExistential_size
+        depset_size := by
+          simp [st₁, DQBF.forceDelDep, Array.size_setIfInBounds,
+            hcorr.toSound.depset_size]
+        clauses_nonempty := hcorr.toSound.clauses_nonempty
+        trail_nonempty := hcorr.toSound.trail_nonempty
+        trail_lits_valid := ?_
+        assigned_iff_in_trail := ?_ }
+    · intro i hi l hl
+      rcases hcorr.trail_lits_valid i hi l hl with ⟨hpos, hle⟩
+      exact ⟨hpos, by simpa [st₁, DQBF.forceDelDep] using hle⟩
+    · intro v hpos hle
+      have hle_old : v ≤ st.formula.maxVar := by
+        simpa [st₁, DQBF.forceDelDep] using hle
+      exact hcorr.assigned_iff_in_trail v hpos hle_old
+  have hclauses₁ : ClausesWellFormed st₁.formula st₁.clauses := by
+    simpa [st₁, DQBF.forceDelDep] using hcorr.clauses_wf
+  have hformula_sound₁ : DQBFTrue dqbf cs → DQBFTrue st₁.formula st₁.clauses := by
+    intro htrue
+    simpa [st₁] using
+      DQBFTrue_forceDelDep_of_bridge
+        st.formula st.clauses of_ on_ hexi hbridge (hcorr.formula_sound htrue)
+  have hlookup₁ :
+      ∀ ext v, st₁.formula.lookupInternal ext = some v →
+        0 < v ∧ v ≤ st₁.formula.maxVar := by
+    intro ext v hlookup
+    have hlookup_old : st.formula.lookupInternal ext = some v := by
+      simpa [st₁, lookupInternal_forceDelDep] using hlookup
+    rcases hcorr.lookupInternal_sound ext v hlookup_old with ⟨hpos, hle⟩
+    exact ⟨hpos, by simpa [st₁, DQBF.forceDelDep] using hle⟩
+  simpa [st₁, DQBF.forceDelDep] using
+    (CheckState.Correct.ofResetState
+      (st := st₁)
+      hsound₁
+      hclauses₁
+      hcorr.formula_extends
+      hformula_sound₁
+      hlookup₁)
+
+theorem CheckState.Correct.withForceDelDepReset_of_exhibiting_bridge
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {of_ on_ : Var}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (hexi : st.formula.isVarExistential of_ = true)
+    (hon : 0 < on_)
+    (hbridge :
+      DQBFTrue st.formula st.clauses →
+        ∃ sk,
+          (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
+          ExhibitsDeleteIndependence st.formula of_ on_ sk) :
+    CheckState.Correct dqbf cs
+      { st with
+        formula := st.formula.forceDelDep of_ on_
+        isAssigned := Array.replicate st.formula.maxVar false
+        value := Array.replicate st.formula.maxVar false
+        trail := #[#[]]
+        propQueue := #[]
+        indepKnown := st.indepKnown.setIfInBounds (on_ - 1) false
+        indepOf := st.indepOf.setIfInBounds (on_ - 1) #[] } := by
+  exact CheckState.Correct.withForceDelDepReset hcorr hexi hon (fun htrue => by
+    rcases hbridge htrue with ⟨sk, hall, hexhibit⟩
+    exact ⟨sk, hall,
+      no_both_bad_of_exhibits_delete_independence
+        st.formula st.clauses of_ on_ sk hexi hall hexhibit⟩)
+
+theorem CheckState.FullCorrect.withForceDelDepReset
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {of_ on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hexi : st.formula.isVarExistential of_ = true)
+    (hon : 0 < on_)
+    (hbridge :
+      DQBFTrue st.formula st.clauses →
+        ∃ sk,
+          (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
+          (∀ args,
+            ¬ (BadDeletePattern st.formula st.clauses of_ on_ sk args false ∧
+               BadDeletePattern st.formula st.clauses of_ on_ sk args true))) :
+    CheckState.FullCorrect dqbf cs
+      { st with
+        formula := st.formula.forceDelDep of_ on_
+        isAssigned := Array.replicate st.formula.maxVar false
+        value := Array.replicate st.formula.maxVar false
+        trail := #[#[]]
+        propQueue := #[]
+        indepKnown := st.indepKnown.setIfInBounds (on_ - 1) false
+        indepOf := st.indepOf.setIfInBounds (on_ - 1) #[] } := by
+  exact CheckState.FullCorrect.ofCorrectClausesEq
+    hfull
+    (CheckState.Correct.withForceDelDepReset hfull.toCorrect hexi hon hbridge)
+    rfl
+
+theorem CheckState.FullCorrect.withForceDelDepReset_of_exhibiting_bridge
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {of_ on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hexi : st.formula.isVarExistential of_ = true)
+    (hon : 0 < on_)
+    (hbridge :
+      DQBFTrue st.formula st.clauses →
+        ∃ sk,
+          (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
+          ExhibitsDeleteIndependence st.formula of_ on_ sk) :
+    CheckState.FullCorrect dqbf cs
+      { st with
+        formula := st.formula.forceDelDep of_ on_
+        isAssigned := Array.replicate st.formula.maxVar false
+        value := Array.replicate st.formula.maxVar false
+        trail := #[#[]]
+        propQueue := #[]
+        indepKnown := st.indepKnown.setIfInBounds (on_ - 1) false
+        indepOf := st.indepOf.setIfInBounds (on_ - 1) #[] } := by
+  exact CheckState.FullCorrect.ofCorrectClausesEq
+    hfull
+    (CheckState.Correct.withForceDelDepReset_of_exhibiting_bridge
+      hfull.toCorrect hexi hon hbridge)
+    rfl
+
 @[spec]
 theorem addDependencyReset_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (of_ on_ : Var) :
@@ -4645,6 +5392,124 @@ theorem addDependencyReset_full_correct_lookup_spec (dqbf : DQBF) (cs : ClauseSt
               · exact CheckState.FullCorrect.ofCorrectClausesEq
                   hfull (CheckState.Correct.withAddDependencyReset hfull.toCorrect hof hof_le) rfl
               · simpa [lookupInternal_addDependencyFormula] using hlookup
+
+theorem delDependencyReset_full_correct_spec_of_exhibiting_bridge
+    (dqbf : DQBF) (cs : ClauseStore) (of_ on_ : Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+                  0 < on_ ∧ DeleteIndependenceBridge s of_ on_⌝⦄
+    (delDependencyReset of_ on_ : CheckM Bool)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s'⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hon, hbridge⟩
+  have hget : (get : CheckM CheckState) = EStateM.get := rfl
+  simp only [WP.wp, PredTrans.apply, EStateM.run, delDependencyReset, Bind.bind, EStateM.bind,
+    delDependency, hget, EStateM.get]
+  cases hof_exi : s.formula.isVarExistential of_ with
+  | false =>
+      simp [hof_exi, resetPropagationState_run]
+      exact CheckState.FullCorrect.ofCorrectClausesEq
+        hfull (CheckState.Correct.withResetPropagationState hfull.toCorrect) rfl
+  | true =>
+      have hnd :=
+        notDependsOn_full_correct_sameFC_spec dqbf cs of_ on_ s s ⟨hfull, ⟨rfl, rfl⟩⟩
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hnd
+      cases hrunND : notDependsOn of_ on_ s with
+      | error e s₁ =>
+          rw [hrunND] at hnd
+          exact hnd.elim
+      | ok allowed s₁ =>
+          rw [hrunND] at hnd
+          rcases hnd with ⟨hfull₁, hsame₁⟩
+          have hbridge₁ : DeleteIndependenceBridge s₁ of_ on_ :=
+            DeleteIndependenceBridge.of_sameFC hbridge hsame₁
+          cases hallowed : allowed with
+          | false =>
+              simpa [WP.wp, PredTrans.apply, EStateM.run, delDependencyReset, delDependency,
+                hget, EStateM.get, Bind.bind, EStateM.bind, EStateM.pure, Pure.pure,
+                hof_exi, hrunND, hallowed] using hfull₁
+          | true =>
+              rcases hsame₁ with ⟨hformula₁, _⟩
+              have hexi₁ : s₁.formula.isVarExistential of_ = true := by
+                simpa [hformula₁] using hof_exi
+              have hon_ne : on_ ≠ 0 := Nat.ne_of_gt hon
+              simpa [WP.wp, PredTrans.apply, EStateM.run, delDependencyReset, delDependency,
+                hget, EStateM.get, Bind.bind, EStateM.bind, EStateM.pure, Pure.pure,
+                hof_exi, hrunND, hallowed, makeIndepUnknown, hon_ne,
+                resetPropagationState_run] using
+                CheckState.FullCorrect.withForceDelDepReset_of_exhibiting_bridge
+                  hfull₁ hexi₁ hon hbridge₁
+
+theorem delDependencyReset_full_correct_lookup_spec_of_exhibiting_bridge
+    (dqbf : DQBF) (cs : ClauseStore)
+    (of_ on_ : Var) (ext : Nat) (v : Var) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+                  s.formula.lookupInternal ext = some v ∧
+                  0 < on_ ∧ DeleteIndependenceBridge s of_ on_⌝⦄
+    (delDependencyReset of_ on_ : CheckM Bool)
+    ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧
+        s'.formula.lookupInternal ext = some v⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hlookup, hon, hbridge⟩
+  have hget : (get : CheckM CheckState) = EStateM.get := rfl
+  simp only [WP.wp, PredTrans.apply, EStateM.run, delDependencyReset, Bind.bind,
+    EStateM.bind, delDependency, hget, EStateM.get]
+  cases hof_exi : s.formula.isVarExistential of_ with
+  | false =>
+      simp [hof_exi, resetPropagationState_run]
+      exact ⟨CheckState.FullCorrect.ofCorrectClausesEq
+        hfull (CheckState.Correct.withResetPropagationState hfull.toCorrect) rfl, hlookup⟩
+  | true =>
+      have hnd :=
+        notDependsOn_full_correct_sameFC_spec dqbf cs of_ on_ s s ⟨hfull, ⟨rfl, rfl⟩⟩
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hnd
+      cases hrunND : notDependsOn of_ on_ s with
+      | error e s₁ =>
+          rw [hrunND] at hnd
+          exact hnd.elim
+      | ok allowed s₁ =>
+          rw [hrunND] at hnd
+          rcases hnd with ⟨hfull₁, hsame₁⟩
+          rcases hsame₁ with ⟨hformula₁, hclauses₁⟩
+          have hlookup₁ : s₁.formula.lookupInternal ext = some v := by
+            simpa [hformula₁] using hlookup
+          have hbridge₁ : DeleteIndependenceBridge s₁ of_ on_ :=
+            DeleteIndependenceBridge.of_sameFC hbridge ⟨hformula₁, hclauses₁⟩
+          cases hallowed : allowed with
+          | false =>
+              simpa [WP.wp, PredTrans.apply, EStateM.run, delDependencyReset, delDependency,
+                hget, EStateM.get, Bind.bind, EStateM.bind, EStateM.pure, Pure.pure,
+                hof_exi, hrunND, hallowed] using ⟨hfull₁, hlookup₁⟩
+          | true =>
+              have hexi₁ : s₁.formula.isVarExistential of_ = true := by
+                simpa [hformula₁] using hof_exi
+              have hon_ne : on_ ≠ 0 := Nat.ne_of_gt hon
+              have hpost :
+                  CheckState.FullCorrect dqbf cs
+                    { s₁ with
+                      formula := s₁.formula.forceDelDep of_ on_
+                      isAssigned := Array.replicate s₁.formula.maxVar false
+                      value := Array.replicate s₁.formula.maxVar false
+                      trail := #[#[]]
+                      propQueue := #[]
+                      indepKnown := s₁.indepKnown.setIfInBounds (on_ - 1) false
+                      indepOf := s₁.indepOf.setIfInBounds (on_ - 1) #[] } ∧
+                  ({ s₁ with
+                      formula := s₁.formula.forceDelDep of_ on_
+                      isAssigned := Array.replicate s₁.formula.maxVar false
+                      value := Array.replicate s₁.formula.maxVar false
+                      trail := #[#[]]
+                      propQueue := #[]
+                      indepKnown := s₁.indepKnown.setIfInBounds (on_ - 1) false
+                      indepOf := s₁.indepOf.setIfInBounds (on_ - 1) #[] }).formula.lookupInternal
+                    ext = some v := by
+                refine ⟨?_, ?_⟩
+                · exact CheckState.FullCorrect.withForceDelDepReset_of_exhibiting_bridge
+                    hfull₁ hexi₁ hon hbridge₁
+                · simpa [lookupInternal_forceDelDep] using hlookup₁
+              simpa [WP.wp, PredTrans.apply, EStateM.run, delDependencyReset, delDependency,
+                hget, EStateM.get, Bind.bind, EStateM.bind, EStateM.pure, Pure.pure,
+                hof_exi, hrunND, hallowed, makeIndepUnknown, hon_ne, resetPropagationState_run]
+                using hpost
 
 theorem CheckState.PropStruct.withAddClause
     {st : CheckState} {lits : Array Literal}
@@ -8546,6 +9411,57 @@ theorem checkModifyExistentialAddOnly_full_sound
             rw [hrun] at hcore
             rcases hcore with ⟨hfull', hrnone⟩
             simpa [FullStepFullPost, hrnone] using hfull'
+
+private theorem checkModifyExistentialDelStep_full_sound_of_exhibiting_bridge
+    (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extExi : Nat) (internalExi : Var) (cv : Int) :
+    ⦃fun s =>
+      ⌜CheckState.FullCorrect dqbf cs s ∧
+       s.formula.lookupInternal extExi = some internalExi ∧
+       (∀ internalDep,
+          s.formula.lookupInternal (-cv).toNat = some internalDep →
+          DeleteIndependenceBridge s internalExi internalDep)⌝⦄
+    (checkModifyExistentialDelStep lineNum extExi internalExi cv)
+    ⦃⇓? r s' =>
+      ⌜FullStepFullPost dqbf cs r s' ∧
+       s'.formula.lookupInternal extExi = some internalExi⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hlookupExi, hbridge⟩
+  let extDep := (-cv).toNat
+  have hget_formula :
+      (((fun x => x.formula) <$> (get : CheckM CheckState)) s) = .ok s.formula s := by
+    rfl
+  by_cases hex : s.formula.externalVarExists extDep = true
+  · rcases lookupInternal_some_of_externalVarExists s.formula extDep hex with
+      ⟨internalDep, hlookupDep⟩
+    rcases hfull.toCorrect.lookupInternal_sound extDep internalDep hlookupDep with
+      ⟨hDepPos, _⟩
+    have hdel :=
+      delDependencyReset_full_correct_lookup_spec_of_exhibiting_bridge
+        dqbf cs internalExi internalDep extExi internalExi s
+        ⟨hfull, hlookupExi, hDepPos, hbridge internalDep hlookupDep⟩
+    simp only [WP.wp, PredTrans.apply, EStateM.run] at hdel
+    cases hrun : delDependencyReset internalExi internalDep s with
+    | error e s' =>
+        rw [hrun] at hdel
+        exact hdel.elim
+    | ok ok s' =>
+        rw [hrun] at hdel
+        rcases hdel with ⟨hfull', hlookupExi'⟩
+        cases hok : ok with
+        | false =>
+            simpa [checkModifyExistentialDelStep, extDep, hex, hlookupDep, WP.wp,
+              PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind, hget_formula,
+              hrun, hok, EStateM.pure, Pure.pure, FullStepFullPost] using
+              ⟨hfull', hlookupExi'⟩
+        | true =>
+            simpa [checkModifyExistentialDelStep, extDep, hex, hlookupDep, WP.wp,
+              PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind, hget_formula,
+              hrun, hok, EStateM.pure, Pure.pure, FullStepFullPost] using
+              ⟨hfull', hlookupExi'⟩
+  · simpa [checkModifyExistentialDelStep, extDep, hex, WP.wp, PredTrans.apply,
+      EStateM.run, Bind.bind, EStateM.bind, hget_formula, EStateM.pure, Pure.pure,
+      FullStepFullPost] using ⟨hfull, hlookupExi⟩
 
 -- ─── Section 8: Soundness of `checkActionsBasic` ─────────────────────────────
 

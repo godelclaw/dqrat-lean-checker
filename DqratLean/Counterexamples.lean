@@ -281,4 +281,202 @@ theorem dqrateBridge_not_exec_condition :
   rw [dqrateBridgeResolvent_eq] at hres_true
   simpa [dqrateBridgeResolventFalse] using hres_true
 
+/-- One universal `u`, two existentials `y, x`, both depending on `u`. -/
+def deleteBridgeFormula : DQBF := {
+  maxVar := 3
+  internalName := #[(1, 1), (2, 2), (3, 3)]
+  externalName := #[0, 1, 2, 3]
+  isExistential := #[false, false, true, true]
+  univars := #[1]
+  exivars := #[2, 3]
+  depset := #[#[], #[], #[1], #[1]]
+}
+
+/-- Clauses:
+    C1 = (u ∨ x)
+    C2 = (¬y ∨ ¬x) -/
+def deleteBridgeStore : ClauseStore := {
+  clauses := #[
+    Clause.dummy,
+    { lits := #[mkLit 1 true, mkLit 3 true], deleted := false },
+    { lits := #[mkLit 2 false, mkLit 3 false], deleted := false }
+  ]
+  occurrences := #[
+    #[],
+    #[],
+    #[],
+    #[1],
+    #[2],
+    #[],
+    #[2],
+    #[1]
+  ]
+}
+
+/-- Minimal action-boundary state over `deleteBridgeStore`. -/
+def deleteBridgeState : CheckState := {
+  formula := deleteBridgeFormula
+  clauses := deleteBridgeStore
+  isAssigned := #[false, false, false]
+  value := #[false, false, false]
+  trail := #[#[]]
+  propQueue := #[]
+  indepKnown := #[false, false, false]
+  indepOf := #[#[], #[], #[]]
+}
+
+def deleteBridgeNotDependsOnAccepted : Bool :=
+  match notDependsOn 3 1 deleteBridgeState with
+  | .ok true _ => true
+  | _ => false
+
+/-- The executable `notDependsOn` check accepts deleting `u` from `x`. -/
+theorem deleteBridgeNotDependsOnAccepted_true :
+    deleteBridgeNotDependsOnAccepted = true := by
+  native_decide
+
+def deleteBridgeNotDependsOnState : CheckState :=
+  match notDependsOn 3 1 deleteBridgeState with
+  | .ok _ s => s
+  | .error _ s => s
+
+/-- The recomputed independence set for `u` contains both existentials.
+    This is why the right semantic target is a set-level bridge, not an
+    `x`-only witness patch. -/
+theorem deleteBridgeNotDependsOnState_indepOf :
+    deleteBridgeNotDependsOnState.indepOf.getD 0 #[] = #[2, 3] := by
+  native_decide
+
+def deleteBridgeOtherExistentialAccepted : Bool :=
+  match notDependsOn 2 1 deleteBridgeState with
+  | .ok true _ => true
+  | _ => false
+
+/-- On `deleteBridge`, the same recomputation also accepts deleting `u` from `y`.
+    The checker-side relation is naturally a set of independent existentials. -/
+theorem deleteBridgeOtherExistentialAlsoAccepted :
+    deleteBridgeOtherExistentialAccepted = true := by
+  native_decide
+
+/-- Witness Skolem assignment before deletion:
+    `y = u` and `x = ¬u`. -/
+def deleteBridgeOldSk : SkolemAssignment :=
+  fun v args =>
+    if v = 2 then args.getD 0 false
+    else if v = 3 then !(args.getD 0 false)
+    else false
+
+def deleteBridgeSigmaFalse : UnivAssignment := fun _ => false
+
+def deleteBridgeSigmaTrue : UnivAssignment := fun v =>
+  if v = 1 then true else false
+
+theorem deleteBridgeOldSk_sigmaFalse :
+    ClauseStore.matrixValue deleteBridgeFormula deleteBridgeStore
+      deleteBridgeSigmaFalse deleteBridgeOldSk = true := by
+  native_decide
+
+theorem deleteBridgeOldSk_sigmaTrue :
+    ClauseStore.matrixValue deleteBridgeFormula deleteBridgeStore
+      deleteBridgeSigmaTrue deleteBridgeOldSk = true := by
+  native_decide
+
+/-- The chosen old witness satisfies the original matrix on both Boolean
+    assignments to the unique universal `u`. -/
+theorem deleteBridgeOldSk_relevantCases :
+    ClauseStore.matrixValue deleteBridgeFormula deleteBridgeStore
+        deleteBridgeSigmaFalse deleteBridgeOldSk = true ∧
+      ClauseStore.matrixValue deleteBridgeFormula deleteBridgeStore
+        deleteBridgeSigmaTrue deleteBridgeOldSk = true := by
+  exact ⟨deleteBridgeOldSk_sigmaFalse, deleteBridgeOldSk_sigmaTrue⟩
+
+/-- A deletion-compatible witness:
+    `y = false` and `x = true`. -/
+def deleteBridgeGoodSk : SkolemAssignment :=
+  fun v _ =>
+    if v = 2 then false
+    else if v = 3 then true
+    else false
+
+theorem deleteBridgeGoodSk_old_sigmaFalse :
+    ClauseStore.matrixValue deleteBridgeFormula deleteBridgeStore
+      deleteBridgeSigmaFalse deleteBridgeGoodSk = true := by
+  native_decide
+
+theorem deleteBridgeGoodSk_old_sigmaTrue :
+    ClauseStore.matrixValue deleteBridgeFormula deleteBridgeStore
+      deleteBridgeSigmaTrue deleteBridgeGoodSk = true := by
+  native_decide
+
+theorem deleteBridgeGoodSk_deleted_sigmaFalse :
+    ClauseStore.matrixValue (deleteBridgeFormula.forceDelDep 3 1) deleteBridgeStore
+      deleteBridgeSigmaFalse deleteBridgeGoodSk = true := by
+  native_decide
+
+theorem deleteBridgeGoodSk_deleted_sigmaTrue :
+    ClauseStore.matrixValue (deleteBridgeFormula.forceDelDep 3 1) deleteBridgeStore
+      deleteBridgeSigmaTrue deleteBridgeGoodSk = true := by
+  native_decide
+
+/-- `deleteBridge` is not an unsound deletion witness. It only shows that
+    reusing one arbitrary old witness and patching only deleted `x` is too
+    strong; a better witness exists and survives the deletion. -/
+theorem deleteBridge_needs_better_witness_not_unsound :
+    ClauseStore.matrixValue deleteBridgeFormula deleteBridgeStore
+        deleteBridgeSigmaFalse deleteBridgeGoodSk = true ∧
+      ClauseStore.matrixValue deleteBridgeFormula deleteBridgeStore
+        deleteBridgeSigmaTrue deleteBridgeGoodSk = true ∧
+      ClauseStore.matrixValue (deleteBridgeFormula.forceDelDep 3 1) deleteBridgeStore
+        deleteBridgeSigmaFalse deleteBridgeGoodSk = true ∧
+      ClauseStore.matrixValue (deleteBridgeFormula.forceDelDep 3 1) deleteBridgeStore
+        deleteBridgeSigmaTrue deleteBridgeGoodSk = true := by
+  exact ⟨deleteBridgeGoodSk_old_sigmaFalse, deleteBridgeGoodSk_old_sigmaTrue,
+    deleteBridgeGoodSk_deleted_sigmaFalse, deleteBridgeGoodSk_deleted_sigmaTrue⟩
+
+/-- Force `x = false` while leaving the old witness for every other variable. -/
+def deleteBridgePatchFalse : SkolemAssignment :=
+  fun v args => if v = 3 then false else deleteBridgeOldSk v args
+
+/-- Force `x = true` while leaving the old witness for every other variable. -/
+def deleteBridgePatchTrue : SkolemAssignment :=
+  fun v args => if v = 3 then true else deleteBridgeOldSk v args
+
+/-- After deleting `u` from `x`, forcing `x = false` breaks clause `C1`
+    on the reduced pattern `[]` witnessed by `u = false`. -/
+theorem deleteBridgePatchFalse_breaksClause :
+    DQBF.clauseValue (deleteBridgeFormula.forceDelDep 3 1)
+      deleteBridgeSigmaFalse deleteBridgePatchFalse
+      #[mkLit 1 true, mkLit 3 true] = false := by
+  native_decide
+
+/-- After deleting `u` from `x`, forcing `x = true` breaks clause `C2`
+    on the same reduced pattern `[]` witnessed by `u = true`. -/
+theorem deleteBridgePatchTrue_breaksClause :
+    DQBF.clauseValue (deleteBridgeFormula.forceDelDep 3 1)
+      deleteBridgeSigmaTrue deleteBridgePatchTrue
+      #[mkLit 2 false, mkLit 3 false] = false := by
+  native_decide
+
+/-- The two witnesses above show that the fixed-witness, `x`-only patch route is
+    too strong: `notDependsOn` can succeed even though, for a particular old
+    satisfying witness, both Boolean choices for deleted `x` fail on the unique
+    reduced dependency pattern. -/
+theorem deleteBridge_fixedWitnessPatchRouteTooStrong :
+    deleteBridgeNotDependsOnAccepted = true ∧
+      ClauseStore.matrixValue deleteBridgeFormula deleteBridgeStore
+        deleteBridgeSigmaFalse deleteBridgeOldSk = true ∧
+      ClauseStore.matrixValue deleteBridgeFormula deleteBridgeStore
+        deleteBridgeSigmaTrue deleteBridgeOldSk = true ∧
+      DQBF.clauseValue (deleteBridgeFormula.forceDelDep 3 1)
+        deleteBridgeSigmaFalse deleteBridgePatchFalse
+        #[mkLit 1 true, mkLit 3 true] = false ∧
+      DQBF.clauseValue (deleteBridgeFormula.forceDelDep 3 1)
+        deleteBridgeSigmaTrue deleteBridgePatchTrue
+        #[mkLit 2 false, mkLit 3 false] = false := by
+  exact ⟨deleteBridgeNotDependsOnAccepted_true,
+    deleteBridgeOldSk_sigmaFalse,
+    deleteBridgeOldSk_sigmaTrue,
+    deleteBridgePatchFalse_breaksClause,
+    deleteBridgePatchTrue_breaksClause⟩
+
 end DqratLean.Counterexamples

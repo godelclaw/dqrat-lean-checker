@@ -170,14 +170,37 @@ has a build-green patched witness for the weakened formula:
 - `patchDeleteSkolemForFormula`
 - `matrixValue_forceDelDep_patchDeleteForFormula_true_of_no_both_bad`
 - `dqbfTrue_forceDelDep_of_no_both_bad`
+- `DQBFTrue_forceDelDep_of_exhibiting_bridge`
+- `delDependencyReset_full_correct_lookup_spec_of_exhibiting_bridge`
+- `checkModifyExistentialDelStep_full_sound_of_exhibiting_bridge`
 
-So the unresolved content is no longer "find some Skolem witness after
-deletion". The unresolved content is narrower:
+There is also now a concrete warning sign about one route that does *not* work.
+`DqratLean/Counterexamples.lean` contains the `deleteBridge...` witness family:
 
-- connect successful `notDependsOn` execution to the statement that no reduced
-  dependency pattern has both Boolean choices bad;
-- then lift that semantic fact through `delDependencyReset`;
-- then wrap the checker step/result shape.
+- `notDependsOn` succeeds on a small live formula,
+- one concrete old witness satisfies the original matrix on both relevant
+  Boolean choices for the unique universal, but
+- for one particular old satisfying witness, both Boolean choices for the
+  deleted existential fail if only that existential is patched on the reduced
+  dependency pattern.
+
+So the unresolved content is no longer just "find some Skolem witness after
+deletion", and it is not the fixed-witness bridge below either:
+
+- successful `notDependsOn`
+- plus a proof that one chosen old witness has no both-bad reduced pattern
+- plus patching only the deleted existential
+
+That route is now refuted in-repo.
+
+The real unresolved content is:
+
+- identify the right semantic transport after deletion;
+- use it to prove that successful `notDependsOn` yields
+  `DeleteIndependenceBridge`;
+- then instantiate the already-built `delDependencyReset` and single-step
+  wrappers;
+- then wrap the full modify-existential action.
 
 ## What To Avoid
 
@@ -190,11 +213,17 @@ deletion". The unresolved content is narrower:
 
 ## Recommended Order
 
-1. Prove the `notDependsOn` -> no-both-bad reduced-pattern bridge.
-2. Use that to get the successful semantic theorem for `delDependencyReset`.
-3. Add the corresponding result-sensitive wrapper for `checkModifyExistentialDelStep`.
-4. Use that to close the remaining `ModifyExistential` branch of `checkAction_sound`.
-5. Then let `checkActions_sound` and the end-to-end full checker wrapper stand on that.
+1. Use the `deleteBridge...` witness to state precisely why fixed-witness,
+   deleted-variable-only patching is too strong.
+2. Replace it with the right semantic object:
+   either a recursive patch over the relevant dependency cone, or a proof that
+   old truth yields a better witness for the weakened formula than an arbitrary
+   old Skolem assignment.
+3. Prove that successful `notDependsOn` yields `DeleteIndependenceBridge`.
+4. Feed that into the existing successful semantic theorem for `delDependencyReset`.
+5. Reuse the existing result-sensitive wrapper for `checkModifyExistentialDelStep`.
+6. Use that to close the remaining `ModifyExistential` branch of `checkAction_sound`.
+7. Then let `checkActions_sound` and the end-to-end full checker wrapper stand on that.
 
 That is the shortest still-honest path to full correctness of the current
 checker.

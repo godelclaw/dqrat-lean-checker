@@ -38,6 +38,14 @@ As of the current green branch state, the only remaining explicit theorem-body
 `sorry` in `DqratLean/Soundness.lean` is `checkAction_sound`, specifically its
 negative-`e` `ModifyExistential` branch.
 
+The current negative-`e` frontier is subtler than "prove `notDependsOn`
+eliminates both-bad patterns for one fixed old witness." The repo now contains
+`deleteBridge...` counterexamples showing that `notDependsOn` can succeed while
+a concrete old witness, even on the two relevant universal cases, still
+requires coordinated changes beyond the deleted existential itself. So the
+remaining proof needs a richer semantic transport argument, not just a
+one-variable patch.
+
 ## Repository Layout
 
 Top-level files:
