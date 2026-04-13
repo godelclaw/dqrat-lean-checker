@@ -171,6 +171,10 @@ has a build-green patched witness for the weakened formula:
 - `matrixValue_forceDelDep_patchDeleteForFormula_true_of_no_both_bad`
 - `dqbfTrue_forceDelDep_of_no_both_bad`
 - `DQBFTrue_forceDelDep_of_exhibiting_bridge`
+- the one-universal / many-existentials scaffold that matches the paper:
+  `forceDelDeps`, `liftForceDelDepsWitness`,
+  `deleteIndependenceSetBridge_of_forceDelDepsTrue`,
+  `DeleteIndependenceSetBridge.of_forceDelDepsTrue`
 - `delDependencyReset_full_correct_lookup_spec_of_exhibiting_bridge`
 - `checkModifyExistentialDelStep_full_sound_of_exhibiting_bridge`
 
@@ -196,8 +200,9 @@ That route is now refuted in-repo.
 The real unresolved content is:
 
 - identify the right semantic transport after deletion;
-- use it to prove that successful `notDependsOn` yields
-  `DeleteIndependenceBridge`;
+- use it to prove that successful `notDependsOn` yields the set-level truth /
+  bridge fact for the whole cached `indepOf[u - 1]` slice, then recover the
+  single-variable `DeleteIndependenceBridge` by membership;
 - then instantiate the already-built `delDependencyReset` and single-step
   wrappers;
 - then wrap the full modify-existential action.

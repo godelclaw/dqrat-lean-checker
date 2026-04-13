@@ -88,6 +88,10 @@ contains:
 - `matrixValue_forceDelDep_patchDeleteForFormula_true_of_no_both_bad`
 - `dqbfTrue_forceDelDep_of_no_both_bad`
 - `DQBFTrue_forceDelDep_of_exhibiting_bridge`
+- the one-universal / many-existentials scaffold from the paper:
+  `forceDelDeps`, `liftForceDelDepsWitness`,
+  `deleteIndependenceSetBridge_of_forceDelDepsTrue`,
+  `DeleteIndependenceSetBridge.of_forceDelDepsTrue`
 - `delDependencyReset_full_correct_lookup_spec_of_exhibiting_bridge`
 - `checkModifyExistentialDelStep_full_sound_of_exhibiting_bridge`
 
@@ -117,7 +121,11 @@ The real remaining task is to find the right stronger transport principle:
 
 This means the wrapper side is now mostly in place. The deletion-step layer can
 already be proved from an explicit `DeleteIndependenceBridge`; the remaining
-content is to derive that bridge from successful `notDependsOn`.
+content is to derive that bridge from successful `notDependsOn`. The new
+set-level scaffold means this no longer has to be phrased one existential at a
+time: the paper-aligned target is now to show truth of the formula where `u`
+has been removed from every existential in the cached `indepOf[u - 1]` set,
+and then recover the single-variable bridge by membership.
 
 ## Shortest path from here
 

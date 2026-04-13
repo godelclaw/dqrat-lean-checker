@@ -1252,6 +1252,211 @@ private theorem DeleteIndependenceBridge.of_forceDelDepTrue
   deleteIndependenceBridge_of_forceDelDepTrue
     st.formula st.clauses of_ on_ hexi htrueDel
 
+/-- Delete one universal dependency from every existential in `vars`. This is the
+    one-universal / many-existentials shape used by the D^forall-pure paper proof. -/
+private def forceDelDepsList
+    (f : DQBF) (vars : List Var) (on_ : Var) : DQBF :=
+  vars.foldl (fun g of_ => g.forceDelDep of_ on_) f
+
+private def forceDelDeps
+    (f : DQBF) (vars : Array Var) (on_ : Var) : DQBF :=
+  forceDelDepsList f vars.toList on_
+
+/-- Lift a witness for the formula with `on_` deleted from every variable in `vars`
+    back to the original formula by projecting those argument vectors. -/
+private def liftForceDelDepsWitnessList
+    (f : DQBF) (vars : List Var) (on_ : Var) (sk : SkolemAssignment) :
+    SkolemAssignment :=
+  fun v args =>
+    if v ∈ vars then
+      sk v (projectDeleteArgs (f.depset.getD v #[]) on_ args)
+    else
+      sk v args
+
+private def liftForceDelDepsWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment) :
+    SkolemAssignment :=
+  liftForceDelDepsWitnessList f vars.toList on_ sk
+
+private theorem array_filter_ne_idem (xs : Array Var) (on_ : Var) :
+    (xs.filter (· ≠ on_)).filter (· ≠ on_) = xs.filter (· ≠ on_) := by
+  apply Array.ext'
+  simp [Array.toList_filter, List.filter_filter]
+
+private theorem forceDelDep_depset_getD_self
+    (f : DQBF) (of_ on_ : Var) :
+    (f.forceDelDep of_ on_).depset.getD of_ #[] =
+      (f.depset.getD of_ #[]).filter (· ≠ on_) := by
+  unfold DQBF.forceDelDep
+  by_cases hlt : of_ < f.depset.size
+  · simp [Array.setIfInBounds_def, hlt]
+  · simp [Array.setIfInBounds_def, hlt]
+
+private theorem forceDelDep_depset_getD_of_ne
+    (f : DQBF) (of_ on_ v : Var) (hneq : v ≠ of_) :
+    (f.forceDelDep of_ on_).depset.getD v #[] = f.depset.getD v #[] := by
+  unfold DQBF.forceDelDep
+  by_cases hlt : of_ < f.depset.size
+  · simp [Array.setIfInBounds_def, hlt]
+    rw [Array.getElem?_set_ne hlt (Ne.symm hneq)]
+  · simp [Array.setIfInBounds_def, hlt]
+
+private theorem forceDelDepsList_isVarExistential
+    (f : DQBF) (vars : List Var) (on_ v : Var) :
+    (forceDelDepsList f vars on_).isVarExistential v = f.isVarExistential v := by
+  induction vars generalizing f with
+  | nil =>
+      simp [forceDelDepsList]
+  | cons of_ vars ih =>
+      simpa [forceDelDepsList, DQBF.forceDelDep, DQBF.isVarExistential] using
+        ih (f := f.forceDelDep of_ on_)
+
+private theorem forceDelDeps_isVarExistential
+    (f : DQBF) (vars : Array Var) (on_ v : Var) :
+    (forceDelDeps f vars on_).isVarExistential v = f.isVarExistential v := by
+  simp [forceDelDeps, forceDelDepsList_isVarExistential]
+
+private theorem forceDelDepsList_depset_getD
+    (f : DQBF) (vars : List Var) (on_ v : Var) :
+    (forceDelDepsList f vars on_).depset.getD v #[] =
+      if v ∈ vars then (f.depset.getD v #[]).filter (· ≠ on_) else f.depset.getD v #[] := by
+  induction vars generalizing f with
+  | nil =>
+      simp [forceDelDepsList]
+  | cons of_ vars ih =>
+      by_cases hov : v = of_
+      · subst hov
+        by_cases hmem : v ∈ vars
+        · have hih := ih (f := f.forceDelDep v on_)
+          rw [if_pos hmem] at hih
+          rw [forceDelDep_depset_getD_self] at hih
+          simpa [forceDelDepsList, List.mem_cons, hmem,
+            array_filter_ne_idem] using hih
+        · have hih := ih (f := f.forceDelDep v on_)
+          rw [if_neg hmem] at hih
+          rw [forceDelDep_depset_getD_self] at hih
+          simpa [forceDelDepsList, List.mem_cons, hmem] using hih
+      · by_cases hmem : v ∈ vars
+        · have hih := ih (f := f.forceDelDep of_ on_)
+          rw [if_pos hmem] at hih
+          rw [forceDelDep_depset_getD_of_ne _ _ _ _ hov] at hih
+          simpa [forceDelDepsList, List.mem_cons, hov, hmem,
+            array_filter_ne_idem] using hih
+        · have hih := ih (f := f.forceDelDep of_ on_)
+          rw [if_neg hmem] at hih
+          rw [forceDelDep_depset_getD_of_ne _ _ _ _ hov] at hih
+          simpa [forceDelDepsList, List.mem_cons, hov, hmem] using hih
+
+private theorem forceDelDeps_depset_getD
+    (f : DQBF) (vars : Array Var) (on_ v : Var) :
+    (forceDelDeps f vars on_).depset.getD v #[] =
+      if v ∈ vars.toList then (f.depset.getD v #[]).filter (· ≠ on_) else f.depset.getD v #[] := by
+  simpa [forceDelDeps] using forceDelDepsList_depset_getD f vars.toList on_ v
+
+private theorem liftForceDelDepsWitness_apply_of_not_mem
+    (f : DQBF) (vars : List Var) (on_ : Var) (sk : SkolemAssignment)
+    {v : Var} {args : Array Bool}
+    (hnot : v ∉ vars) :
+    liftForceDelDepsWitnessList f vars on_ sk v args = sk v args := by
+  unfold liftForceDelDepsWitnessList
+  simp [hnot]
+
+private theorem varValue_liftForceDelDepsWitnessList
+    (f : DQBF) (vars : List Var) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (v : Var) :
+    f.varValue σ (liftForceDelDepsWitnessList f vars on_ sk) v =
+      (forceDelDepsList f vars on_).varValue σ sk v := by
+  by_cases hex : f.isVarExistential v = true
+  · have hex' : (forceDelDepsList f vars on_).isVarExistential v = true := by
+      simpa [forceDelDepsList_isVarExistential] using hex
+    rw [DQBF.varValue, DQBF.varValue, hex, hex']
+    by_cases hmem : v ∈ vars
+    · simp [DQBF.exiValue, forceDelDepsList_depset_getD f vars on_ v,
+        liftForceDelDepsWitnessList, hmem, projectDeleteArgs_of_map]
+    · simp [DQBF.exiValue, forceDelDepsList_depset_getD f vars on_ v,
+        liftForceDelDepsWitnessList, hmem]
+  · have hex' : (forceDelDepsList f vars on_).isVarExistential v = false := by
+      simpa [forceDelDepsList_isVarExistential] using hex
+    simp [DQBF.varValue, hex, hex']
+
+private theorem varValue_liftForceDelDepsWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (v : Var) :
+    f.varValue σ (liftForceDelDepsWitness f vars on_ sk) v =
+      (forceDelDeps f vars on_).varValue σ sk v := by
+  simpa [forceDelDeps, liftForceDelDepsWitness] using
+    varValue_liftForceDelDepsWitnessList f vars.toList on_ σ sk v
+
+private theorem litValue_liftForceDelDepsWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal) :
+    f.litValue σ (liftForceDelDepsWitness f vars on_ sk) l =
+      (forceDelDeps f vars on_).litValue σ sk l := by
+  simp [DQBF.litValue, varValue_liftForceDelDepsWitness f vars on_ σ sk l.var]
+
+private theorem clauseValue_liftForceDelDepsWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (lits : Array Literal) :
+    f.clauseValue σ (liftForceDelDepsWitness f vars on_ sk) lits =
+      (forceDelDeps f vars on_).clauseValue σ sk lits := by
+  unfold DQBF.clauseValue
+  simpa using
+    (Array.any_congr (w := rfl)
+      (h := fun l => litValue_liftForceDelDepsWitness f vars on_ σ sk l)
+      (wstart := rfl) (wstop := rfl))
+
+private theorem matrixValue_liftForceDelDepsWitness
+    (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) :
+    cs.matrixValue f σ (liftForceDelDepsWitness f vars on_ sk) =
+      cs.matrixValue (forceDelDeps f vars on_) σ sk := by
+  unfold ClauseStore.matrixValue
+  apply List.all_congr rfl
+  intro i
+  cases hclause : cs.getClause (i + 1) with
+  | none =>
+      simp [hclause]
+  | some c =>
+      simp [hclause, clauseValue_liftForceDelDepsWitness f vars on_ σ sk c.lits]
+
+private theorem exhibitsDeleteIndependenceSet_liftForceDelDepsWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment)
+    (hexi : ∀ of_ ∈ vars.toList, f.isVarExistential of_ = true) :
+    ExhibitsDeleteIndependenceSet f vars on_ (liftForceDelDepsWitness f vars on_ sk) := by
+  intro of_ hof
+  intro σ₁ σ₂ hagree
+  have hargs :
+      deleteDepArgs f of_ on_ σ₁ = deleteDepArgs f of_ on_ σ₂ :=
+    deleteDepArgs_eq_of_dep_agree f of_ on_ σ₁ σ₂ hagree
+  have hexi_of : f.isVarExistential of_ = true := hexi of_ hof
+  simpa [DQBF.varValue, DQBF.exiValue, hexi_of, liftForceDelDepsWitness,
+    liftForceDelDepsWitnessList, hof, projectDeleteArgs_of_map, deleteDepArgs] using
+    congrArg (sk of_) hargs
+
+private theorem deleteIndependenceSetBridge_of_forceDelDepsTrue
+    (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var)
+    (hexi : ∀ of_ ∈ vars.toList, f.isVarExistential of_ = true)
+    (htrueDel : DQBFTrue (forceDelDeps f vars on_) cs) :
+    DQBFTrue f cs →
+      ∃ sk,
+        (∀ σ, cs.matrixValue f σ sk = true) ∧
+        ExhibitsDeleteIndependenceSet f vars on_ sk := by
+  intro _
+  rcases htrueDel with ⟨sk, hsk⟩
+  refine ⟨liftForceDelDepsWitness f vars on_ sk, ?_, ?_⟩
+  · intro σ
+    rw [matrixValue_liftForceDelDepsWitness]
+    exact hsk σ
+  · exact exhibitsDeleteIndependenceSet_liftForceDelDepsWitness f vars on_ sk hexi
+
+private theorem DeleteIndependenceSetBridge.of_forceDelDepsTrue
+    {st : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ of_ ∈ vars.toList, st.formula.isVarExistential of_ = true)
+    (htrueDel : DQBFTrue (forceDelDeps st.formula vars on_) st.clauses) :
+    DeleteIndependenceSetBridge st vars on_ :=
+  deleteIndependenceSetBridge_of_forceDelDepsTrue
+    st.formula st.clauses vars on_ hexi htrueDel
+
 /-- Local deletion patch for one reduced-dependency pattern.
     For `of_`, the new formula only supplies the dependency vector with `on_`
     removed, so away from the active pattern we use an arbitrary Boolean
