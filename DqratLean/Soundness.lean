@@ -9896,6 +9896,335 @@ theorem checkModifyExistentialAddOnly_full_sound
             rcases hcore with ⟨hfull', hrnone⟩
             simpa [FullStepFullPost, hrnone] using hfull'
 
+private def checkModifyExistentialNoNegCore (internalExi : Var) : List Int → CheckM (Option ProofResult)
+  | [] => do
+      resetPropagationState
+      pure none
+  | cv :: depChanges => do
+      let _ ← checkModifyExistentialAddStep internalExi cv
+      checkModifyExistentialNoNegCore internalExi depChanges
+
+private theorem checkModifyExistential_body_eq_noNegCore
+    (lineNum : Nat) (extExi : Nat) (internalExi : Var) (depChanges : List Int)
+    (hall : ∀ cv ∈ depChanges, ¬ cv < 0) :
+    (do
+      for cv in depChanges do
+        if cv < 0 then
+          match (← checkModifyExistentialDelStep lineNum extExi internalExi cv) with
+          | some res => return some res
+          | none => pure ()
+        else
+          checkModifyExistentialAddStep internalExi cv
+      resetPropagationState
+      return none : CheckM (Option ProofResult))
+    =
+    checkModifyExistentialNoNegCore internalExi depChanges := by
+  funext s
+  induction depChanges generalizing s with
+  | nil =>
+      simp [checkModifyExistentialNoNegCore]
+  | cons cv depChanges ih =>
+      have hcv : ¬ cv < 0 := hall cv (by simp)
+      have htail : ∀ cv' ∈ depChanges, ¬ cv' < 0 := by
+        intro cv' hmem
+        exact hall cv' (by simp [hmem])
+      simp [checkModifyExistentialNoNegCore, hcv]
+      cases hrun : checkModifyExistentialAddStep internalExi cv s with
+      | error e s' =>
+          simpa [Bind.bind, EStateM.bind, hrun]
+      | ok a s' =>
+          simpa [Bind.bind, EStateM.bind, hrun] using ih htail s'
+
+private theorem checkModifyExistentialNoNegCore_full_sound
+    (dqbf : DQBF) (cs : ClauseStore)
+    (extExi : Nat) (internalExi : Var) (depChanges : List Int) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+       s.formula.lookupInternal extExi = some internalExi⌝⦄
+    checkModifyExistentialNoNegCore internalExi depChanges
+    ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r s' ∧
+       s'.formula.lookupInternal extExi = some internalExi⌝⦄ := by
+  induction depChanges with
+  | nil =>
+      intro s hs
+      have hreset :=
+        resetPropagationState_full_correct_lookup_spec dqbf cs extExi internalExi s hs
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hreset
+      cases hrun : resetPropagationState s with
+      | error e s' =>
+          rw [hrun] at hreset
+          exact hreset.elim
+      | ok _ s' =>
+          rw [hrun] at hreset
+          simpa [checkModifyExistentialNoNegCore, FullStepFullPost, hrun, WP.wp,
+            PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind, EStateM.pure,
+            Pure.pure] using hreset
+  | cons cv depChanges ih =>
+      intro s hs
+      have hstep :=
+        checkModifyExistentialAddStep_full_correct_spec dqbf cs extExi internalExi cv s hs
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hstep
+      cases hrun : checkModifyExistentialAddStep internalExi cv s with
+      | error e s' =>
+          rw [hrun] at hstep
+          exact hstep.elim
+      | ok _ s' =>
+          rw [hrun] at hstep
+          simpa [checkModifyExistentialNoNegCore, WP.wp, PredTrans.apply, EStateM.run,
+            Bind.bind, EStateM.bind, hrun] using ih s' hstep
+
+private theorem checkModifyExistentialNoNegCore_full_step_spec
+    (dqbf : DQBF) (cs : ClauseStore)
+    (extExi : Nat) (internalExi : Var) (depChanges : List Int) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+       s.formula.lookupInternal extExi = some internalExi⌝⦄
+    checkModifyExistentialNoNegCore internalExi depChanges
+    ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r s'⌝⦄ := by
+  intro s hs
+  have hcore :=
+    checkModifyExistentialNoNegCore_full_sound dqbf cs extExi internalExi depChanges s hs
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hcore
+  cases hrun : checkModifyExistentialNoNegCore internalExi depChanges s with
+  | error e s' =>
+      rw [hrun] at hcore
+      simpa [WP.wp, PredTrans.apply, EStateM.run, hrun] using hcore
+  | ok r s' =>
+      rw [hrun] at hcore
+      simpa [WP.wp, PredTrans.apply, EStateM.run, hrun] using hcore.1
+
+private def checkModifyExistentialNoNegProof
+    (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
+    CheckM (Option ProofResult) := do
+  if extExi = 0 then
+    return some (.Failed lineNum #["UADD"] #[] none)
+  let internalExi ←
+    (do
+      let f ← (·.formula) <$> get
+      if !f.externalVarExists extExi then
+        addVarExists extExi #[]
+      else
+        match f.lookupInternal extExi with
+        | none   => throw s!"Var {extExi} not found"
+        | some v => pure v)
+  checkModifyExistentialNoNegCore internalExi depChanges
+
+private theorem checkModifyExistentialNoNegProof_full_sound
+    (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+    checkModifyExistentialNoNegProof lineNum extExi depChanges
+    ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r s'⌝⦄ := by
+  by_cases hzero : extExi = 0
+  · intro s hfull
+    simp [checkModifyExistentialNoNegProof, hzero, WP.wp, PredTrans.apply, EStateM.run,
+      EStateM.pure, Pure.pure, FullStepFullPost]
+    exact hfull
+  · simpa [checkModifyExistentialNoNegProof, hzero] using
+      (show
+        ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+        ((do
+          let internalExi ←
+            (do
+              let f ← (·.formula) <$> get
+              if !f.externalVarExists extExi then
+                addVarExists extExi #[]
+              else
+                match f.lookupInternal extExi with
+                | none   => throw s!"Var {extExi} not found"
+                | some v => pure v)
+          checkModifyExistentialNoNegCore internalExi depChanges) :
+          CheckM (Option ProofResult))
+        ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r s'⌝⦄ from by
+          mintro hfull
+          mspec (checkModifyExistentialInit_full_correct_spec dqbf cs extExi)
+          rename_i internalExi
+          mspec (checkModifyExistentialNoNegCore_full_step_spec
+            dqbf cs extExi internalExi depChanges))
+
+private theorem checkModifyExistential_eq_noNegProof
+    (lineNum : Nat) (extExi : Nat) (depChanges : List Int)
+    (hneg : depChanges.any (· < 0) = false) :
+    checkModifyExistential lineNum extExi depChanges =
+      checkModifyExistentialNoNegProof lineNum extExi depChanges := by
+  have hall : ∀ cv ∈ depChanges, ¬ cv < 0 := by
+    intro cv hmem hlt
+    have hany : depChanges.any (· < 0) = true := by
+      rw [List.any_eq_true]
+      exact ⟨cv, hmem, by simpa using hlt⟩
+    rw [hneg] at hany
+    cases hany
+  have hbody :
+      ∀ internalExi,
+        (do
+          for cv in depChanges do
+            if cv < 0 then
+              match (← checkModifyExistentialDelStep lineNum extExi internalExi cv) with
+              | some res => return some res
+              | none => pure ()
+            else
+              checkModifyExistentialAddStep internalExi cv
+          resetPropagationState
+          return none : CheckM (Option ProofResult))
+        = checkModifyExistentialNoNegCore internalExi depChanges := by
+    intro internalExi
+    exact checkModifyExistential_body_eq_noNegCore lineNum extExi internalExi depChanges hall
+  funext s
+  by_cases hzero : extExi = 0
+  · simp [checkModifyExistential, checkModifyExistentialNoNegProof, hzero]
+  · have hget_formula :
+        (((fun x => x.formula) <$> (get : CheckM CheckState)) s) = .ok s.formula s := by
+      rfl
+    by_cases hex : s.formula.externalVarExists extExi = true
+    · cases hlookup : s.formula.lookupInternal extExi with
+      | none =>
+          rcases lookupInternal_some_of_externalVarExists s.formula extExi hex with
+            ⟨internalExi, hlookupSome⟩
+          simp [hlookup] at hlookupSome
+      | some internalExi =>
+          simpa [checkModifyExistential, checkModifyExistentialNoNegProof, hzero,
+            hget_formula, hex, hlookup, Bind.bind, EStateM.bind, EStateM.pure,
+            Pure.pure] using congrFun (hbody internalExi) s
+    · have hmissing : s.formula.externalVarExists extExi = false := by
+        cases hval : s.formula.externalVarExists extExi <;> simp_all
+      cases hrun : addVarExists extExi #[] s with
+      | error e s' =>
+          simp [checkModifyExistential, checkModifyExistentialNoNegProof, hzero,
+            hget_formula, hmissing, Bind.bind, EStateM.bind, hrun, EStateM.pure,
+            Pure.pure]
+      | ok internalExi s' =>
+          simpa [checkModifyExistential, checkModifyExistentialNoNegProof, hzero,
+            hget_formula, hmissing, Bind.bind, EStateM.bind, hrun, EStateM.pure,
+            Pure.pure] using
+            congrFun (hbody internalExi) s'
+
+private theorem checkModifyExistential_noNeg_full_sound
+    (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extExi : Nat) (depChanges : List Int)
+    (hneg : depChanges.any (· < 0) = false) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+    checkModifyExistential lineNum extExi depChanges
+    ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r s'⌝⦄ := by
+  simpa [checkModifyExistential_eq_noNegProof lineNum extExi depChanges hneg] using
+    (checkModifyExistentialNoNegProof_full_sound dqbf cs lineNum extExi depChanges)
+
+private def checkModifyExistentialMixedCore
+    (lineNum : Nat) (extExi : Nat) (internalExi : Var) :
+    List Int → CheckM (Option ProofResult)
+  | [] => do
+      resetPropagationState
+      pure none
+  | cv :: depChanges => do
+      if cv < 0 then
+        match (← checkModifyExistentialDelStep lineNum extExi internalExi cv) with
+        | some res => pure (some res)
+        | none => checkModifyExistentialMixedCore lineNum extExi internalExi depChanges
+      else
+        let _ ← checkModifyExistentialAddStep internalExi cv
+        checkModifyExistentialMixedCore lineNum extExi internalExi depChanges
+
+private theorem checkModifyExistential_body_eq_mixedCore
+    (lineNum : Nat) (extExi : Nat) (internalExi : Var) (depChanges : List Int) :
+    (do
+      for cv in depChanges do
+        if cv < 0 then
+          match (← checkModifyExistentialDelStep lineNum extExi internalExi cv) with
+          | some res => return some res
+          | none => pure ()
+        else
+          checkModifyExistentialAddStep internalExi cv
+      resetPropagationState
+      return none : CheckM (Option ProofResult))
+    =
+    checkModifyExistentialMixedCore lineNum extExi internalExi depChanges := by
+  funext s
+  induction depChanges generalizing s with
+  | nil =>
+      simp [checkModifyExistentialMixedCore]
+  | cons cv depChanges ih =>
+      by_cases hcv : cv < 0
+      · simp [checkModifyExistentialMixedCore, hcv]
+        cases hrun : checkModifyExistentialDelStep lineNum extExi internalExi cv s with
+        | error e s' =>
+            simpa [Bind.bind, EStateM.bind, hrun]
+        | ok r s' =>
+            cases r with
+            | none =>
+                simpa [Bind.bind, EStateM.bind, hrun, checkModifyExistentialMixedCore, hcv]
+                  using ih s'
+            | some res =>
+                simp [Bind.bind, EStateM.bind, hrun, checkModifyExistentialMixedCore, hcv,
+                  EStateM.pure, Pure.pure]
+      · simp [checkModifyExistentialMixedCore, hcv]
+        cases hrun : checkModifyExistentialAddStep internalExi cv s with
+        | error e s' =>
+            simpa [Bind.bind, EStateM.bind, hrun]
+        | ok _ s' =>
+            simpa [Bind.bind, EStateM.bind, hrun, checkModifyExistentialMixedCore, hcv]
+              using ih s'
+
+private def checkModifyExistentialMixedProof
+    (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
+    CheckM (Option ProofResult) := do
+  if extExi = 0 then
+    return some (.Failed lineNum #["UADD"] #[] none)
+  let internalExi ←
+    (do
+      let f ← (·.formula) <$> get
+      if !f.externalVarExists extExi then
+        addVarExists extExi #[]
+      else
+        match f.lookupInternal extExi with
+        | none   => throw s!"Var {extExi} not found"
+        | some v => pure v)
+  checkModifyExistentialMixedCore lineNum extExi internalExi depChanges
+
+private theorem checkModifyExistential_eq_mixedProof
+    (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
+    checkModifyExistential lineNum extExi depChanges =
+      checkModifyExistentialMixedProof lineNum extExi depChanges := by
+  have hbody :
+      ∀ internalExi,
+        (do
+          for cv in depChanges do
+            if cv < 0 then
+              match (← checkModifyExistentialDelStep lineNum extExi internalExi cv) with
+              | some res => return some res
+              | none => pure ()
+            else
+              checkModifyExistentialAddStep internalExi cv
+          resetPropagationState
+          return none : CheckM (Option ProofResult))
+        = checkModifyExistentialMixedCore lineNum extExi internalExi depChanges := by
+    intro internalExi
+    exact checkModifyExistential_body_eq_mixedCore lineNum extExi internalExi depChanges
+  funext s
+  by_cases hzero : extExi = 0
+  · simp [checkModifyExistential, checkModifyExistentialMixedProof, hzero]
+  · have hget_formula :
+        (((fun x => x.formula) <$> (get : CheckM CheckState)) s) = .ok s.formula s := by
+      rfl
+    by_cases hex : s.formula.externalVarExists extExi = true
+    · cases hlookup : s.formula.lookupInternal extExi with
+      | none =>
+          rcases lookupInternal_some_of_externalVarExists s.formula extExi hex with
+            ⟨internalExi, hlookupSome⟩
+          simp [hlookup] at hlookupSome
+      | some internalExi =>
+          simpa [checkModifyExistential, checkModifyExistentialMixedProof, hzero,
+            hget_formula, hex, hlookup, Bind.bind, EStateM.bind, EStateM.pure,
+            Pure.pure] using congrFun (hbody internalExi) s
+    · have hmissing : s.formula.externalVarExists extExi = false := by
+        cases hval : s.formula.externalVarExists extExi <;> simp_all
+      cases hrun : addVarExists extExi #[] s with
+      | error e s' =>
+          simp [checkModifyExistential, checkModifyExistentialMixedProof, hzero,
+            hget_formula, hmissing, Bind.bind, EStateM.bind, hrun, EStateM.pure,
+            Pure.pure]
+      | ok internalExi s' =>
+          simpa [checkModifyExistential, checkModifyExistentialMixedProof, hzero,
+            hget_formula, hmissing, Bind.bind, EStateM.bind, hrun, EStateM.pure,
+            Pure.pure] using
+            congrFun (hbody internalExi) s'
+
 private theorem checkModifyExistentialDelStep_full_sound_of_exhibiting_bridge
     (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extExi : Nat) (internalExi : Var) (cv : Int) :
@@ -10001,6 +10330,172 @@ private theorem checkModifyExistentialDelStep_full_sound_of_forceDelDepsTrue
   · simpa [checkModifyExistentialDelStep, extDep, hex, WP.wp, PredTrans.apply,
       EStateM.run, Bind.bind, EStateM.bind, hget_formula, EStateM.pure, Pure.pure,
       FullStepFullPost] using ⟨hfull, hlookupExi⟩
+
+private theorem computeDeps_forceDelDepsTrue
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hrun : computeDeps on_ s = .ok () s₁) :
+    DQBFTrue
+      (forceDelDeps s₁.formula (s₁.indepOf.getD (on_ - 1) #[]) on_)
+      s₁.clauses := by
+  sorry
+
+private theorem notDependsOn_true_forceDelDepsTrue
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {of_ on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hrun : notDependsOn of_ on_ s = .ok true s₁) :
+    DQBFTrue
+      (forceDelDeps s₁.formula (s₁.indepOf.getD (on_ - 1) #[]) on_)
+      s₁.clauses := by
+  unfold notDependsOn at hrun
+  cases hdeps : computeDeps on_ s with
+  | error e s₂ =>
+      simp [Bind.bind, EStateM.bind, hdeps] at hrun
+  | ok _ s₂ =>
+      have hrun' := hrun
+      simp [Bind.bind, EStateM.bind, hdeps, EStateM.get, EStateM.pure, Pure.pure] at hrun'
+      injection hrun' with _ hs
+      subst hs
+      exact computeDeps_forceDelDepsTrue dqbf cs hfull hon hdeps
+
+private theorem checkModifyExistentialDelStep_full_sound
+    (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extExi : Nat) (internalExi : Var) (cv : Int) :
+    ⦃fun s =>
+      ⌜CheckState.FullCorrect dqbf cs s ∧
+       s.formula.lookupInternal extExi = some internalExi⌝⦄
+    (checkModifyExistentialDelStep lineNum extExi internalExi cv)
+    ⦃⇓? r s' =>
+      ⌜FullStepFullPost dqbf cs r s' ∧
+       s'.formula.lookupInternal extExi = some internalExi⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hfull, hlookupExi⟩
+  have htrueDel :
+      ∀ internalDep,
+        s.formula.lookupInternal (-cv).toNat = some internalDep →
+        ∀ s₁, notDependsOn internalExi internalDep s = .ok true s₁ →
+          DQBFTrue
+            (forceDelDeps s₁.formula (s₁.indepOf.getD (internalDep - 1) #[]) internalDep)
+            s₁.clauses := by
+    intro internalDep hlookupDep s₁ hrun
+    rcases hfull.toCorrect.lookupInternal_sound (-cv).toNat internalDep hlookupDep with
+      ⟨hon, _⟩
+    exact notDependsOn_true_forceDelDepsTrue dqbf cs hfull hon hrun
+  exact
+    checkModifyExistentialDelStep_full_sound_of_forceDelDepsTrue
+      dqbf cs lineNum extExi internalExi cv s ⟨hfull, hlookupExi, htrueDel⟩
+
+private theorem checkModifyExistentialMixedCore_full_sound
+    (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extExi : Nat) (internalExi : Var) (depChanges : List Int) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+       s.formula.lookupInternal extExi = some internalExi⌝⦄
+    checkModifyExistentialMixedCore lineNum extExi internalExi depChanges
+    ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r s' ∧
+       s'.formula.lookupInternal extExi = some internalExi⌝⦄ := by
+  induction depChanges with
+  | nil =>
+      intro s hs
+      have hreset :=
+        resetPropagationState_full_correct_lookup_spec dqbf cs extExi internalExi s hs
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hreset
+      cases hrun : resetPropagationState s with
+      | error e s' =>
+          rw [hrun] at hreset
+          exact hreset.elim
+      | ok _ s' =>
+          rw [hrun] at hreset
+          simpa [checkModifyExistentialMixedCore, FullStepFullPost, hrun, WP.wp,
+            PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind, EStateM.pure,
+            Pure.pure] using hreset
+  | cons cv depChanges ih =>
+      intro s hs
+      by_cases hcv : cv < 0
+      · have hstep :=
+          checkModifyExistentialDelStep_full_sound dqbf cs lineNum extExi internalExi cv s hs
+        simp only [WP.wp, PredTrans.apply, EStateM.run] at hstep
+        cases hrun : checkModifyExistentialDelStep lineNum extExi internalExi cv s with
+        | error e s' =>
+            rw [hrun] at hstep
+            simpa [checkModifyExistentialMixedCore, WP.wp, PredTrans.apply, EStateM.run,
+              Bind.bind, EStateM.bind, hcv, hrun] using hstep
+        | ok r s' =>
+            rw [hrun] at hstep
+            cases r with
+            | none =>
+                rcases hstep with ⟨hfull', hlookup'⟩
+                simpa [checkModifyExistentialMixedCore, WP.wp, PredTrans.apply, EStateM.run,
+                  Bind.bind, EStateM.bind, hcv, hrun] using ih s' ⟨hfull', hlookup'⟩
+            | some res =>
+                simpa [checkModifyExistentialMixedCore, WP.wp, PredTrans.apply, EStateM.run,
+                  Bind.bind, EStateM.bind, hcv, hrun, EStateM.pure, Pure.pure] using hstep
+      · have hstep :=
+          checkModifyExistentialAddStep_full_correct_spec dqbf cs extExi internalExi cv s hs
+        simp only [WP.wp, PredTrans.apply, EStateM.run] at hstep
+        cases hrun : checkModifyExistentialAddStep internalExi cv s with
+        | error e s' =>
+            rw [hrun] at hstep
+            exact hstep.elim
+        | ok _ s' =>
+            rw [hrun] at hstep
+            simpa [checkModifyExistentialMixedCore, WP.wp, PredTrans.apply, EStateM.run,
+              Bind.bind, EStateM.bind, hcv, hrun] using ih s' hstep
+
+private theorem checkModifyExistentialMixedCore_full_step_spec
+    (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extExi : Nat) (internalExi : Var) (depChanges : List Int) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+       s.formula.lookupInternal extExi = some internalExi⌝⦄
+    checkModifyExistentialMixedCore lineNum extExi internalExi depChanges
+    ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r s'⌝⦄ := by
+  intro s hs
+  have hcore :=
+    checkModifyExistentialMixedCore_full_sound dqbf cs lineNum extExi internalExi depChanges s hs
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hcore
+  cases hrun : checkModifyExistentialMixedCore lineNum extExi internalExi depChanges s with
+  | error e s' =>
+      rw [hrun] at hcore
+      simpa [WP.wp, PredTrans.apply, EStateM.run, hrun] using hcore
+  | ok r s' =>
+      rw [hrun] at hcore
+      simpa [WP.wp, PredTrans.apply, EStateM.run, hrun] using hcore.1
+
+private theorem checkModifyExistentialMixedProof_full_sound
+    (dqbf : DQBF) (cs : ClauseStore)
+    (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+    checkModifyExistentialMixedProof lineNum extExi depChanges
+    ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r s'⌝⦄ := by
+  by_cases hzero : extExi = 0
+  · intro s hfull
+    simp [checkModifyExistentialMixedProof, hzero, WP.wp, PredTrans.apply, EStateM.run,
+      EStateM.pure, Pure.pure, FullStepFullPost]
+    exact hfull
+  · simpa [checkModifyExistentialMixedProof, hzero] using
+      (show
+        ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+        ((do
+          let internalExi ←
+            (do
+              let f ← (·.formula) <$> get
+              if !f.externalVarExists extExi then
+                addVarExists extExi #[]
+              else
+                match f.lookupInternal extExi with
+                | none   => throw s!"Var {extExi} not found"
+                | some v => pure v)
+          checkModifyExistentialMixedCore lineNum extExi internalExi depChanges) :
+          CheckM (Option ProofResult))
+        ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r s'⌝⦄ from by
+          mintro hfull
+          mspec (checkModifyExistentialInit_full_correct_spec dqbf cs extExi)
+          rename_i internalExi
+          mspec (checkModifyExistentialMixedCore_full_step_spec
+            dqbf cs lineNum extExi internalExi depChanges))
 
 -- ─── Section 8: Soundness of `checkActionsBasic` ─────────────────────────────
 
@@ -16344,9 +16839,11 @@ theorem checkAction_sound (dqbf : DQBF) (cs : ClauseStore) (action : DQRatAction
   | AddUniversal lineNum extVars =>
       simpa [checkAction] using checkAddUniversal_full_step_full_spec dqbf cs lineNum extVars
   | ModifyExistential lineNum extExi depChanges =>
-      -- Honest remaining blocker: full existential modification still includes
-      -- negative dependency deletion.
-      sorry
+      by_cases hneg : depChanges.any (· < 0) = false
+      · simpa [checkAction] using
+          checkModifyExistential_noNeg_full_sound dqbf cs lineNum extExi depChanges hneg
+      · simpa [checkAction, checkModifyExistential_eq_mixedProof lineNum extExi depChanges] using
+          checkModifyExistentialMixedProof_full_sound dqbf cs lineNum extExi depChanges
   | DeleteClause lineNum extLits =>
       simpa [checkAction] using checkDeleteClause_full_step_full_spec dqbf cs lineNum extLits
   | UniversalReduction lineNum extLits =>

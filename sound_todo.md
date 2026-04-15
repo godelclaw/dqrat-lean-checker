@@ -137,9 +137,9 @@ Goal: prove full soundness of `checkModifyExistential`, not just the add-only fr
 Steps:
 
 1. Formalize the correct semantic replacement for the refuted fixed-witness
-   bridge, i.e. prove that successful `notDependsOn` yields truth of
-   `forceDelDeps s₁.formula (s₁.indepOf.getD (u - 1) #[]) u` on the recomputed
-   post-`computeDeps` state `s₁`.
+   bridge, i.e. prove `computeDeps_forceDelDepsTrue`: after successful
+   `computeDeps u`, the recomputed state `s₁` satisfies
+   `DQBFTrue (forceDelDeps s₁.formula (s₁.indepOf.getD (u - 1) #[]) u) s₁.clauses`.
 2. Feed that theorem into the existing build-green wrappers
    `delDependencyReset_full_correct_lookup_spec_of_forceDelDepsTrue` and
    `checkModifyExistentialDelStep_full_sound_of_forceDelDepsTrue`.

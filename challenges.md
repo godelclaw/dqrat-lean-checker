@@ -200,9 +200,9 @@ That route is now refuted in-repo.
 The real unresolved content is:
 
 - identify the right semantic transport after deletion;
-- use it to prove that successful `notDependsOn` yields truth of the formula
-  obtained by deleting `u` from every existential in the cached
-  `indepOf[u - 1]` slice on the recomputed post-`computeDeps` state;
+- prove `computeDeps_forceDelDepsTrue`, i.e. that successful `computeDeps u`
+  yields truth of the formula obtained by deleting `u` from every existential
+  in the cached `indepOf[u - 1]` slice on the recomputed state;
 - then instantiate the already-built
   `delDependencyReset_full_correct_lookup_spec_of_forceDelDepsTrue` and
   `checkModifyExistentialDelStep_full_sound_of_forceDelDepsTrue` wrappers,
