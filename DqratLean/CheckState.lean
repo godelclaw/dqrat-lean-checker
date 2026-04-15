@@ -455,6 +455,7 @@ def addDependencyReset (of_ on_ : Var) : CheckM Unit := do
 def delDependency (of_ on_ : Var) : CheckM Bool := do
   let st ← get
   if !st.formula.isVarExistential of_ then return true
+  if st.formula.isVarExistential on_ then return true
   let allowed ← notDependsOn of_ on_
   if allowed then
     modify fun s => { s with
