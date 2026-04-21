@@ -18669,6 +18669,55 @@ private theorem patchPoolCandidate_matrixValue_flip_true_of_base
     (s := s) (vars := vars) (on_ := on_) hpool hon]
   exact hallBase (flipUniv on_ σ)
 
+private theorem patchPoolCandidate_false_matrix_flip_changed_lit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    ∃ cref c baseLit flipLit,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue σ skCand c.lits = false ∧
+      baseLit ∈ c.lits.toList ∧
+      baseLit.var ∈ vars.toList ∧
+      σ on_ = startPos ∧
+      s.formula.litValue σ skBase baseLit = true ∧
+      s.formula.litValue σ skCand baseLit = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos)) baseLit ∧
+      flipLit ∈ c.lits.toList ∧
+      s.formula.litValue σ skCand flipLit = false ∧
+      s.formula.litValue (flipUniv on_ σ) skCand flipLit = true ∧
+      DeleteDepWitness s.formula flipLit.var on_ skCand σ := by
+  rcases patchPoolCandidate_false_matrix_changed_lit_with_clause_false
+      hpool hallBase hfalse with
+    ⟨cref, c, baseLit, hget, hclause_false, hbase_mem, hbase_var,
+      hon_eq, hbase_true, hbase_false, hbase_no_path⟩
+  have hflip_matrix :
+      s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = true :=
+    patchPoolCandidate_matrixValue_flip_true_of_base
+      (s := s) (vars := vars) (on_ := on_) hpool hallBase hon_eq
+  have hflip_clause :
+      s.formula.clauseValue (flipUniv on_ σ) skCand c.lits = true :=
+    clauseValue_of_matrixValue s.formula s.clauses (flipUniv on_ σ)
+      skCand cref c hflip_matrix hget
+  rcases clauseValue_true_implies_exists_true_lit
+      s.formula (flipUniv on_ σ) skCand c.lits hflip_clause with
+    ⟨flipLit, hflip_mem, hflip_true⟩
+  have hall_false :
+      ∀ l ∈ c.lits.toList, s.formula.litValue σ skCand l = false :=
+    clauseValue_false_implies_all_lits_false_early
+      s.formula σ skCand c.lits hclause_false
+  have hflip_false : s.formula.litValue σ skCand flipLit = false :=
+    hall_false flipLit hflip_mem
+  have hwit :
+      DeleteDepWitness s.formula flipLit.var on_ skCand σ :=
+    deleteDepWitness_of_litValue_false_true_flip
+      s.formula on_ σ skCand flipLit hflip_false hflip_true
+  exact ⟨cref, c, baseLit, flipLit, hget, hclause_false, hbase_mem,
+    hbase_var, hon_eq, hbase_true, hbase_false, hbase_no_path,
+    hflip_mem, hflip_false, hflip_true, hwit⟩
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
