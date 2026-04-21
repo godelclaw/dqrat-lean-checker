@@ -19512,6 +19512,77 @@ private theorem deleteWitness_descent_step_or_initial_residual_cases
         hon_univ hexi hcontains hbranch
     exact ⟨σSeed, posSeed, hwitSeed, hseed, hflip, hnoPath, hpool, hcases⟩
 
+private theorem deleteWitness_descent_step_or_initial_blocked_or_external
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    (∃ startPos skStop,
+      PatchPoolCandidate s vars on_ startPos sk skStop ∧
+      PatchPoolBlockedPathBranch s vars on_ startPos sk skStop) ∨
+    (∃ startPos skStop σ flipVar,
+      PatchPoolCandidate s vars on_ startPos sk skStop ∧
+      flipVar ∉ vars.toList ∧
+      DeleteDepWitness s.formula flipVar on_ skStop σ ∧
+      s.formula.isVarExistential flipVar = true ∧
+      (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit flipVar (s.formula.varValue σ skStop flipVar))) := by
+  classical
+  rcases deleteWitness_descent_step_or_initial_residual_cases
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hresidual
+  · exact Or.inl hgood
+  · rcases hresidual with
+      ⟨σSeed, posSeed, _hwitSeed, _hseed, _hflip, _hnoPath, hpool,
+        hcases⟩
+    rcases hcases with hblocked | hstepOrExternal
+    · exact Or.inr (Or.inl ⟨σSeed on_,
+        patchDeleteWitnessAt s.formula of_ σSeed sk, hpool, hblocked⟩)
+    · rcases hstepOrExternal with hstep | hexternal
+      · rcases hstep with ⟨σ, flipVar, _hmem, _hwit, hpoolNext⟩
+        rcases patchPoolCandidate_iterate_descent_or_blocked_or_external
+            (s := s) (vars := vars) (on_ := on_)
+            (startPos := σSeed on_) (skBase := sk)
+            (skCand := patchDeleteWitnessAt s.formula flipVar σ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk))
+            hon_univ hgt hexi hcontains hpoolNext hall with
+          hgood | hres
+        · exact Or.inl hgood
+        · rcases hres with hblockedStop | hexternalStop
+          · rcases hblockedStop with ⟨skStop, hpoolStop, hblockedStop⟩
+            exact Or.inr (Or.inl
+              ⟨σSeed on_, skStop, hpoolStop, hblockedStop⟩)
+          · rcases hexternalStop with
+              ⟨skStop, σStop, flipVarStop, hpoolStop, hnotMemStop,
+                hwitStop, hexiStop, hcontainsStop, hnoPathStop⟩
+            exact Or.inr (Or.inr
+              ⟨σSeed on_, skStop, σStop, flipVarStop, hpoolStop,
+                hnotMemStop, hwitStop, hexiStop, hcontainsStop,
+                hnoPathStop⟩)
+      · rcases hexternal with
+          ⟨σ, flipVar, hnotMem, hwit, hexi_flip, hcontains_flip,
+            hnoPath⟩
+        exact Or.inr (Or.inr
+          ⟨σSeed on_, patchDeleteWitnessAt s.formula of_ σSeed sk,
+            σ, flipVar, hpool, hnotMem, hwit, hexi_flip,
+            hcontains_flip, hnoPath⟩)
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
