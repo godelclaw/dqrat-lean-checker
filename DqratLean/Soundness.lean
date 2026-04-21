@@ -19037,6 +19037,132 @@ private theorem patchPoolCandidate_false_matrix_path_or_step_or_external
         hexi_flip, hcontains_flip,
         Or.inr (Or.inr ⟨hflip_var_mem, hpath⟩)⟩
 
+private def PatchPoolFailureBranch
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  ∃ σ cref c baseLit flipLit,
+    s.clauses.getClause cref = some c ∧
+    s.formula.clauseValue σ skCand c.lits = false ∧
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+    baseLit ∈ c.lits.toList ∧
+    baseLit.var ∈ vars.toList ∧
+    σ on_ = startPos ∧
+    s.formula.litValue σ skBase baseLit = true ∧
+    s.formula.litValue σ skCand baseLit = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!startPos)) baseLit ∧
+    flipLit ∈ c.lits.toList ∧
+    s.formula.litValue σ skCand flipLit = false ∧
+    s.formula.litValue (flipUniv on_ σ) skCand flipLit = true ∧
+    DeleteDepWitness s.formula flipLit.var on_ skCand σ ∧
+    s.formula.isVarExistential flipLit.var = true ∧
+    (s.formula.depset.getD flipLit.var #[]).contains on_ = true ∧
+    (DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var)) ∨
+      (flipLit.var ∈ vars.toList ∧
+        PatchPoolCandidate s vars on_ startPos skBase
+          (patchDeleteWitnessAt s.formula flipLit.var σ skCand)) ∨
+      (flipLit.var ∉ vars.toList ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var))))
+
+private theorem patchPoolCandidate_failure_path_or_step_or_external
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hfail : ∃ σ, s.clauses.matrixValue s.formula σ skCand = false) :
+    PatchPoolFailureBranch s vars on_ startPos skBase skCand := by
+  rcases hfail with ⟨σ, hfalse⟩
+  rcases patchPoolCandidate_false_matrix_path_or_step_or_external
+      hgt hexi hcontains hpool hallBase hfalse with
+    ⟨cref, c, baseLit, flipLit, hget, hclause_false, hno_compl,
+      hbase_mem, hbase_var, hon_eq, hbase_true, hbase_false, hbase_no_path,
+      hflip_mem, hflip_false, hflip_true, hwit, hexi_flip, hcontains_flip,
+      hbranch⟩
+  exact ⟨σ, cref, c, baseLit, flipLit, hget, hclause_false, hno_compl,
+    hbase_mem, hbase_var, hon_eq, hbase_true, hbase_false, hbase_no_path,
+    hflip_mem, hflip_false, hflip_true, hwit, hexi_flip, hcontains_flip,
+    hbranch⟩
+
+private theorem deleteWitness_descent_step_or_initial_pool_failure
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ σSeed posSeed,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.formula.litValue σSeed sk (mkLit of_ posSeed) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk
+        (mkLit of_ (!posSeed)) = true ∧
+      ¬ DeletePurePath s on_
+        (mkLit on_ (!(σSeed on_))) (mkLit of_ posSeed) ∧
+      PatchPoolCandidate s vars on_ (σSeed on_) sk
+        (patchDeleteWitnessAt s.formula of_ σSeed sk) ∧
+      PatchPoolFailureBranch s vars on_ (σSeed on_) sk
+        (patchDeleteWitnessAt s.formula of_ σSeed sk) := by
+  classical
+  rcases deleteDepWitness_has_oriented_seed
+      (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
+      (on_ := on_) (of_ := of_) (sk := sk) (σ₀ := σ₀)
+      hfull hon_le hon_univ hpaths hof hwit with
+    ⟨σSeed, posSeed, hwitSeed, hseed, hflip, hnoPath⟩
+  have htarget_eq :
+      mkLit of_ posSeed = mkLit of_ (s.formula.varValue σSeed sk of_) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula of_ σSeed sk (mkLit of_ posSeed)
+      (by simp [mkLit_var_early]) hseed
+  have hnoPath_var :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σSeed on_)))
+        (mkLit of_ (s.formula.varValue σSeed sk of_)) := by
+    simpa [← htarget_eq] using hnoPath
+  let skCand := patchDeleteWitnessAt s.formula of_ σSeed sk
+  have hpool :
+      PatchPoolCandidate s vars on_ (σSeed on_) sk skCand :=
+    patchPoolCandidate_initial_patch
+      (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+      (sk := sk) (σSeed := σSeed) hexi hcontains hof hwitSeed hnoPath_var
+  by_cases hfail : ∃ σ, s.clauses.matrixValue s.formula σ skCand = false
+  · have hbranch :
+        PatchPoolFailureBranch s vars on_ (σSeed on_) sk skCand :=
+      patchPoolCandidate_failure_path_or_step_or_external
+        (s := s) (vars := vars) (on_ := on_) (startPos := σSeed on_)
+        (skBase := sk) (skCand := skCand)
+        hgt hexi hcontains hpool hall hfail
+    right
+    exact ⟨σSeed, posSeed, hwitSeed, hseed, hflip, hnoPath, hpool, hbranch⟩
+  · left
+    have hpatch :
+        ∀ σ, s.clauses.matrixValue s.formula σ
+          (patchDeleteWitnessAt s.formula of_ σSeed sk) = true := by
+      intro σ
+      cases hval : s.clauses.matrixValue s.formula σ skCand with
+      | false =>
+          exact False.elim (hfail ⟨σ, hval⟩)
+      | true =>
+          simpa [skCand]
+    exact deleteWitness_descent_step_of_local_patch_preserves
+      (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+      (sk := sk) (σ₀ := σSeed) hof (hexi of_ hof)
+      (hcontains of_ hof) hwitSeed hpatch
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
