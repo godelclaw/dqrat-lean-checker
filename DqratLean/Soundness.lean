@@ -16380,6 +16380,27 @@ private theorem complementary_start_paths_to_forbidden_branch
     ⟨pos, hpos, hneg⟩
   exact ⟨badOf, hof, pos, hpos, hneg⟩
 
+private theorem noDeleteCrossPathsSet_complement_start_path_forces_start_nonpath
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {vars : Array Var} {on_ of_ : Var} {startPos pos : Bool}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList)
+    (hpathCompl :
+      DeletePurePath st on_ (mkLit on_ (!startPos)) (mkLit of_ (!pos))) :
+    ¬ DeletePurePath st on_ (mkLit on_ startPos) (mkLit of_ pos) := by
+  intro hpath
+  rcases complementary_start_paths_to_forbidden_pair
+      (st := st) (on_ := on_) (badOf := of_)
+      (startPos := startPos) (badPos := pos) hpath hpathCompl with
+    ⟨badPos, hposPath, hnegPath⟩
+  exact noDeleteCrossPathsSet_not_deletePurePath_pair_of_fullCorrect
+    (dqbf := dqbf) (cs := cs) (st := st) (vars := vars)
+    (on_ := on_) (of_ := of_) (pos := badPos)
+    hfull hon_le hon_univ hpaths hof hposPath hnegPath
+
 private theorem noDeleteCrossPathsSet_orients_seed
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {vars : Array Var} {on_ of_ : Var} {σ : UnivAssignment} {pos : Bool}
