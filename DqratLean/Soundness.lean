@@ -18589,6 +18589,17 @@ private theorem litValue_true_false_implies_varValue_ne
       cases hcand : f.varValue σ skFalse l.var <;>
       simp [hbase, hcand] at htrue hfalse ⊢
 
+private theorem litValue_false_negate_eq_mkLit_varValue
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (l : Literal)
+    (hfalse : f.litValue σ sk l = false) :
+    l.negate = mkLit l.var (f.varValue σ sk l.var) := by
+  have hneg_true : f.litValue σ sk l.negate = true := by
+    rw [litValue_negate_early, hfalse]
+    simp
+  exact lit_eq_mkLit_varValue_of_var_and_true
+    f l.var σ sk l.negate (by simp [literal_negate_var]) hneg_true
+
 private theorem patchPoolCandidate_false_matrix_changed_lit_with_clause_false
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
@@ -19064,6 +19075,72 @@ private def PatchPoolFailureBranch
       (flipLit.var ∉ vars.toList ∧
         ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
           (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var))))
+
+private theorem patchPoolFailure_path_branch_forces_base_eq_flip
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause}
+    {baseLit flipLit : Literal}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hget : s.clauses.getClause cref = some c)
+    (hclause_false : s.formula.clauseValue σ skCand c.lits = false)
+    (hbase_mem : baseLit ∈ c.lits.toList)
+    (hbase_var : baseLit.var ∈ vars.toList)
+    (hon_eq : σ on_ = startPos)
+    (hbase_no_path :
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos)) baseLit)
+    (hflip_mem : flipLit ∈ c.lits.toList)
+    (hflip_false : s.formula.litValue σ skCand flipLit = false)
+    (hpath :
+      DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var))) :
+    baseLit = flipLit := by
+  classical
+  by_cases hbase_eq_flip : baseLit = flipLit
+  · exact hbase_eq_flip
+  · have hall_false :
+        ∀ l ∈ c.lits.toList, s.formula.litValue σ skCand l = false :=
+      clauseValue_false_implies_all_lits_false_early
+        s.formula σ skCand c.lits hclause_false
+    have hstartNeg_true :
+        s.formula.litValue σ skCand (mkLit on_ (!startPos)).negate = true :=
+      litValue_start_neg_true_of_start_eq_not_sigma
+        (s := s) (on_ := on_) (startPos := !startPos)
+        σ skCand hon_univ (by simp [hon_eq])
+    have hnoStartNeg :
+        (mkLit on_ (!startPos)).negate ∉ c.lits.toList := by
+      intro hmem
+      have hfalse_start := hall_false (mkLit on_ (!startPos)).negate hmem
+      rw [hstartNeg_true] at hfalse_start
+      cases hfalse_start
+    have hflip_neg_eq :
+        flipLit.negate =
+          mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var) :=
+      litValue_false_negate_eq_mkLit_varValue
+        s.formula σ skCand flipLit hflip_false
+    have hcur :
+        (mkLit flipLit.var
+          (s.formula.varValue σ skCand flipLit.var)).negate ∈ c.lits.toList := by
+      rw [← hflip_neg_eq, literal_negate_negate_local]
+      exact hflip_mem
+    have hpath_base :
+        DeletePurePath s on_ (mkLit on_ (!startPos)) baseLit :=
+      DeletePurePath.step hpath hget hcur hnoStartNeg hbase_mem
+        (by
+          intro hEq
+          have htarget_neg_eq :
+              (mkLit flipLit.var
+                (s.formula.varValue σ skCand flipLit.var)).negate = flipLit := by
+            rw [← hflip_neg_eq, literal_negate_negate_local]
+          have hbase_eq_flip' : baseLit = flipLit := by
+            simpa [htarget_neg_eq] using hEq
+          exact hbase_eq_flip hbase_eq_flip')
+        (hexi baseLit.var hbase_var)
+        (hcontains baseLit.var hbase_var)
+    exact False.elim (hbase_no_path hpath_base)
 
 private theorem patchPoolCandidate_failure_path_or_step_or_external
     {s : CheckState} {vars : Array Var} {on_ : Var}
