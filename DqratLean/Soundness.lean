@@ -18507,6 +18507,65 @@ private theorem patchPoolCandidate_initial_patch
     refine ⟨hof, hon_eq, ?_⟩
     simpa [hvar_eq] using hnoPath
 
+private theorem litValue_true_false_implies_varValue_ne
+    (f : DQBF) (σ : UnivAssignment)
+    (skTrue skFalse : SkolemAssignment) (l : Literal)
+    (htrue : f.litValue σ skTrue l = true)
+    (hfalse : f.litValue σ skFalse l = false) :
+    f.varValue σ skFalse l.var ≠ f.varValue σ skTrue l.var := by
+  unfold DQBF.litValue at htrue hfalse
+  by_cases hpos : l.isPos
+  · simp [hpos] at htrue hfalse
+    rw [htrue, hfalse]
+    simp
+  · simp [hpos] at htrue hfalse
+    cases hbase : f.varValue σ skTrue l.var <;>
+      cases hcand : f.varValue σ skFalse l.var <;>
+      simp [hbase, hcand] at htrue hfalse ⊢
+
+private theorem patchPoolCandidate_false_matrix_changed_lit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    ∃ cref c l,
+      s.clauses.getClause cref = some c ∧
+      l ∈ c.lits.toList ∧
+      l.var ∈ vars.toList ∧
+      σ on_ = startPos ∧
+      s.formula.litValue σ skBase l = true ∧
+      s.formula.litValue σ skCand l = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos)) l := by
+  rcases matrixValue_false_implies_exists_false_clause
+      s.formula s.clauses σ skCand hfalse with
+    ⟨cref, c, hget, hclause_false⟩
+  have hclause_true :
+      s.formula.clauseValue σ skBase c.lits = true :=
+    clauseValue_of_matrixValue s.formula s.clauses σ skBase cref c
+      (hallBase σ) hget
+  rcases clauseValue_true_false_implies_exists_true_false_lit
+      s.formula σ skBase skCand c.lits hclause_true hclause_false with
+    ⟨l, hlmem, hltrue, hlfalse⟩
+  have hdiff :
+      s.formula.varValue σ skCand l.var ≠
+        s.formula.varValue σ skBase l.var :=
+    litValue_true_false_implies_varValue_ne
+      s.formula σ skBase skCand l hltrue hlfalse
+  rcases hpool.2.2 l.var σ hdiff with
+    ⟨hmem, hon_eq, hnoPath⟩
+  have hl_eq :
+      l = mkLit l.var (s.formula.varValue σ skBase l.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula l.var σ skBase l rfl hltrue
+  have hnoPath_l :
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos)) l := by
+    rw [hl_eq]
+    exact hnoPath
+  exact ⟨cref, c, l, hget, hlmem, hmem, hon_eq, hltrue, hlfalse,
+    hnoPath_l⟩
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
