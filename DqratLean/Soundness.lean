@@ -19243,6 +19243,55 @@ private theorem patchPoolCandidate_failure_path_or_step_or_external
     hflip_mem, hflip_false, hflip_true, hwit, hexi_flip, hcontains_flip,
     hbranch⟩
 
+private theorem patchPoolCandidate_descent_or_residual_cases
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+    PatchPoolBlockedPathBranch s vars on_ startPos skBase skCand ∨
+      (∃ σ flipVar,
+        flipVar ∈ vars.toList ∧
+        DeleteDepWitness s.formula flipVar on_ skCand σ ∧
+        PatchPoolCandidate s vars on_ startPos skBase
+          (patchDeleteWitnessAt s.formula flipVar σ skCand)) ∨
+      (∃ σ flipVar,
+        flipVar ∉ vars.toList ∧
+        DeleteDepWitness s.formula flipVar on_ skCand σ ∧
+        s.formula.isVarExistential flipVar = true ∧
+        (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit flipVar (s.formula.varValue σ skCand flipVar))) := by
+  classical
+  by_cases hfail : ∃ σ, s.clauses.matrixValue s.formula σ skCand = false
+  · have hbranch :
+        PatchPoolFailureBranch s vars on_ startPos skBase skCand :=
+      patchPoolCandidate_failure_path_or_step_or_external
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (skBase := skBase) (skCand := skCand)
+        hgt hexi hcontains hpool hallBase hfail
+    exact Or.inr
+      (patchPoolFailureBranch_blocked_or_step_or_external
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (skBase := skBase) (skCand := skCand)
+        hon_univ hexi hcontains hbranch)
+  · left
+    refine ⟨skCand, ?_, hpool.1⟩
+    intro σ
+    cases hval : s.clauses.matrixValue s.formula σ skCand with
+    | false =>
+        exact False.elim (hfail ⟨σ, hval⟩)
+    | true =>
+        rfl
+
 private theorem deleteWitness_descent_step_or_initial_pool_failure
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ of_ : Var}
