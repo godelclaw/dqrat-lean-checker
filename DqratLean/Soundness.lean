@@ -17592,6 +17592,119 @@ private theorem deleteWitness_descent_step_or_oriented_dependent_tail
         hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
         hnext_false, hnext_true, hwit_next⟩
 
+private theorem oriented_dependent_tail_forces_next_old_lit_nonpath
+    {s : CheckState} {vars : Array Var} {on_ of_ nextOf : Var}
+    {sk : SkolemAssignment} {σ : UnivAssignment}
+    {cref : CRef} {c : Clause} {pos nextPos : Bool}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hof : of_ ∈ vars.toList)
+    (hget : s.clauses.getClause cref = some c)
+    (hmem : mkLit of_ pos ∈ c.lits.toList)
+    (hno_oriented :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos))
+    (hnext_ne : nextOf ≠ of_)
+    (hnext_mem : mkLit nextOf nextPos ∈ c.lits.toList)
+    (hothers :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) :
+    ¬ DeletePurePath s on_
+      (mkLit on_ (!(σ on_))) (mkLit nextOf (!nextPos)) := by
+  intro hpath_next_old
+  have hof_ne_on : of_ ≠ on_ := by
+    intro hEq
+    have hcontra : s.formula.isVarExistential of_ = false := by
+      simpa [hEq] using hon_univ
+    have hof_exi : s.formula.isVarExistential of_ = true := hexi of_ hof
+    rw [hcontra] at hof_exi
+    cases hof_exi
+  have hstartNeg_true :
+      s.formula.litValue σ sk (mkLit on_ (!(σ on_))).negate = true :=
+    litValue_start_neg_true_of_start_eq_not_sigma
+      (s := s) (on_ := on_) (startPos := !(σ on_))
+      σ sk hon_univ rfl
+  have hnoStartNeg :
+      (mkLit on_ (!(σ on_))).negate ∉ c.lits.toList :=
+    noStartNeg_of_false_other_literals
+      (s := s) (on_ := on_) (of_ := of_) (startPos := !(σ on_))
+      (pos := pos) (c := c) σ sk hof_ne_on hstartNeg_true hothers
+  have hpath_to_original :
+      DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) := by
+    exact deletePurePath_step_from_opposite_target_tail
+      (st := s) (on_ := on_) (of_ := nextOf) (nextOf := of_)
+      (startPos := !(σ on_)) (pos := nextPos) (nextPos := pos)
+      (cref := cref) (clause := c)
+      hpath_next_old hget hnext_mem hnoStartNeg hmem
+      (Ne.symm hnext_ne) (hexi of_ hof) (hcontains of_ hof)
+  exact hno_oriented hpath_to_original
+
+private theorem deleteWitness_descent_step_or_oriented_dependent_tail_with_next_nonpath
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ σSeed σ cref c pos nextOf nextPos,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ ∧
+      ¬ DeletePurePath s on_
+        (mkLit on_ (!(σ on_))) (mkLit nextOf (!nextPos)) := by
+  rcases deleteWitness_descent_step_or_oriented_dependent_tail
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | htail
+  · exact Or.inl hgood
+  · right
+    rcases htail with
+      ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next⟩
+    have hnext_nonpath :
+        ¬ DeletePurePath s on_
+          (mkLit on_ (!(σ on_))) (mkLit nextOf (!nextPos)) :=
+      oriented_dependent_tail_forces_next_old_lit_nonpath
+        (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+        (nextOf := nextOf) (sk := sk) (σ := σ) (cref := cref)
+        (c := c) (pos := pos) (nextPos := nextPos)
+        hon_univ hexi hcontains hof hget hmem hno_oriented hnext_ne
+        hnext_mem hothers
+    exact ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, hwitSeed, hget,
+      hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+      hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+      hnext_false, hnext_true, hwit_next, hnext_nonpath⟩
+
 private theorem deleteWitness_descent_step_of_second_distinct_patch_preserves
     {s : CheckState} {vars : Array Var} {on_ of_ nextOf : Var}
     {sk : SkolemAssignment} {σ₀ σ : UnivAssignment}
