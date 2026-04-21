@@ -18507,6 +18507,72 @@ private theorem patchPoolCandidate_initial_patch
     refine ⟨hof, hon_eq, ?_⟩
     simpa [hvar_eq] using hnoPath
 
+private theorem patchPoolCandidate_patch_step
+    {s : CheckState} {vars : Array Var} {on_ patched : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σSeed : UnivAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hpatched_mem : patched ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula patched on_ skCand σSeed)
+    (hon_seed : σSeed on_ = startPos)
+    (hnoPathSeed :
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit patched (s.formula.varValue σSeed skCand patched))) :
+    PatchPoolCandidate s vars on_ startPos skBase
+      (patchDeleteWitnessAt s.formula patched σSeed skCand) := by
+  constructor
+  · exact Nat.lt_trans
+      (deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+        s.formula vars patched on_ σSeed skCand hpatched_mem
+        (hexi patched hpatched_mem) (hcontains patched hpatched_mem) hwit)
+      hpool.1
+  constructor
+  · intro z hz args hfiber
+    by_cases hz_patched : z = patched
+    · subst z
+      exact hpool.2.1 patched hpatched_mem args
+        (deleteWitnessFiber_patchDeleteWitnessAt_imp_old_self
+          s.formula patched on_ σSeed skCand args
+          (hexi patched hpatched_mem) (hcontains patched hpatched_mem)
+          hwit hfiber)
+    · exact hpool.2.1 z hz args
+        ((deleteWitnessFiber_patchDeleteWitnessAt_iff_of_ne
+          s.formula patched z on_ σSeed skCand args hz_patched).1 hfiber)
+  · intro z σ hdiff
+    by_cases hcand_base :
+        s.formula.varValue σ skCand z =
+          s.formula.varValue σ skBase z
+    · have hdiff_cand :
+          s.formula.varValue σ
+              (patchDeleteWitnessAt s.formula patched σSeed skCand) z ≠
+            s.formula.varValue σ skCand z := by
+        intro hsame
+        exact hdiff (hsame.trans hcand_base)
+      rcases varValue_patchDeleteWitnessAt_ne_implies_active_fullDepArgs
+          s.formula patched σSeed σ skCand z
+          (hexi patched hpatched_mem) hdiff_cand with
+        ⟨hz_eq, hfull⟩
+      subst z
+      have hon_eq : σ on_ = startPos := by
+        exact (fullDepArgs_eq_implies_on_eq_of_contains
+          s.formula patched on_ σ σSeed (hcontains patched hpatched_mem)
+          hfull).trans hon_seed
+      have hvar_eq :
+          s.formula.varValue σ skCand patched =
+            s.formula.varValue σSeed skCand patched :=
+        varValue_eq_of_fullDepArgs_eq
+          s.formula patched σ σSeed skCand (hexi patched hpatched_mem) hfull
+      have hbase_eq :
+          s.formula.varValue σ skBase patched =
+            s.formula.varValue σSeed skCand patched := by
+        rw [← hcand_base, hvar_eq]
+      refine ⟨hpatched_mem, hon_eq, ?_⟩
+      simpa [hbase_eq] using hnoPathSeed
+    · exact hpool.2.2 z σ hcand_base
+
 private theorem litValue_true_false_implies_varValue_ne
     (f : DQBF) (σ : UnivAssignment)
     (skTrue skFalse : SkolemAssignment) (l : Literal)
