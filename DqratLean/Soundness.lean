@@ -17810,6 +17810,17 @@ private theorem patchChangedLit_implies_fiber
     patchChangedLit_implies_deleteDepArgs_eq f cs hexi hchanged,
     patchChangedLit_implies_on_eq_of_contains f cs hexi hcontains hchanged⟩
 
+private theorem patchChangedFiber_removed_by_patch
+    (f : DQBF) (cs : ClauseStore) {of_ on_ : Var}
+    {σ₀ τ : UnivAssignment} {sk : SkolemAssignment}
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀)
+    (hfiber : PatchChangedFiber f cs of_ on_ σ₀ τ sk) :
+    ¬ DeleteDepWitness f of_ on_ (patchDeleteWitnessAt f of_ σ₀ sk) τ := by
+  exact deleteDepWitness_sameFiber_removed_by_patch
+    f of_ on_ σ₀ τ sk hexi hcontains hwit hfiber.2.2.1
+
 private theorem deleteWitness_descent_step_or_oriented_second_patch_failure
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ of_ : Var}
@@ -18063,6 +18074,110 @@ private theorem deleteWitness_descent_step_or_oriented_second_patch_fiber_cases
       hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
       hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
       hnext_false, hnext_true, hwit_next, hfiber⟩
+
+private theorem deleteWitness_descent_step_or_oriented_second_patch_removed_fiber_cases
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ σSeed σ cref c pos nextOf nextPos τ,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ ∧
+      ((PatchChangedFiber s.formula s.clauses of_ on_ σSeed τ sk ∧
+          ¬ DeleteDepWitness s.formula of_ on_
+            (patchDeleteWitnessAt s.formula nextOf σ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ) ∨
+        (PatchChangedFiber s.formula s.clauses nextOf on_ σ τ
+            (patchDeleteWitnessAt s.formula of_ σSeed sk) ∧
+          ¬ DeleteDepWitness s.formula nextOf on_
+            (patchDeleteWitnessAt s.formula nextOf σ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ)) := by
+  rcases deleteWitness_descent_step_or_oriented_second_patch_fiber_cases
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hbad
+  · exact Or.inl hgood
+  · right
+    rcases hbad with
+      ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next, hcases⟩
+    have hremoved :
+        (PatchChangedFiber s.formula s.clauses of_ on_ σSeed τ sk ∧
+            ¬ DeleteDepWitness s.formula of_ on_
+              (patchDeleteWitnessAt s.formula nextOf σ
+                (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ) ∨
+          (PatchChangedFiber s.formula s.clauses nextOf on_ σ τ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk) ∧
+            ¬ DeleteDepWitness s.formula nextOf on_
+              (patchDeleteWitnessAt s.formula nextOf σ
+                (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ) := by
+      rcases hcases with hfirst | hsecond
+      · left
+        have hno_first :
+            ¬ DeleteDepWitness s.formula of_ on_
+              (patchDeleteWitnessAt s.formula of_ σSeed sk) τ :=
+          patchChangedFiber_removed_by_patch
+            s.formula s.clauses (hexi of_ hof) (hcontains of_ hof)
+            hwitSeed hfirst
+        refine ⟨hfirst, ?_⟩
+        intro hdouble
+        have hno_eq : of_ ≠ nextOf := Ne.symm hnext_ne
+        have hfirst_wit :
+            DeleteDepWitness s.formula of_ on_
+              (patchDeleteWitnessAt s.formula of_ σSeed sk) τ :=
+          (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+            s.formula nextOf of_ on_ σ τ
+            (patchDeleteWitnessAt s.formula of_ σSeed sk) hno_eq).1 hdouble
+        exact hno_first hfirst_wit
+      · right
+        let sk₁ := patchDeleteWitnessAt s.formula of_ σSeed sk
+        have hwit_next₁ :
+            DeleteDepWitness s.formula nextOf on_ sk₁ σ := by
+          exact (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+            s.formula of_ nextOf on_ σSeed σ sk hnext_ne).2 hwit_next
+        have hno_second :
+            ¬ DeleteDepWitness s.formula nextOf on_
+              (patchDeleteWitnessAt s.formula nextOf σ sk₁) τ :=
+          patchChangedFiber_removed_by_patch
+            s.formula s.clauses hexi_next hcontains_next hwit_next₁ hsecond
+        refine ⟨hsecond, ?_⟩
+        simpa [sk₁] using hno_second
+    exact ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+      hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+      hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+      hnext_false, hnext_true, hwit_next, hremoved⟩
 
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
