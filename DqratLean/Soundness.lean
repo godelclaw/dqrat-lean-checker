@@ -19142,6 +19142,84 @@ private theorem patchPoolFailure_path_branch_forces_base_eq_flip
         (hcontains baseLit.var hbase_var)
     exact False.elim (hbase_no_path hpath_base)
 
+private def PatchPoolBlockedPathBranch
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  ∃ σ cref c lit,
+    s.clauses.getClause cref = some c ∧
+    s.formula.clauseValue σ skCand c.lits = false ∧
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+    lit ∈ c.lits.toList ∧
+    lit.var ∈ vars.toList ∧
+    σ on_ = startPos ∧
+    s.formula.litValue σ skBase lit = true ∧
+    s.formula.litValue σ skCand lit = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!startPos)) lit ∧
+    DeleteDepWitness s.formula lit.var on_ skCand σ ∧
+    s.formula.isVarExistential lit.var = true ∧
+    (s.formula.depset.getD lit.var #[]).contains on_ = true ∧
+    DeletePurePath s on_ (mkLit on_ (!startPos)) lit.negate
+
+private theorem patchPoolFailureBranch_blocked_or_step_or_external
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hfail : PatchPoolFailureBranch s vars on_ startPos skBase skCand) :
+    PatchPoolBlockedPathBranch s vars on_ startPos skBase skCand ∨
+      (∃ σ flipVar,
+        flipVar ∈ vars.toList ∧
+        DeleteDepWitness s.formula flipVar on_ skCand σ ∧
+        PatchPoolCandidate s vars on_ startPos skBase
+          (patchDeleteWitnessAt s.formula flipVar σ skCand)) ∨
+      (∃ σ flipVar,
+        flipVar ∉ vars.toList ∧
+        DeleteDepWitness s.formula flipVar on_ skCand σ ∧
+        s.formula.isVarExistential flipVar = true ∧
+        (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit flipVar (s.formula.varValue σ skCand flipVar))) := by
+  classical
+  rcases hfail with
+    ⟨σ, cref, c, baseLit, flipLit, hget, hclause_false, hno_compl,
+      hbase_mem, hbase_var, hon_eq, hbase_true, hbase_false,
+      hbase_no_path, hflip_mem, hflip_false, _hflip_true, hwit,
+      hexi_flip, hcontains_flip, hbranch⟩
+  rcases hbranch with hpath | hstepOrExternal
+  · left
+    have hbase_eq_flip : baseLit = flipLit :=
+      patchPoolFailure_path_branch_forces_base_eq_flip
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (skBase := skBase) (skCand := skCand) (σ := σ)
+        (cref := cref) (c := c) (baseLit := baseLit)
+        (flipLit := flipLit)
+        hon_univ hexi hcontains hget hclause_false hbase_mem
+        hbase_var hon_eq hbase_no_path hflip_mem hflip_false hpath
+    subst flipLit
+    have htarget_eq :
+        baseLit.negate =
+          mkLit baseLit.var (s.formula.varValue σ skCand baseLit.var) :=
+      litValue_false_negate_eq_mkLit_varValue
+        s.formula σ skCand baseLit hflip_false
+    have hpath_neg :
+        DeletePurePath s on_ (mkLit on_ (!startPos)) baseLit.negate := by
+      simpa [htarget_eq] using hpath
+    exact ⟨σ, cref, c, baseLit, hget, hclause_false, hno_compl,
+      hbase_mem, hbase_var, hon_eq, hbase_true, hbase_false,
+      hbase_no_path, hwit, hexi_flip, hcontains_flip, hpath_neg⟩
+  · rcases hstepOrExternal with hstep | hexternal
+    · right
+      left
+      rcases hstep with ⟨hflip_mem_vars, hpool⟩
+      exact ⟨σ, flipLit.var, hflip_mem_vars, hwit, hpool⟩
+    · right
+      right
+      rcases hexternal with ⟨hflip_not_mem, hnoPath⟩
+      exact ⟨σ, flipLit.var, hflip_not_mem, hwit, hexi_flip,
+        hcontains_flip, hnoPath⟩
+
 private theorem patchPoolCandidate_failure_path_or_step_or_external
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
