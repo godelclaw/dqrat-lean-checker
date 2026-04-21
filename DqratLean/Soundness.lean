@@ -18970,6 +18970,73 @@ private theorem patchPoolCandidate_false_matrix_step_or_obstruction
       hbase_no_path, hflip_mem, hflip_false, hflip_true, hwit,
       hexi_flip, hcontains_flip, Or.inl hflip_var_mem⟩
 
+private theorem patchPoolCandidate_false_matrix_path_or_step_or_external
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    ∃ cref c baseLit flipLit,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue σ skCand c.lits = false ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      baseLit ∈ c.lits.toList ∧
+      baseLit.var ∈ vars.toList ∧
+      σ on_ = startPos ∧
+      s.formula.litValue σ skBase baseLit = true ∧
+      s.formula.litValue σ skCand baseLit = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos)) baseLit ∧
+      flipLit ∈ c.lits.toList ∧
+      s.formula.litValue σ skCand flipLit = false ∧
+      s.formula.litValue (flipUniv on_ σ) skCand flipLit = true ∧
+      DeleteDepWitness s.formula flipLit.var on_ skCand σ ∧
+      s.formula.isVarExistential flipLit.var = true ∧
+      (s.formula.depset.getD flipLit.var #[]).contains on_ = true ∧
+      (DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var)) ∨
+        (flipLit.var ∈ vars.toList ∧
+          PatchPoolCandidate s vars on_ startPos skBase
+            (patchDeleteWitnessAt s.formula flipLit.var σ skCand)) ∨
+        (flipLit.var ∉ vars.toList ∧
+          ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+            (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var)))) := by
+  classical
+  rcases patchPoolCandidate_false_matrix_flip_changed_lit_existential
+      hgt hexi hcontains hpool hallBase hfalse with
+    ⟨cref, c, baseLit, flipLit, hget, hclause_false, hno_compl,
+      hbase_mem, hbase_var, hon_eq, hbase_true, hbase_false, hbase_no_path,
+      hflip_mem, hflip_false, hflip_true, hwit, hexi_flip, hcontains_flip⟩
+  by_cases hpath :
+      DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var))
+  · exact ⟨cref, c, baseLit, flipLit, hget, hclause_false, hno_compl,
+      hbase_mem, hbase_var, hon_eq, hbase_true, hbase_false,
+      hbase_no_path, hflip_mem, hflip_false, hflip_true, hwit,
+      hexi_flip, hcontains_flip, Or.inl hpath⟩
+  · by_cases hflip_var_mem : flipLit.var ∈ vars.toList
+    · have hpool' :
+          PatchPoolCandidate s vars on_ startPos skBase
+            (patchDeleteWitnessAt s.formula flipLit.var σ skCand) :=
+        patchPoolCandidate_patch_step
+          (s := s) (vars := vars) (on_ := on_) (patched := flipLit.var)
+          (startPos := startPos) (skBase := skBase) (skCand := skCand)
+          (σSeed := σ) hexi hcontains hpool hflip_var_mem hwit hon_eq hpath
+      exact ⟨cref, c, baseLit, flipLit, hget, hclause_false, hno_compl,
+        hbase_mem, hbase_var, hon_eq, hbase_true, hbase_false,
+        hbase_no_path, hflip_mem, hflip_false, hflip_true, hwit,
+        hexi_flip, hcontains_flip,
+        Or.inr (Or.inl ⟨hflip_var_mem, hpool'⟩)⟩
+    · exact ⟨cref, c, baseLit, flipLit, hget, hclause_false, hno_compl,
+        hbase_mem, hbase_var, hon_eq, hbase_true, hbase_false,
+        hbase_no_path, hflip_mem, hflip_false, hflip_true, hwit,
+        hexi_flip, hcontains_flip,
+        Or.inr (Or.inr ⟨hflip_var_mem, hpath⟩)⟩
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
