@@ -18425,6 +18425,88 @@ private theorem deleteWitness_descent_step_or_oriented_second_patch_pool_step_ca
         hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
         hnext_false, hnext_true, hwit_next, hnext_nonpath, hremoved⟩
 
+private def PatchPoolCandidate
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  deleteWitnessFiberCountSet s.formula vars on_ skCand <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase ∧
+    (∀ of_ ∈ vars.toList, ∀ args,
+      DeleteWitnessFiber s.formula of_ on_ skCand args →
+        DeleteWitnessFiber s.formula of_ on_ skBase args) ∧
+    ∀ of_ σ,
+      s.formula.varValue σ skCand of_ ≠
+        s.formula.varValue σ skBase of_ →
+      of_ ∈ vars.toList ∧
+        σ on_ = startPos ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit of_ (s.formula.varValue σ skBase of_))
+
+private theorem varValue_patchDeleteWitnessAt_ne_implies_active_fullDepArgs
+    (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment) (v : Var)
+    (hexi : f.isVarExistential of_ = true)
+    (hneq :
+      f.varValue σ (patchDeleteWitnessAt f of_ σ₀ sk) v ≠
+        f.varValue σ sk v) :
+    v = of_ ∧ fullDepArgs f of_ σ = fullDepArgs f of_ σ₀ := by
+  by_cases hv : v = of_
+  · subst v
+    by_cases hargs : fullDepArgs f of_ σ = fullDepArgs f of_ σ₀
+    · exact ⟨rfl, hargs⟩
+    · have hsame :
+          f.varValue σ (patchDeleteWitnessAt f of_ σ₀ sk) of_ =
+            f.varValue σ sk of_ :=
+        varValue_patchDeleteWitnessAt_eq_of_inactive
+          f of_ σ₀ σ sk hexi hargs
+      exact False.elim (hneq hsame)
+  · have hsame :
+        f.varValue σ (patchDeleteWitnessAt f of_ σ₀ sk) v =
+          f.varValue σ sk v :=
+      varValue_patchDeleteWitnessAt_eq_of_ne f of_ σ₀ σ sk hv
+    exact False.elim (hneq hsame)
+
+private theorem patchPoolCandidate_initial_patch
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σSeed : UnivAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σSeed)
+    (hnoPath :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σSeed on_)))
+        (mkLit of_ (s.formula.varValue σSeed sk of_))) :
+    PatchPoolCandidate s vars on_ (σSeed on_) sk
+      (patchDeleteWitnessAt s.formula of_ σSeed sk) := by
+  constructor
+  · exact deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+      s.formula vars of_ on_ σSeed sk hof (hexi of_ hof)
+      (hcontains of_ hof) hwit
+  constructor
+  · intro z hz args hfiber
+    by_cases hz_of : z = of_
+    · subst z
+      exact deleteWitnessFiber_patchDeleteWitnessAt_imp_old_self
+        s.formula of_ on_ σSeed sk args (hexi of_ hof)
+        (hcontains of_ hof) hwit hfiber
+    · exact (deleteWitnessFiber_patchDeleteWitnessAt_iff_of_ne
+        s.formula of_ z on_ σSeed sk args hz_of).1 hfiber
+  · intro z σ hdiff
+    rcases varValue_patchDeleteWitnessAt_ne_implies_active_fullDepArgs
+        s.formula of_ σSeed σ sk z (hexi of_ hof) hdiff with
+      ⟨hz_eq, hfull⟩
+    subst z
+    have hon_eq : σ on_ = σSeed on_ :=
+      fullDepArgs_eq_implies_on_eq_of_contains
+        s.formula of_ on_ σ σSeed (hcontains of_ hof) hfull
+    have hvar_eq :
+        s.formula.varValue σ sk of_ =
+          s.formula.varValue σSeed sk of_ :=
+      varValue_eq_of_fullDepArgs_eq
+        s.formula of_ σ σSeed sk (hexi of_ hof) hfull
+    refine ⟨hof, hon_eq, ?_⟩
+    simpa [hvar_eq] using hnoPath
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
