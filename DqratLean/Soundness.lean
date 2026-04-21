@@ -19292,6 +19292,86 @@ private theorem patchPoolCandidate_descent_or_residual_cases
     | true =>
         rfl
 
+private theorem patchPoolCandidate_iterate_descent_or_blocked_or_external
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+    (∃ skStop,
+      PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+      PatchPoolBlockedPathBranch s vars on_ startPos skBase skStop) ∨
+    (∃ skStop σ flipVar,
+      PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+      flipVar ∉ vars.toList ∧
+      DeleteDepWitness s.formula flipVar on_ skStop σ ∧
+      s.formula.isVarExistential flipVar = true ∧
+      (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit flipVar (s.formula.varValue σ skStop flipVar))) := by
+  classical
+  let P : Nat → Prop := fun n =>
+    ∀ skCur,
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      PatchPoolCandidate s vars on_ startPos skBase skCur →
+      (∃ sk',
+        (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+        deleteWitnessFiberCountSet s.formula vars on_ sk' <
+          deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+      (∃ skStop,
+        PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+        PatchPoolBlockedPathBranch s vars on_ startPos skBase skStop) ∨
+      (∃ skStop σ flipVar,
+        PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+        flipVar ∉ vars.toList ∧
+        DeleteDepWitness s.formula flipVar on_ skStop σ ∧
+        s.formula.isVarExistential flipVar = true ∧
+        (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit flipVar (s.formula.varValue σ skStop flipVar)))
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur hcount hpoolCur
+      rcases patchPoolCandidate_descent_or_residual_cases
+          (s := s) (vars := vars) (on_ := on_)
+          (startPos := startPos) (skBase := skBase) (skCand := skCur)
+          hon_univ hgt hexi hcontains hpoolCur hallBase with
+        hgood | hresidual
+      · exact Or.inl hgood
+      · rcases hresidual with hblocked | hstepOrExternal
+        · exact Or.inr (Or.inl ⟨skCur, hpoolCur, hblocked⟩)
+        · rcases hstepOrExternal with hstep | hexternal
+          · rcases hstep with ⟨σ, flipVar, hmem, hwit, hpoolNext⟩
+            let skNext := patchDeleteWitnessAt s.formula flipVar σ skCur
+            have hlt_next :
+                deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+              have hlt_cur :
+                  deleteWitnessFiberCountSet s.formula vars on_ skNext <
+                    deleteWitnessFiberCountSet s.formula vars on_ skCur :=
+                deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+                  s.formula vars flipVar on_ σ skCur hmem
+                  (hexi flipVar hmem) (hcontains flipVar hmem) hwit
+              simpa [skNext, hcount] using hlt_cur
+            exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+              hlt_next skNext rfl hpoolNext
+          · rcases hexternal with
+              ⟨σ, flipVar, hnot_mem, hwit, hexi_flip, hcontains_flip,
+                hnoPath⟩
+            exact Or.inr (Or.inr
+              ⟨skCur, σ, flipVar, hpoolCur, hnot_mem, hwit, hexi_flip,
+                hcontains_flip, hnoPath⟩))
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    skCand rfl hpool
+
 private theorem deleteWitness_descent_step_or_initial_pool_failure
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ of_ : Var}
