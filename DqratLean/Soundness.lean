@@ -18523,7 +18523,7 @@ private theorem litValue_true_false_implies_varValue_ne
       cases hcand : f.varValue σ skFalse l.var <;>
       simp [hbase, hcand] at htrue hfalse ⊢
 
-private theorem patchPoolCandidate_false_matrix_changed_lit
+private theorem patchPoolCandidate_false_matrix_changed_lit_with_clause_false
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
     (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
@@ -18532,6 +18532,7 @@ private theorem patchPoolCandidate_false_matrix_changed_lit
     (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
     ∃ cref c l,
       s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue σ skCand c.lits = false ∧
       l ∈ c.lits.toList ∧
       l.var ∈ vars.toList ∧
       σ on_ = startPos ∧
@@ -18563,8 +18564,30 @@ private theorem patchPoolCandidate_false_matrix_changed_lit
       ¬ DeletePurePath s on_ (mkLit on_ (!startPos)) l := by
     rw [hl_eq]
     exact hnoPath
-  exact ⟨cref, c, l, hget, hlmem, hmem, hon_eq, hltrue, hlfalse,
+  exact ⟨cref, c, l, hget, hclause_false, hlmem, hmem, hon_eq, hltrue, hlfalse,
     hnoPath_l⟩
+
+private theorem patchPoolCandidate_false_matrix_changed_lit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    ∃ cref c l,
+      s.clauses.getClause cref = some c ∧
+      l ∈ c.lits.toList ∧
+      l.var ∈ vars.toList ∧
+      σ on_ = startPos ∧
+      s.formula.litValue σ skBase l = true ∧
+      s.formula.litValue σ skCand l = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos)) l := by
+  rcases patchPoolCandidate_false_matrix_changed_lit_with_clause_false
+      hpool hallBase hfalse with
+    ⟨cref, c, l, hget, _hclause_false, hlmem, hmem, hon_eq, hltrue,
+      hlfalse, hnoPath⟩
+  exact ⟨cref, c, l, hget, hlmem, hmem, hon_eq, hltrue, hlfalse,
+    hnoPath⟩
 
 private theorem patchPoolCandidate_varValue_flip_eq_base
     {s : CheckState} {vars : Array Var} {on_ : Var}
