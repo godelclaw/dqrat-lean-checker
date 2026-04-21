@@ -18602,6 +18602,50 @@ private theorem patchPoolCandidate_litValue_flip_eq_base
   rw [patchPoolCandidate_varValue_flip_eq_base
     (s := s) (vars := vars) (on_ := on_) hpool hon l.var]
 
+private theorem patchPoolCandidate_clauseValue_flip_eq_base
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    {σ : UnivAssignment}
+    (hon : σ on_ = startPos)
+    (lits : Array Literal) :
+    s.formula.clauseValue (flipUniv on_ σ) skCand lits =
+      s.formula.clauseValue (flipUniv on_ σ) skBase lits := by
+  apply clauseValue_eq_of_litValue_eq
+  intro l _hl
+  exact patchPoolCandidate_litValue_flip_eq_base
+    (s := s) (vars := vars) (on_ := on_) hpool hon l
+
+private theorem patchPoolCandidate_matrixValue_flip_eq_base
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    {σ : UnivAssignment}
+    (hon : σ on_ = startPos) :
+    s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand =
+      s.clauses.matrixValue s.formula (flipUniv on_ σ) skBase := by
+  unfold ClauseStore.matrixValue
+  apply List.all_congr rfl
+  intro i
+  cases hclause : s.clauses.getClause (i + 1) with
+  | none =>
+      simp
+  | some c =>
+      simp [patchPoolCandidate_clauseValue_flip_eq_base
+        (s := s) (vars := vars) (on_ := on_) hpool hon c.lits]
+
+private theorem patchPoolCandidate_matrixValue_flip_true_of_base
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    {σ : UnivAssignment}
+    (hon : σ on_ = startPos) :
+    s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = true := by
+  rw [patchPoolCandidate_matrixValue_flip_eq_base
+    (s := s) (vars := vars) (on_ := on_) hpool hon]
+  exact hallBase (flipUniv on_ σ)
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
