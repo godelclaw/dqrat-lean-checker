@@ -18566,6 +18566,42 @@ private theorem patchPoolCandidate_false_matrix_changed_lit
   exact ⟨cref, c, l, hget, hlmem, hmem, hon_eq, hltrue, hlfalse,
     hnoPath_l⟩
 
+private theorem patchPoolCandidate_varValue_flip_eq_base
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    {σ : UnivAssignment}
+    (hon : σ on_ = startPos)
+    (v : Var) :
+    s.formula.varValue (flipUniv on_ σ) skCand v =
+      s.formula.varValue (flipUniv on_ σ) skBase v := by
+  by_cases heq :
+      s.formula.varValue (flipUniv on_ σ) skCand v =
+        s.formula.varValue (flipUniv on_ σ) skBase v
+  · exact heq
+  have hdiff :
+      s.formula.varValue (flipUniv on_ σ) skCand v ≠
+        s.formula.varValue (flipUniv on_ σ) skBase v := heq
+  rcases hpool.2.2 v (flipUniv on_ σ) hdiff with
+    ⟨_hmem, hon_flip, _hpath⟩
+  have hflip : (flipUniv on_ σ) on_ = !startPos := by
+    simp [flipUniv, hon]
+  rw [hflip] at hon_flip
+  cases startPos <;> cases hon_flip
+
+private theorem patchPoolCandidate_litValue_flip_eq_base
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    {σ : UnivAssignment}
+    (hon : σ on_ = startPos)
+    (l : Literal) :
+    s.formula.litValue (flipUniv on_ σ) skCand l =
+      s.formula.litValue (flipUniv on_ σ) skBase l := by
+  unfold DQBF.litValue
+  rw [patchPoolCandidate_varValue_flip_eq_base
+    (s := s) (vars := vars) (on_ := on_) hpool hon l.var]
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
