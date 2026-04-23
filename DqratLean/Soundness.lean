@@ -20267,6 +20267,58 @@ private theorem tailClosedChangedOther_patch_step_or_path
       Classical.byContradiction hnoPath
     simpa [htarget_eq] using hpath
 
+private def PatchPoolStrictStep
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  ∃ skNext,
+    PatchPoolCandidate s vars on_ startPos skBase skNext ∧
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skCand
+
+private theorem tailClosedChangedOther_strict_step_or_path
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {other : Literal}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hon_eq : σ on_ = startPos)
+    (hother_false : s.formula.litValue σ skCand other = false)
+    (hother_mem : other.var ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula other.var on_ skCand σ) :
+    PatchPoolStrictStep s vars on_ startPos skBase skCand ∨
+      DeletePurePath s on_ (mkLit on_ (!startPos)) other.negate := by
+  have htarget_eq :
+      other.negate =
+        mkLit other.var (s.formula.varValue σ skCand other.var) :=
+    litValue_false_negate_eq_mkLit_varValue
+      s.formula σ skCand other hother_false
+  by_cases hnoPath :
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit other.var (s.formula.varValue σ skCand other.var))
+  · left
+    let skNext := patchDeleteWitnessAt s.formula other.var σ skCand
+    have hpoolNext :
+        PatchPoolCandidate s vars on_ startPos skBase skNext :=
+      patchPoolCandidate_patch_step
+        (s := s) (vars := vars) (on_ := on_) (patched := other.var)
+        (startPos := startPos) (skBase := skBase) (skCand := skCand)
+        (σSeed := σ) hexi hcontains hpool hother_mem hwit hon_eq hnoPath
+    have hlt :
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skCand :=
+      deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+        s.formula vars other.var on_ σ skCand hother_mem
+        (hexi other.var hother_mem) (hcontains other.var hother_mem) hwit
+    exact ⟨skNext, hpoolNext, hlt⟩
+  · right
+    have hpath :
+        DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit other.var (s.formula.varValue σ skCand other.var)) :=
+      Classical.byContradiction hnoPath
+    simpa [htarget_eq] using hpath
+
 private theorem tailFirstClosedChangedOther_path
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {tailCref : CRef} {tailClause : Clause}
