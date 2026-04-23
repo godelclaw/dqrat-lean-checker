@@ -20023,6 +20023,35 @@ private theorem patchPoolSelfBlockedValueBranch_to_tail_branch
     hbase_eq, hcand_eq, hpath_cand, hno_opposite_base, hno_start_base,
     hall_self, htail⟩
 
+private theorem litValue_flip_true_stable_or_deleteWitness_classified
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hflip : f.litValue (flipUniv on_ σ) sk l = true) :
+    f.litValue σ sk l = true ∨
+      DeleteDepWitness f l.var on_ sk σ ∧
+        ((f.isVarExistential l.var = true ∧
+            (f.depset.getD l.var #[]).contains on_ = true) ∨
+          (f.isVarExistential l.var = false ∧ l.var = on_)) := by
+  by_cases hstable : f.litValue σ sk l = true
+  · exact Or.inl hstable
+  · right
+    have hfalse : f.litValue σ sk l = false := by
+      cases hval : f.litValue σ sk l <;> simp_all
+    have hwit : DeleteDepWitness f l.var on_ sk σ :=
+      deleteDepWitness_of_litValue_false_true_flip f on_ σ sk l hfalse hflip
+    refine ⟨hwit, ?_⟩
+    by_cases hexi : f.isVarExistential l.var = true
+    · exact Or.inl
+        ⟨hexi,
+          litValue_false_true_flip_existential_contains
+            f on_ σ sk l hexi hfalse hflip⟩
+    · have huniv : f.isVarExistential l.var = false := by
+        cases h : f.isVarExistential l.var <;> simp_all
+      exact Or.inr
+        ⟨huniv,
+          litValue_false_true_flip_universal_eq_on
+            f on_ σ sk l huniv hfalse hflip⟩
+
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {start target : Literal}
