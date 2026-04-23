@@ -24119,6 +24119,52 @@ private theorem deleteIndependenceSetBridge_of_origin_cursor_residual_continuati
       dqbf cs hfull hon_le hon_univ hpaths
       (hresidual hall hof hwit htailResidual)
 
+private theorem deleteIndependenceSetBridge_of_origin_cursor_residual_with_same_start_continuation_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hresidual :
+      ∀ {of_ : Var} {sk : SkolemAssignment} {σ₀ : UnivAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ sk = true) →
+        of_ ∈ vars.toList →
+        DeleteDepWitness s.formula of_ on_ sk σ₀ →
+        (∃ startPos,
+          SameStartComplementPathPairBlocked s vars on_ startPos ∨
+          ∃ skStop,
+            PatchPoolCandidate s vars on_ startPos sk skStop ∧
+            (PatchPoolSelfSameStartCursorTailResidual
+                s vars on_ startPos sk skStop ∨
+              PatchPoolSelfStableCursorTailResidual
+                s vars on_ startPos sk skStop ∨
+              PatchPoolSelfFirstStartCursorTailResidual
+                s vars on_ startPos sk skStop)) →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_deleteWitness_descent_step hexi
+  intro of_ sk σ₀ hall hof hwit
+  rcases deleteWitness_descent_step_or_cursor_tail_residual_with_same_start_closed
+      dqbf cs hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | htailResidual
+  · exact hgood
+  · exact deleteWitness_descent_step_of_good_or_forbidden_paths
+      dqbf cs hfull hon_le hon_univ hpaths
+      (hresidual hall hof hwit htailResidual)
+
 private theorem deleteIndependenceSetBridge_of_tail_outcome_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
