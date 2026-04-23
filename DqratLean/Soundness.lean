@@ -19629,6 +19629,63 @@ private theorem patchPoolBlockedValue_has_existential_changed_lit
         hbase_eq hno_opposite_base hchanged_mem hchanged_false
         hchanged_univ hchanged_on)
 
+private theorem patchPoolBlockedValue_path_tail_has_other_true_lit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {lit : Literal}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hon_eq : σ on_ = startPos)
+    (hflip_true : s.formula.litValue (flipUniv on_ σ) skCand lit = true)
+    (hcand_eq :
+      lit.negate = mkLit lit.var (s.formula.varValue σ skCand lit.var))
+    (hpath_cand :
+      DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skCand lit.var))) :
+    (∃ cref clause,
+      s.clauses.getClause cref = some clause ∧
+      mkLit on_ (!startPos) ∈ clause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ clause.lits.toList ∧
+      mkLit lit.var (s.formula.varValue σ skCand lit.var) ∈
+        clause.lits.toList ∧
+      mkLit lit.var (s.formula.varValue σ skCand lit.var) ≠
+        mkLit on_ (!startPos) ∧
+      ∃ l ∈ clause.lits.toList,
+        l ≠ mkLit lit.var (s.formula.varValue σ skCand lit.var) ∧
+        s.formula.litValue (flipUniv on_ σ) skCand l = true) ∨
+    (∃ prev cref clause,
+      DeletePurePath s on_ (mkLit on_ (!startPos)) prev ∧
+      s.clauses.getClause cref = some clause ∧
+      prev.negate ∈ clause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ clause.lits.toList ∧
+      mkLit lit.var (s.formula.varValue σ skCand lit.var) ∈
+        clause.lits.toList ∧
+      mkLit lit.var (s.formula.varValue σ skCand lit.var) ≠ prev.negate ∧
+      ∃ l ∈ clause.lits.toList,
+        l ≠ mkLit lit.var (s.formula.varValue σ skCand lit.var) ∧
+        s.formula.litValue (flipUniv on_ σ) skCand l = true) := by
+  have hclauses_true :
+      ∀ cref clause,
+        s.clauses.getClause cref = some clause →
+        s.formula.clauseValue (flipUniv on_ σ) skCand clause.lits = true := by
+    intro cref clause hget
+    have hmatrix :
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = true :=
+      patchPoolCandidate_matrixValue_flip_true_of_base
+        (s := s) (vars := vars) (on_ := on_) hpool hallBase hon_eq
+    exact clauseValue_of_matrixValue s.formula s.clauses (flipUniv on_ σ)
+      skCand cref clause hmatrix hget
+  have htarget_false :
+      s.formula.litValue (flipUniv on_ σ) skCand
+        (mkLit lit.var (s.formula.varValue σ skCand lit.var)) = false := by
+    rw [← hcand_eq, litValue_negate_early, hflip_true]
+    rfl
+  exact deletePurePath_last_clause_has_other_true_lit
+    (st := s) (on_ := on_) (start := mkLit on_ (!startPos))
+    (target := mkLit lit.var (s.formula.varValue σ skCand lit.var))
+    (τ := flipUniv on_ σ) (sk := skCand)
+    hpath_cand hclauses_true htarget_false
+
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {start target : Literal}
