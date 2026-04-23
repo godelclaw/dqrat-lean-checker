@@ -20310,6 +20310,85 @@ private theorem tailStepClosedChangedOther_path
     (hexi other.var hother_mem)
     (hcontains other.var hother_mem)
 
+private theorem tailFirstClosedChangedOther_patch_or_same_start_pair
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {tailCref : CRef} {tailClause : Clause}
+    {other : Literal}
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hon_eq : σ on_ = startPos)
+    (hget : s.clauses.getClause tailCref = some tailClause)
+    (hstart : mkLit on_ (!startPos) ∈ tailClause.lits.toList)
+    (hnoStartNeg : (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList)
+    (hother_mem_clause : other ∈ tailClause.lits.toList)
+    (hother_false : s.formula.litValue σ skCand other = false)
+    (hother_mem : other.var ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula other.var on_ skCand σ) :
+    PatchPoolCandidate s vars on_ startPos skBase
+        (patchDeleteWitnessAt s.formula other.var σ skCand) ∨
+      (DeletePurePath s on_ (mkLit on_ (!startPos)) other ∧
+        DeletePurePath s on_ (mkLit on_ (!startPos)) other.negate) := by
+  have hpath_other :
+      DeletePurePath s on_ (mkLit on_ (!startPos)) other :=
+    tailFirstClosedChangedOther_path
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (tailCref := tailCref) (tailClause := tailClause)
+      (other := other)
+      hgt hexi hcontains hget hstart hnoStartNeg hother_mem_clause
+      hother_mem
+  rcases tailClosedChangedOther_patch_step_or_path
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (σ := σ)
+      (other := other)
+      hexi hcontains hpool hon_eq hother_false hother_mem hwit with
+    hpatch | hpath_neg
+  · exact Or.inl hpatch
+  · exact Or.inr ⟨hpath_other, hpath_neg⟩
+
+private theorem tailStepClosedChangedOther_patch_or_same_start_pair
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {prev other : Literal}
+    {tailCref : CRef} {tailClause : Clause}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hon_eq : σ on_ = startPos)
+    (hprevPath : DeletePurePath s on_ (mkLit on_ (!startPos)) prev)
+    (hget : s.clauses.getClause tailCref = some tailClause)
+    (hprevMem : prev.negate ∈ tailClause.lits.toList)
+    (hnoStartNeg : (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList)
+    (hother_mem_clause : other ∈ tailClause.lits.toList)
+    (hother_ne_prev : other ≠ prev.negate)
+    (hother_false : s.formula.litValue σ skCand other = false)
+    (hother_mem : other.var ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula other.var on_ skCand σ) :
+    PatchPoolCandidate s vars on_ startPos skBase
+        (patchDeleteWitnessAt s.formula other.var σ skCand) ∨
+      (DeletePurePath s on_ (mkLit on_ (!startPos)) other ∧
+        DeletePurePath s on_ (mkLit on_ (!startPos)) other.negate) := by
+  have hpath_other :
+      DeletePurePath s on_ (mkLit on_ (!startPos)) other :=
+    tailStepClosedChangedOther_path
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (prev := prev) (other := other) (tailCref := tailCref)
+      (tailClause := tailClause)
+      hexi hcontains hprevPath hget hprevMem hnoStartNeg
+      hother_mem_clause hother_ne_prev hother_mem
+  rcases tailClosedChangedOther_patch_step_or_path
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (σ := σ)
+      (other := other)
+      hexi hcontains hpool hon_eq hother_false hother_mem hwit with
+    hpatch | hpath_neg
+  · exact Or.inl hpatch
+  · exact Or.inr ⟨hpath_other, hpath_neg⟩
+
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {start target : Literal}
