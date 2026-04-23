@@ -20984,6 +20984,73 @@ private theorem patchPoolSelfConnectorTailResidual_backtracks
   exact ⟨σ, cref, c, lit, prev, hhead, hprevPath, hprev_mem,
     hprevFalse, hnoOpp⟩
 
+private def PatchPoolSelfBacktrackTailBranch
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  ∃ σ cref c lit cursor,
+    PatchPoolSelfTailHead s vars on_ startPos skBase skCand σ cref c lit ∧
+    DeletePurePath s on_ (mkLit on_ (!startPos)) cursor ∧
+    cursor.var ∈ vars.toList ∧
+    s.formula.litValue (flipUniv on_ σ) skCand cursor = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ startPos) cursor.negate ∧
+    ((∃ tailCref tailClause,
+      s.clauses.getClause tailCref = some tailClause ∧
+      mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+      cursor ∈ tailClause.lits.toList ∧
+      cursor ≠ mkLit on_ (!startPos) ∧
+      ∃ other ∈ tailClause.lits.toList,
+        other ≠ cursor ∧
+        s.formula.litValue (flipUniv on_ σ) skCand other = true) ∨
+    (∃ prev tailCref tailClause,
+      DeletePurePath s on_ (mkLit on_ (!startPos)) prev ∧
+      s.clauses.getClause tailCref = some tailClause ∧
+      prev.negate ∈ tailClause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+      cursor ∈ tailClause.lits.toList ∧
+      cursor ≠ prev.negate ∧
+      ∃ other ∈ tailClause.lits.toList,
+        other ≠ cursor ∧
+        s.formula.litValue (flipUniv on_ σ) skCand other = true))
+
+private theorem patchPoolSelfConnectorBacktrackResidual_to_tail_branch
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hback :
+      PatchPoolSelfConnectorBacktrackResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolSelfBacktrackTailBranch
+      s vars on_ startPos skBase skCand := by
+  rcases hback with
+    ⟨σ, cref, c, lit, cursor, hhead, hcursorPath, hcursorMem,
+      hcursorFalse, hnoOpp⟩
+  have hheadCopy := hhead
+  rcases hhead with
+    ⟨_hget, _hclause_false, _hno_compl, _hlit_mem, _hlit_var,
+      hon_eq, _hlit_true, _hlit_false, _hwit, _hflip_true,
+      _hbase_eq, _hcand_eq, _hpath_cand, _hno_opposite_base,
+      _hno_start_base, _hall_self⟩
+  have hclauses_true :
+      ∀ tailCref tailClause,
+        s.clauses.getClause tailCref = some tailClause →
+        s.formula.clauseValue (flipUniv on_ σ) skCand tailClause.lits = true := by
+    intro tailCref tailClause hget
+    have hmatrix :
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = true :=
+      patchPoolCandidate_matrixValue_flip_true_of_base
+        (s := s) (vars := vars) (on_ := on_) hpool hallBase hon_eq
+    exact clauseValue_of_matrixValue s.formula s.clauses
+      (flipUniv on_ σ) skCand tailCref tailClause hmatrix hget
+  have htail :=
+    deletePurePath_last_clause_has_other_true_lit
+      (st := s) (on_ := on_) (start := mkLit on_ (!startPos))
+      (target := cursor) (τ := flipUniv on_ σ) (sk := skCand)
+      hcursorPath hclauses_true hcursorFalse
+  exact ⟨σ, cref, c, lit, cursor, hheadCopy, hcursorPath,
+    hcursorMem, hcursorFalse, hnoOpp, htail⟩
+
 private theorem patchPoolSelfStableStartOrConnectorTailBranch_split
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
