@@ -19791,6 +19791,82 @@ private theorem patchPoolBlockedValue_nonself_changed_step_or_all_self
         ⟨changed, hchanged_mem, hchanged_var, hchanged_false,
           hchanged_true, hwit, hchanged_exi, hchanged_dep, hchanged_eq⟩)
 
+private def PatchPoolSelfBlockedValueBranch
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  ∃ σ cref c lit,
+    s.clauses.getClause cref = some c ∧
+    s.formula.clauseValue σ skCand c.lits = false ∧
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+    lit ∈ c.lits.toList ∧
+    lit.var ∈ vars.toList ∧
+    σ on_ = startPos ∧
+    s.formula.litValue σ skBase lit = true ∧
+    s.formula.litValue σ skCand lit = false ∧
+    DeleteDepWitness s.formula lit.var on_ skCand σ ∧
+    s.formula.litValue (flipUniv on_ σ) skCand lit = true ∧
+    lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) ∧
+    lit.negate = mkLit lit.var (s.formula.varValue σ skCand lit.var) ∧
+    DeletePurePath s on_ (mkLit on_ (!startPos))
+      (mkLit lit.var (s.formula.varValue σ skCand lit.var)) ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+      (mkLit lit.var (s.formula.varValue σ skBase lit.var)) ∧
+    ¬ DeletePurePath s on_ (mkLit on_ startPos)
+      (mkLit lit.var (s.formula.varValue σ skBase lit.var)) ∧
+    ∀ changed,
+      changed ∈ c.lits.toList →
+      changed.var ∈ vars.toList →
+      s.formula.litValue σ skCand changed = false →
+      s.formula.litValue (flipUniv on_ σ) skCand changed = true →
+      DeleteDepWitness s.formula changed.var on_ skCand σ →
+      s.formula.isVarExistential changed.var = true →
+      (s.formula.depset.getD changed.var #[]).contains on_ = true →
+      changed = lit
+
+private theorem patchPoolBlockedPathBranch_self_or_nonself_step
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hbranch : PatchPoolBlockedPathBranch s vars on_ startPos skBase skCand) :
+    PatchPoolSelfBlockedValueBranch s vars on_ startPos skBase skCand ∨
+      ∃ skNext,
+        PatchPoolCandidate s vars on_ startPos skBase skNext := by
+  rcases patchPoolBlockedPathBranch_value_path_certificate
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skCand)
+      hfull hon_le hon_univ hpaths hbranch with
+    ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+      hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+      hbase_eq, hcand_eq, hpath_cand, hno_opposite_base,
+      hno_start_base⟩
+  rcases patchPoolBlockedValue_nonself_changed_step_or_all_self
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (σ := σ)
+      (cref := cref) (c := c) (lit := lit)
+      hon_univ hexi hcontains hpool hget hclause_false hlit_mem
+      hlit_var hon_eq hbase_eq hno_opposite_base with
+    hstep | hall_self
+  · right
+    rcases hstep with
+      ⟨changed, _hchanged_mem, _hchanged_var, _hchanged_false,
+        _hchanged_true, _hwit_changed, _hchanged_exi, _hchanged_dep,
+        _hchanged_ne, hpool_next⟩
+    exact ⟨patchDeleteWitnessAt s.formula changed.var σ skCand, hpool_next⟩
+  · left
+    exact ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+      hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+      hbase_eq, hcand_eq, hpath_cand, hno_opposite_base,
+      hno_start_base, hall_self⟩
+
 private theorem patchPoolBlockedValue_path_tail_has_other_true_lit
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
