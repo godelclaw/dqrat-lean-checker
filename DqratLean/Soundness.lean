@@ -19181,6 +19181,48 @@ private def PatchPoolBlockedPathBranch
     (s.formula.depset.getD lit.var #[]).contains on_ = true ∧
     DeletePurePath s on_ (mkLit on_ (!startPos)) lit.negate
 
+private theorem patchPoolBlockedPathBranch_no_start_path_to_lit
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hbranch : PatchPoolBlockedPathBranch s vars on_ startPos skBase skCand) :
+    ∃ lit,
+      lit.var ∈ vars.toList ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) lit.negate ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos)) lit ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) lit := by
+  rcases hbranch with
+    ⟨_σ, _cref, _c, lit, _hget, _hclause_false, _hno_compl,
+      _hlit_mem, hlit_var, _hon_eq, _hlit_true, _hlit_false,
+      _hno_opposite, _hwit, _hexi_lit, _hcontains_lit, hpath_neg⟩
+  have hpathCompl :
+      DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (!lit.isPos)) := by
+    have hneg : lit.negate = mkLit lit.var (!lit.isPos) := by
+      calc
+        lit.negate = (mkLit lit.var lit.isPos).negate :=
+          congrArg Literal.negate (literal_eq_mkLit_var_isPos lit)
+        _ = mkLit lit.var (!lit.isPos) := mkLit_negate lit.var lit.isPos
+    simpa [hneg] using hpath_neg
+  have hno :
+      ¬ DeletePurePath s on_ (mkLit on_ startPos)
+        (mkLit lit.var lit.isPos) :=
+    noDeleteCrossPathsSet_complement_start_path_forces_start_nonpath
+      (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
+      (on_ := on_) (of_ := lit.var) (startPos := startPos)
+      (pos := lit.isPos)
+      hfull hon_le hon_univ hpaths hlit_var hpathCompl
+  refine ⟨lit, hlit_var, hpath_neg, ?_⟩
+  refine ⟨_hno_opposite, ?_⟩
+  intro hpath
+  have hlit : lit = mkLit lit.var lit.isPos := literal_eq_mkLit_var_isPos lit
+  rw [hlit] at hpath
+  exact hno hpath
+
 private def DeleteDependencyClosedSet
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   ∀ of_,
