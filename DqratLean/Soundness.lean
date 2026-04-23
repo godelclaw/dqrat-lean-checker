@@ -19181,6 +19181,39 @@ private def PatchPoolBlockedPathBranch
     (s.formula.depset.getD lit.var #[]).contains on_ = true ∧
     DeletePurePath s on_ (mkLit on_ (!startPos)) lit.negate
 
+private theorem noDeleteCrossPathsSet_opposite_path_to_negate_forces_start_nonpath
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var} {startPos : Bool} {lit : Literal}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hlit_var : lit.var ∈ vars.toList)
+    (hpath_neg :
+      DeletePurePath s on_ (mkLit on_ (!startPos)) lit.negate) :
+    ¬ DeletePurePath s on_ (mkLit on_ startPos) lit := by
+  have hpathCompl :
+      DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (!lit.isPos)) := by
+    have hneg : lit.negate = mkLit lit.var (!lit.isPos) := by
+      calc
+        lit.negate = (mkLit lit.var lit.isPos).negate :=
+          congrArg Literal.negate (literal_eq_mkLit_var_isPos lit)
+        _ = mkLit lit.var (!lit.isPos) := mkLit_negate lit.var lit.isPos
+    simpa [hneg] using hpath_neg
+  have hno :
+      ¬ DeletePurePath s on_ (mkLit on_ startPos)
+        (mkLit lit.var lit.isPos) :=
+    noDeleteCrossPathsSet_complement_start_path_forces_start_nonpath
+      (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
+      (on_ := on_) (of_ := lit.var) (startPos := startPos)
+      (pos := lit.isPos)
+      hfull hon_le hon_univ hpaths hlit_var hpathCompl
+  intro hpath
+  have hlit : lit = mkLit lit.var lit.isPos := literal_eq_mkLit_var_isPos lit
+  rw [hlit] at hpath
+  exact hno hpath
+
 private theorem patchPoolBlockedPathBranch_no_start_path_to_lit
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
@@ -19199,29 +19232,72 @@ private theorem patchPoolBlockedPathBranch_no_start_path_to_lit
     ⟨_σ, _cref, _c, lit, _hget, _hclause_false, _hno_compl,
       _hlit_mem, hlit_var, _hon_eq, _hlit_true, _hlit_false,
       _hno_opposite, _hwit, _hexi_lit, _hcontains_lit, hpath_neg⟩
-  have hpathCompl :
-      DeletePurePath s on_ (mkLit on_ (!startPos))
-        (mkLit lit.var (!lit.isPos)) := by
-    have hneg : lit.negate = mkLit lit.var (!lit.isPos) := by
-      calc
-        lit.negate = (mkLit lit.var lit.isPos).negate :=
-          congrArg Literal.negate (literal_eq_mkLit_var_isPos lit)
-        _ = mkLit lit.var (!lit.isPos) := mkLit_negate lit.var lit.isPos
-    simpa [hneg] using hpath_neg
   have hno :
-      ¬ DeletePurePath s on_ (mkLit on_ startPos)
-        (mkLit lit.var lit.isPos) :=
-    noDeleteCrossPathsSet_complement_start_path_forces_start_nonpath
-      (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
-      (on_ := on_) (of_ := lit.var) (startPos := startPos)
-      (pos := lit.isPos)
-      hfull hon_le hon_univ hpaths hlit_var hpathCompl
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) lit :=
+    noDeleteCrossPathsSet_opposite_path_to_negate_forces_start_nonpath
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (lit := lit)
+      hfull hon_le hon_univ hpaths hlit_var hpath_neg
   refine ⟨lit, hlit_var, hpath_neg, ?_⟩
-  refine ⟨_hno_opposite, ?_⟩
-  intro hpath
-  have hlit : lit = mkLit lit.var lit.isPos := literal_eq_mkLit_var_isPos lit
-  rw [hlit] at hpath
-  exact hno hpath
+  exact ⟨_hno_opposite, hno⟩
+
+private theorem patchPoolBlockedPathBranch_value_path_certificate
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hbranch : PatchPoolBlockedPathBranch s vars on_ startPos skBase skCand) :
+    ∃ σ lit,
+      lit.var ∈ vars.toList ∧
+      s.formula.litValue σ skBase lit = true ∧
+      s.formula.litValue σ skCand lit = false ∧
+      lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) ∧
+      lit.negate = mkLit lit.var (s.formula.varValue σ skCand lit.var) ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skCand lit.var)) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skBase lit.var)) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos)
+        (mkLit lit.var (s.formula.varValue σ skBase lit.var)) := by
+  rcases hbranch with
+    ⟨σ, _cref, _c, lit, _hget, _hclause_false, _hno_compl,
+      _hlit_mem, hlit_var, _hon_eq, hlit_true, hlit_false,
+      hno_opposite, _hwit, _hexi_lit, _hcontains_lit, hpath_neg⟩
+  have hbase_eq :
+      lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula lit.var σ skBase lit rfl hlit_true
+  have hcand_eq :
+      lit.negate = mkLit lit.var (s.formula.varValue σ skCand lit.var) :=
+    litValue_false_negate_eq_mkLit_varValue
+      s.formula σ skCand lit hlit_false
+  have hno_start :
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) lit :=
+    noDeleteCrossPathsSet_opposite_path_to_negate_forces_start_nonpath
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (lit := lit)
+      hfull hon_le hon_univ hpaths hlit_var hpath_neg
+  have hpath_cand :
+      DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skCand lit.var)) := by
+    simpa [hcand_eq] using hpath_neg
+  have hno_opposite_base :
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skBase lit.var)) := by
+    intro hpath
+    rw [← hbase_eq] at hpath
+    exact hno_opposite hpath
+  have hno_start_base :
+      ¬ DeletePurePath s on_ (mkLit on_ startPos)
+        (mkLit lit.var (s.formula.varValue σ skBase lit.var)) := by
+    intro hpath
+    rw [← hbase_eq] at hpath
+    exact hno_start hpath
+  exact ⟨σ, lit, hlit_var, hlit_true, hlit_false, hbase_eq, hcand_eq,
+    hpath_cand, hno_opposite_base, hno_start_base⟩
 
 private def DeleteDependencyClosedSet
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
