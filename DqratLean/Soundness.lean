@@ -3307,6 +3307,22 @@ private theorem deleteDepWitness_of_litValue_false_true_flip
     DeleteDepWitness f l.var on_ sk σ := by
   exact deleteDepWitness_of_litValue_ne_flip f on_ σ sk l (by simp [hσ, hflip])
 
+private theorem litValue_flip_true_of_deleteDepWitness_and_false
+    (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hvar : l.var = of_)
+    (hwit : DeleteDepWitness f of_ on_ sk σ)
+    (hfalse : f.litValue σ sk l = false) :
+    f.litValue (flipUniv on_ σ) sk l = true := by
+  unfold DeleteDepWitness at hwit
+  unfold DQBF.litValue at hfalse ⊢
+  rw [hvar] at hfalse
+  rw [hvar]
+  cases hpos : l.isPos <;>
+    cases hσ : f.varValue σ sk of_ <;>
+    cases hflip : f.varValue (flipUniv on_ σ) sk of_ <;>
+    simp [hpos, hσ, hflip] at hfalse hwit ⊢
+
 private theorem varValue_flipUniv_eq_of_universal_ne
     (f : DQBF) (on_ v : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment)
@@ -19256,9 +19272,11 @@ private theorem patchPoolBlockedPathBranch_value_path_certificate
       (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
       lit ∈ c.lits.toList ∧
       lit.var ∈ vars.toList ∧
+      σ on_ = startPos ∧
       s.formula.litValue σ skBase lit = true ∧
       s.formula.litValue σ skCand lit = false ∧
       DeleteDepWitness s.formula lit.var on_ skCand σ ∧
+      s.formula.litValue (flipUniv on_ σ) skCand lit = true ∧
       lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) ∧
       lit.negate = mkLit lit.var (s.formula.varValue σ skCand lit.var) ∧
       DeletePurePath s on_ (mkLit on_ (!startPos))
@@ -19269,8 +19287,12 @@ private theorem patchPoolBlockedPathBranch_value_path_certificate
         (mkLit lit.var (s.formula.varValue σ skBase lit.var)) := by
   rcases hbranch with
     ⟨σ, cref, c, lit, hget, hclause_false, hno_compl,
-      hlit_mem, hlit_var, _hon_eq, hlit_true, hlit_false,
+      hlit_mem, hlit_var, hon_eq, hlit_true, hlit_false,
       hno_opposite, hwit, _hexi_lit, _hcontains_lit, hpath_neg⟩
+  have hflip_true :
+      s.formula.litValue (flipUniv on_ σ) skCand lit = true :=
+    litValue_flip_true_of_deleteDepWitness_and_false
+      s.formula lit.var on_ σ skCand lit rfl hwit hlit_false
   have hbase_eq :
       lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) :=
     lit_eq_mkLit_varValue_of_var_and_true
@@ -19302,8 +19324,8 @@ private theorem patchPoolBlockedPathBranch_value_path_certificate
     rw [← hbase_eq] at hpath
     exact hno_start hpath
   exact ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
-    hlit_var, hlit_true, hlit_false, hwit, hbase_eq, hcand_eq, hpath_cand,
-    hno_opposite_base, hno_start_base⟩
+    hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true, hbase_eq,
+    hcand_eq, hpath_cand, hno_opposite_base, hno_start_base⟩
 
 private def DeleteDependencyClosedSet
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
@@ -19916,9 +19938,11 @@ private theorem deleteIndependenceSetBridge_of_blocked_value_continuation_closed
         (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) →
         lit ∈ c.lits.toList →
         lit.var ∈ vars.toList →
+        σ on_ = startPos →
         s.formula.litValue σ skBase lit = true →
         s.formula.litValue σ skStop lit = false →
         DeleteDepWitness s.formula lit.var on_ skStop σ →
+        s.formula.litValue (flipUniv on_ σ) skStop lit = true →
         lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) →
         lit.negate = mkLit lit.var (s.formula.varValue σ skStop lit.var) →
         DeletePurePath s on_ (mkLit on_ (!startPos))
@@ -19944,10 +19968,10 @@ private theorem deleteIndependenceSetBridge_of_blocked_value_continuation_closed
       (skCand := skStop)
       hfull hon_le hon_univ hpaths hbranch with
     ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
-      hlit_var, hlit_true, hlit_false, hwit, hbase_eq, hcand_eq,
-      hpath_cand, hno_opposite_base, hno_start_base⟩
+      hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+      hbase_eq, hcand_eq, hpath_cand, hno_opposite_base, hno_start_base⟩
   exact hblocked hall hpool hget hclause_false hno_compl hlit_mem
-    hlit_var hlit_true hlit_false hwit hbase_eq
+    hlit_var hon_eq hlit_true hlit_false hwit hflip_true hbase_eq
     hcand_eq hpath_cand hno_opposite_base hno_start_base
 
 /-- Conditional descent skeleton under the deliberately too-strong assumption
