@@ -13562,6 +13562,60 @@ private theorem deletePurePath_last_step_or_first
         ⟨_, _, _, hprev, hget, hcur, hnoStartNeg, htarget, hne,
           hexi, hdep⟩
 
+private theorem deletePurePath_last_clause_has_other_true_lit
+    {st : CheckState} {on_ : Var} {start target : Literal}
+    {τ : UnivAssignment} {sk : SkolemAssignment}
+    (hpath : DeletePurePath st on_ start target)
+    (hclauses_true :
+      ∀ cref clause,
+        st.clauses.getClause cref = some clause →
+        st.formula.clauseValue τ sk clause.lits = true)
+    (htarget_false : st.formula.litValue τ sk target = false) :
+    (∃ cref clause,
+      st.clauses.getClause cref = some clause ∧
+      start ∈ clause.lits.toList ∧
+      start.negate ∉ clause.lits.toList ∧
+      target ∈ clause.lits.toList ∧
+      target ≠ start ∧
+      ∃ l ∈ clause.lits.toList,
+        l ≠ target ∧ st.formula.litValue τ sk l = true) ∨
+    (∃ prev cref clause,
+      DeletePurePath st on_ start prev ∧
+      st.clauses.getClause cref = some clause ∧
+      prev.negate ∈ clause.lits.toList ∧
+      start.negate ∉ clause.lits.toList ∧
+      target ∈ clause.lits.toList ∧
+      target ≠ prev.negate ∧
+      ∃ l ∈ clause.lits.toList,
+        l ≠ target ∧ st.formula.litValue τ sk l = true) := by
+  cases hpath with
+  | first hget hstart hnoStartNeg htarget hne _hexi _hdep =>
+      have hclause_true := hclauses_true _ _ hget
+      rcases clauseValue_true_implies_exists_true_lit
+          st.formula τ sk _ hclause_true with
+        ⟨l, hlmem, hltrue⟩
+      have hl_ne_target : l ≠ target := by
+        intro hEq
+        subst l
+        rw [htarget_false] at hltrue
+        cases hltrue
+      exact Or.inl
+        ⟨_, _, hget, hstart, hnoStartNeg, htarget, hne,
+          l, hlmem, hl_ne_target, hltrue⟩
+  | step hprev hget hcur hnoStartNeg htarget hne _hexi _hdep =>
+      have hclause_true := hclauses_true _ _ hget
+      rcases clauseValue_true_implies_exists_true_lit
+          st.formula τ sk _ hclause_true with
+        ⟨l, hlmem, hltrue⟩
+      have hl_ne_target : l ≠ target := by
+        intro hEq
+        subst l
+        rw [htarget_false] at hltrue
+        cases hltrue
+      exact Or.inr
+        ⟨_, _, _, hprev, hget, hcur, hnoStartNeg, htarget, hne,
+          l, hlmem, hl_ne_target, hltrue⟩
+
 private theorem arraySetIfInBounds_true_preserves_getD
     (a : Array Bool) (i target : Nat)
     (h : a.getD target false = true) :
