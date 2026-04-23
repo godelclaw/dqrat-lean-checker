@@ -20397,6 +20397,26 @@ private def SameStartComplementPathPair
     DeletePurePath s on_ (mkLit on_ (!startPos)) other ∧
     DeletePurePath s on_ (mkLit on_ (!startPos)) other.negate
 
+private theorem sameStartComplementPathPair_mkLit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool}
+    (hpair : SameStartComplementPathPair s vars on_ startPos) :
+    ∃ of_ ∈ vars.toList, ∃ pos : Bool,
+      DeletePurePath s on_ (mkLit on_ (!startPos)) (mkLit of_ pos) ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) (mkLit of_ (!pos)) := by
+  rcases hpair with ⟨other, hmem, hpath, hpathNeg⟩
+  refine ⟨other.var, hmem, other.isPos, ?_, ?_⟩
+  · rw [literal_eq_mkLit_var_isPos other] at hpath
+    exact hpath
+  · have hneg :
+        other.negate = mkLit other.var (!other.isPos) := by
+      calc
+        other.negate = (mkLit other.var other.isPos).negate :=
+          congrArg Literal.negate (literal_eq_mkLit_var_isPos other)
+        _ = mkLit other.var (!other.isPos) :=
+          mkLit_negate other.var other.isPos
+    simpa [hneg] using hpathNeg
+
 private theorem tailFirstClassification_patch_or_pair_or_stable_or_start
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
