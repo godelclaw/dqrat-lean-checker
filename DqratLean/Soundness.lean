@@ -21155,6 +21155,120 @@ private theorem patchPoolSelfConnectorBacktrackResidual_to_tail_branch
   exact ⟨σ, cref, c, lit, cursor, hheadCopy, hcursorPath,
     hcursorMem, hcursorFalse, hnoOpp, htail⟩
 
+private def PatchPoolSelfConnectorBacktrackResidualSized
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment)
+    (n : Nat) : Prop :=
+  ∃ σ cref c lit cursor,
+    PatchPoolSelfTailHead s vars on_ startPos skBase skCand σ cref c lit ∧
+    DeletePurePathSized s on_ (mkLit on_ (!startPos)) n cursor ∧
+    cursor.var ∈ vars.toList ∧
+    s.formula.litValue (flipUniv on_ σ) skCand cursor = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ startPos) cursor.negate
+
+private def PatchPoolSelfBacktrackTailBranchSized
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment)
+    (n : Nat) : Prop :=
+  ∃ σ cref c lit cursor,
+    PatchPoolSelfTailHead s vars on_ startPos skBase skCand σ cref c lit ∧
+    DeletePurePathSized s on_ (mkLit on_ (!startPos)) n cursor ∧
+    cursor.var ∈ vars.toList ∧
+    s.formula.litValue (flipUniv on_ σ) skCand cursor = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ startPos) cursor.negate ∧
+    ((∃ tailCref tailClause,
+      s.clauses.getClause tailCref = some tailClause ∧
+      mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+      cursor ∈ tailClause.lits.toList ∧
+      cursor ≠ mkLit on_ (!startPos) ∧
+      ∃ other ∈ tailClause.lits.toList,
+        other ≠ cursor ∧
+        s.formula.litValue (flipUniv on_ σ) skCand other = true) ∨
+    (∃ prev tailCref tailClause m,
+      DeletePurePathSized s on_ (mkLit on_ (!startPos)) m prev ∧
+      m < n ∧
+      s.clauses.getClause tailCref = some tailClause ∧
+      prev.negate ∈ tailClause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+      cursor ∈ tailClause.lits.toList ∧
+      cursor ≠ prev.negate ∧
+      ∃ other ∈ tailClause.lits.toList,
+        other ≠ cursor ∧
+        s.formula.litValue (flipUniv on_ σ) skCand other = true))
+
+private theorem patchPoolSelfConnectorBacktrackResidual_to_exists_sized
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hback :
+      PatchPoolSelfConnectorBacktrackResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ n,
+      PatchPoolSelfConnectorBacktrackResidualSized
+        s vars on_ startPos skBase skCand n := by
+  rcases hback with
+    ⟨σ, cref, c, lit, cursor, hhead, hcursorPath, hcursorMem,
+      hcursorFalse, hnoOpp⟩
+  rcases deletePurePath_to_exists_sized hcursorPath with
+    ⟨n, hcursorSized⟩
+  exact ⟨n, σ, cref, c, lit, cursor, hhead, hcursorSized,
+    hcursorMem, hcursorFalse, hnoOpp⟩
+
+private theorem patchPoolSelfConnectorBacktrackResidualSized_to_tail_branch
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment} {n : Nat}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hback :
+      PatchPoolSelfConnectorBacktrackResidualSized
+        s vars on_ startPos skBase skCand n) :
+    PatchPoolSelfBacktrackTailBranchSized
+      s vars on_ startPos skBase skCand n := by
+  rcases hback with
+    ⟨σ, cref, c, lit, cursor, hhead, hcursorSized, hcursorMem,
+      hcursorFalse, hnoOpp⟩
+  have hheadCopy := hhead
+  rcases hhead with
+    ⟨_hget, _hclause_false, _hno_compl, _hlit_mem, _hlit_var,
+      hon_eq, _hlit_true, _hlit_false, _hwit, _hflip_true,
+      _hbase_eq, _hcand_eq, _hpath_cand, _hno_opposite_base,
+      _hno_start_base, _hall_self⟩
+  have hclauses_true :
+      ∀ tailCref tailClause,
+        s.clauses.getClause tailCref = some tailClause →
+        s.formula.clauseValue (flipUniv on_ σ) skCand tailClause.lits = true := by
+    intro tailCref tailClause hget
+    have hmatrix :
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = true :=
+      patchPoolCandidate_matrixValue_flip_true_of_base
+        (s := s) (vars := vars) (on_ := on_) hpool hallBase hon_eq
+    exact clauseValue_of_matrixValue s.formula s.clauses
+      (flipUniv on_ σ) skCand tailCref tailClause hmatrix hget
+  have htail :=
+    deletePurePathSized_last_clause_has_other_true_lit
+      (st := s) (on_ := on_) (start := mkLit on_ (!startPos))
+      (target := cursor) (n := n) (τ := flipUniv on_ σ) (sk := skCand)
+      hcursorSized hclauses_true hcursorFalse
+  refine ⟨σ, cref, c, lit, cursor, hheadCopy, hcursorSized,
+    hcursorMem, hcursorFalse, hnoOpp, ?_⟩
+  rcases htail with hfirst | hstep
+  · left
+    rcases hfirst with
+      ⟨tailCref, tailClause, htailGet, hstartMem, hnoStartNeg,
+        hcursorMemClause, hcursorNe, other, hotherMem, hotherNe,
+        hotherTrue⟩
+    exact ⟨tailCref, tailClause, htailGet, hstartMem, hnoStartNeg,
+      hcursorMemClause, hcursorNe, other, hotherMem, hotherNe,
+      hotherTrue⟩
+  · right
+    rcases hstep with
+      ⟨prev, tailCref, tailClause, m, hprevSized, htailGet, hprevMem,
+        hnoStartNeg, hcursorMemClause, hcursorNe, hlt, other, hotherMem,
+        hotherNe, hotherTrue⟩
+    exact ⟨prev, tailCref, tailClause, m, hprevSized, hlt, htailGet,
+      hprevMem, hnoStartNeg, hcursorMemClause, hcursorNe, other,
+      hotherMem, hotherNe, hotherTrue⟩
+
 private def PatchPoolSelfBacktrackClassifiedTailBranch
     (s : CheckState) (vars : Array Var) (on_ : Var)
     (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
