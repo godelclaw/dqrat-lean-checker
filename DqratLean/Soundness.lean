@@ -20083,6 +20083,35 @@ private theorem litValue_flip_true_universal_on_eq_start
       s.formula on_ (flipUniv on_ σ) sk l huniv hvar hflip_true
   simpa [flipUniv, hon_eq] using hl
 
+private theorem litValue_flip_true_stable_or_closed_changed_or_start
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {σ : UnivAssignment}
+    {sk : SkolemAssignment} {l : Literal}
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hon_eq : σ on_ = startPos)
+    (hflip_true : s.formula.litValue (flipUniv on_ σ) sk l = true) :
+    s.formula.litValue σ sk l = true ∨
+      (l.var ∈ vars.toList ∧
+        DeleteDepWitness s.formula l.var on_ sk σ ∧
+        s.formula.isVarExistential l.var = true ∧
+        (s.formula.depset.getD l.var #[]).contains on_ = true) ∨
+      l = mkLit on_ (!startPos) := by
+  rcases litValue_flip_true_stable_or_deleteWitness_classified
+      s.formula on_ σ sk l hflip_true with
+    hstable | hchanged
+  · exact Or.inl hstable
+  · right
+    rcases hchanged with ⟨hwit, hclass⟩
+    rcases hclass with hExi | hUniv
+    · rcases hExi with ⟨hexi, hcontains⟩
+      exact Or.inl ⟨hclosed l.var hexi hcontains, hwit, hexi, hcontains⟩
+    · rcases hUniv with ⟨huniv, hvar⟩
+      exact Or.inr
+        (litValue_flip_true_universal_on_eq_start
+          (s := s) (on_ := on_) (startPos := startPos)
+          (σ := σ) (sk := sk) (l := l)
+          hon_eq huniv hvar hflip_true)
+
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {start target : Literal}
