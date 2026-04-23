@@ -21316,6 +21316,47 @@ private theorem deleteIndependenceSetBridge_of_deleteWitness_descent_step
           sk' rfl hall')
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ sk) sk rfl hall
 
+private theorem deleteIndependenceSetBridge_of_tail_outcome_continuation_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (htail :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        ((∃ skNext,
+          PatchPoolCandidate s vars on_ startPos skBase skNext) ∨
+          SameStartComplementPathPair s vars on_ startPos ∨
+          PatchPoolSelfStableStartOrConnectorTailBranch
+            s vars on_ startPos skBase skStop) →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_deleteWitness_descent_step hexi
+  intro of_ sk σ₀ hall hof hwit
+  rcases deleteWitness_descent_step_or_initial_tail_outcome_closed
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths hclosed
+      hall hof hwit with
+    hgood | houtcome
+  · exact hgood
+  · rcases houtcome with ⟨startPos, skStop, hpool, htailOutcome⟩
+    exact deleteWitness_descent_step_of_good_or_forbidden_paths
+      dqbf cs hfull hon_le hon_univ hpaths
+      (htail hall hpool htailOutcome)
+
 private theorem deleteIndependenceSetBridge_of_blocked_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
