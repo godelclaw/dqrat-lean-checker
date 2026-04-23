@@ -22874,6 +22874,51 @@ private theorem patchPoolBlockedPathBranch_to_strict_tail_outcome_closed
       hclosed hgt hexi hcontains hpool hallBase hself
   · exact Or.inl hstrict
 
+private theorem patchPoolBlockedPathBranch_to_strict_tail_cursor_outcome_closed
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hbranch : PatchPoolBlockedPathBranch s vars on_ startPos skBase skCand) :
+    PatchPoolStrictStep s vars on_ startPos skBase skCand ∨
+      PatchPoolSelfSameStartCursorTailResidual
+        s vars on_ startPos skBase skCand ∨
+      PatchPoolSelfStableStartOrConnectorTailBranch
+        s vars on_ startPos skBase skCand := by
+  rcases patchPoolBlockedPathBranch_self_or_nonself_strict_step
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skCand)
+      hfull hon_le hon_univ hexi hcontains hpaths hpool hbranch with
+    hself | hstrict
+  · rcases patchPoolSelfBlockedValueBranch_to_strict_tail_outcome
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand)
+      hclosed hgt hexi hcontains hpool hallBase hself with
+      hstrict | htail
+    · exact Or.inl hstrict
+    · rcases htail with hsameStart | htailBranch
+      · have hblocked : SameStartComplementPathPairBlocked s vars on_ startPos :=
+          sameStartComplementPathPair_forces_opposite_nonpaths
+            (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+            (on_ := on_) (startPos := startPos)
+            hfull hon_le hon_univ hpaths hsameStart
+        exact Or.inr (Or.inl
+          (patchPoolSelfBlockedValueBranch_same_start_cursor
+            hself hblocked))
+      · exact Or.inr (Or.inr htailBranch)
+  · exact Or.inl hstrict
+
 private theorem patchPoolSelfTailBranch_to_outcome
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
