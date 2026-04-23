@@ -23503,7 +23503,6 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
       (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
       deleteWitnessFiberCountSet s.formula vars on_ sk' <
         deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
-    SameStartComplementPathPairBlocked s vars on_ startPos ∨
     ∃ skStop,
       PatchPoolCandidate s vars on_ startPos skBase skStop ∧
       (PatchPoolSelfSameStartCursorTailResidual
@@ -23525,7 +23524,6 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
         (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
         deleteWitnessFiberCountSet s.formula vars on_ sk' <
           deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
-      SameStartComplementPathPairBlocked s vars on_ startPos ∨
       ∃ skStop,
         PatchPoolCandidate s vars on_ startPos skBase skStop ∧
         (PatchPoolSelfSameStartCursorTailResidual
@@ -23548,7 +23546,6 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
             (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
             deleteWitnessFiberCountSet s.formula vars on_ sk' <
               deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
-          SameStartComplementPathPairBlocked s vars on_ startPos ∨
           ∃ skStop,
             PatchPoolCandidate s vars on_ startPos skBase skStop ∧
             (PatchPoolSelfSameStartCursorTailResidual
@@ -23583,7 +23580,6 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
             (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
             deleteWitnessFiberCountSet s.formula vars on_ sk' <
               deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
-          SameStartComplementPathPairBlocked s vars on_ startPos ∨
           ∃ skStop,
             PatchPoolCandidate s vars on_ startPos skBase skStop ∧
             (PatchPoolSelfSameStartCursorTailResidual
@@ -23604,8 +23600,7 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
             hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
             hpoolCur hallBase hbranch with
           hstable | hrest
-        · exact Or.inr (Or.inr
-            ⟨skCur, hpoolCur, Or.inr (Or.inl hstable)⟩)
+        · exact Or.inr ⟨skCur, hpoolCur, Or.inr (Or.inl hstable)⟩
         · rcases hrest with hstart | hrest
           · rcases patchPoolSelfStartTailResidual_first_or_same_start_cursor
               (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
@@ -23613,21 +23608,22 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
               (skCand := skCur)
               hfull hon_le hon_univ hpaths hclosed hgt hstart with
               hfirst | hsameStart
-            · exact Or.inr (Or.inr
-                ⟨skCur, hpoolCur, Or.inr (Or.inr (Or.inl hfirst))⟩)
-            · exact Or.inr (Or.inr
-                ⟨skCur, hpoolCur, Or.inl hsameStart⟩)
+            · exact Or.inr
+                ⟨skCur, hpoolCur, Or.inr (Or.inr (Or.inl hfirst))⟩
+            · exact Or.inr ⟨skCur, hpoolCur, Or.inl hsameStart⟩
           · rcases hrest with hstrict | hrest
             · exact recurseStrict hstrict
             · rcases hrest with hsameStart | hrest
-              · exact Or.inr (Or.inl (blockedPair hsameStart))
+              · exact Or.inr ⟨skCur, hpoolCur, Or.inl
+                  (patchPoolSelfStableStartOrConnectorTailBranch_same_start_cursor
+                    hbranch (blockedPair hsameStart))⟩
               · rcases hrest with hbackStable | hbackFirst
-                · exact Or.inr (Or.inr
+                · exact Or.inr
                     ⟨skCur, hpoolCur,
-                      Or.inr (Or.inr (Or.inr (Or.inl hbackStable)))⟩)
-                · exact Or.inr (Or.inr
+                      Or.inr (Or.inr (Or.inr (Or.inl hbackStable)))⟩
+                · exact Or.inr
                     ⟨skCur, hpoolCur,
-                      Or.inr (Or.inr (Or.inr (Or.inr hbackFirst)))⟩)
+                      Or.inr (Or.inr (Or.inr (Or.inr hbackFirst)))⟩
       rcases patchPoolCandidate_descent_or_residual_cases
           (s := s) (vars := vars) (on_ := on_)
           (startPos := startPos) (skBase := skBase) (skCand := skCur)
@@ -23635,7 +23631,7 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
         hgood | hresidual
       · exact Or.inl hgood
       · rcases hresidual with hblocked | hstepOrExternal
-        · rcases patchPoolBlockedPathBranch_to_strict_tail_outcome_closed
+        · rcases patchPoolBlockedPathBranch_to_strict_tail_cursor_outcome_closed
             (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
             (on_ := on_) (startPos := startPos) (skBase := skBase)
             (skCand := skCur)
@@ -23643,8 +23639,8 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
             hpoolCur hallBase hblocked with
             hstrict | htail
           · exact recurseStrict hstrict
-          · rcases htail with hsameStart | hbranch
-            · exact Or.inr (Or.inl (blockedPair hsameStart))
+          · rcases htail with hsameStartCursor | hbranch
+            · exact Or.inr ⟨skCur, hpoolCur, Or.inl hsameStartCursor⟩
             · exact terminalTail hbranch
         · rcases hstepOrExternal with hstep | hexternal
           · rcases hstep with ⟨σ, flipVar, hmem, hwit, hpoolNext⟩
@@ -23993,16 +23989,14 @@ private theorem deleteWitness_descent_step_or_cursor_tail_residual_with_same_sta
       (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
       deleteWitnessFiberCountSet s.formula vars on_ sk' <
         deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
-    ∃ startPos,
-      SameStartComplementPathPairBlocked s vars on_ startPos ∨
-      ∃ skStop,
-        PatchPoolCandidate s vars on_ startPos sk skStop ∧
-        (PatchPoolSelfSameStartCursorTailResidual
-            s vars on_ startPos sk skStop ∨
-          PatchPoolSelfStableCursorTailResidual
-            s vars on_ startPos sk skStop ∨
-          PatchPoolSelfFirstStartCursorTailResidual
-            s vars on_ startPos sk skStop) := by
+    ∃ startPos skStop,
+      PatchPoolCandidate s vars on_ startPos sk skStop ∧
+      (PatchPoolSelfSameStartCursorTailResidual
+          s vars on_ startPos sk skStop ∨
+        PatchPoolSelfStableCursorTailResidual
+          s vars on_ startPos sk skStop ∨
+        PatchPoolSelfFirstStartCursorTailResidual
+          s vars on_ startPos sk skStop) := by
   rcases deleteWitness_descent_step_or_initial_blocked_of_closed
       dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths hclosed
       hall hof hwit with
@@ -24018,27 +24012,23 @@ private theorem deleteWitness_descent_step_or_cursor_tail_residual_with_same_sta
       hgood | hresidual
     · exact Or.inl hgood
     · right
-      refine ⟨startPos, ?_⟩
-      rcases hresidual with hblockedPair | htail
-      · exact Or.inl hblockedPair
-      · right
-        rcases htail with ⟨skStop', hpoolStop, hcases⟩
-        refine ⟨skStop', hpoolStop, ?_⟩
-        rcases hcases with hsameStart | hrest
-        · exact Or.inl hsameStart
-        · rcases hrest with hstable | hrest
-          · exact Or.inr (Or.inl
-              (patchPoolSelfStableTailResidual_to_cursor hstable))
-          · rcases hrest with hfirst | hrest
+      rcases hresidual with ⟨skStop', hpoolStop, hcases⟩
+      refine ⟨startPos, skStop', hpoolStop, ?_⟩
+      rcases hcases with hsameStart | hrest
+      · exact Or.inl hsameStart
+      · rcases hrest with hstable | hrest
+        · exact Or.inr (Or.inl
+            (patchPoolSelfStableTailResidual_to_cursor hstable))
+        · rcases hrest with hfirst | hrest
+          · exact Or.inr (Or.inr
+              (patchPoolSelfFirstStartTailResidual_to_cursor hfirst))
+          · rcases hrest with hbackStable | hbackFirst
+            · exact Or.inr (Or.inl
+                (patchPoolSelfBacktrackStableTailResidual_to_cursor
+                  hbackStable))
             · exact Or.inr (Or.inr
-                (patchPoolSelfFirstStartTailResidual_to_cursor hfirst))
-            · rcases hrest with hbackStable | hbackFirst
-              · exact Or.inr (Or.inl
-                  (patchPoolSelfBacktrackStableTailResidual_to_cursor
-                    hbackStable))
-              · exact Or.inr (Or.inr
-                  (patchPoolSelfBacktrackFirstStartTailResidual_to_cursor
-                    hbackFirst))
+                (patchPoolSelfBacktrackFirstStartTailResidual_to_cursor
+                  hbackFirst))
 
 private theorem deleteWitness_descent_step_or_initial_tail_outcome_closed
     (dqbf : DQBF) (cs : ClauseStore)
@@ -24272,16 +24262,14 @@ private theorem deleteIndependenceSetBridge_of_origin_cursor_residual_with_same_
         (∀ σ, s.clauses.matrixValue s.formula σ sk = true) →
         of_ ∈ vars.toList →
         DeleteDepWitness s.formula of_ on_ sk σ₀ →
-        (∃ startPos,
-          SameStartComplementPathPairBlocked s vars on_ startPos ∨
-          ∃ skStop,
-            PatchPoolCandidate s vars on_ startPos sk skStop ∧
-            (PatchPoolSelfSameStartCursorTailResidual
-                s vars on_ startPos sk skStop ∨
-              PatchPoolSelfStableCursorTailResidual
-                s vars on_ startPos sk skStop ∨
-              PatchPoolSelfFirstStartCursorTailResidual
-                s vars on_ startPos sk skStop)) →
+        (∃ startPos skStop,
+          PatchPoolCandidate s vars on_ startPos sk skStop ∧
+          (PatchPoolSelfSameStartCursorTailResidual
+              s vars on_ startPos sk skStop ∨
+            PatchPoolSelfStableCursorTailResidual
+              s vars on_ startPos sk skStop ∨
+            PatchPoolSelfFirstStartCursorTailResidual
+              s vars on_ startPos sk skStop)) →
         (∃ sk',
           (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
           deleteWitnessFiberCountSet s.formula vars on_ sk' <
@@ -24957,8 +24945,8 @@ private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_continuation
 
 -- Conditional assembly lemma. It does not solve the semantic residual cases;
 -- it exposes exactly the remaining paper continuations under the closed-set
--- assumption: blocked same-start pair, same-start cursor, stable cursor, and
--- first-start cursor. This keeps the final frontier auditable.
+-- assumption: same-start cursor, stable cursor, and first-start cursor. This
+-- keeps the final frontier auditable.
 private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_start_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -24971,17 +24959,6 @@ private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_st
       (s.formula.depset.getD of_ #[]).contains on_ = true)
     (hpaths : NoDeleteCrossPathsSet s vars on_)
     (hclosed : DeleteDependencyClosedSet s vars on_)
-    (hpair :
-      ∀ {startPos : Bool} {skBase : SkolemAssignment},
-        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
-        SameStartComplementPathPairBlocked s vars on_ startPos →
-        (∃ sk',
-          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
-          deleteWitnessFiberCountSet s.formula vars on_ sk' <
-            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
-        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
-          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
-          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
     (hsameStartCursor :
       ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
         (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
@@ -25026,15 +25003,12 @@ private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_st
     deleteIndependenceSetBridge_of_origin_cursor_residual_with_same_start_continuation_closed
       dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
   intro of_ sk σ₀ hall hof hwit hresidual
-  rcases hresidual with ⟨startPos, hcases⟩
-  rcases hcases with hblocked | htail
-  · exact hpair hall hblocked
-  · rcases htail with ⟨skStop, hpool, hcursorCases⟩
-    rcases hcursorCases with hsameStart | hrest
-    · exact hsameStartCursor hall hpool hsameStart
-    · rcases hrest with hstable | hfirst
-      · exact hstableCursor hall hpool hstable
-      · exact hfirstCursor hall hpool hfirst
+  rcases hresidual with ⟨startPos, skStop, hpool, hcursorCases⟩
+  rcases hcursorCases with hsameStart | hrest
+  · exact hsameStartCursor hall hpool hsameStart
+  · rcases hrest with hstable | hfirst
+    · exact hstableCursor hall hpool hstable
+    · exact hfirstCursor hall hpool hfirst
 
 private theorem deleteIndependenceSetBridge_of_blocked_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
