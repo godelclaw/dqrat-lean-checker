@@ -19181,6 +19181,13 @@ private def PatchPoolBlockedPathBranch
     (s.formula.depset.getD lit.var #[]).contains on_ = true ∧
     DeletePurePath s on_ (mkLit on_ (!startPos)) lit.negate
 
+private def DeleteDependencyClosedSet
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ of_,
+    s.formula.isVarExistential of_ = true →
+    (s.formula.depset.getD of_ #[]).contains on_ = true →
+    of_ ∈ vars.toList
+
 private theorem patchPoolFailureBranch_blocked_or_step_or_external
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
@@ -19604,6 +19611,41 @@ private theorem deleteWitness_descent_step_or_initial_blocked_or_external
             σ, flipVar, hpool, hnotMem, hwit, hexi_flip,
             hcontains_flip, hnoPath⟩)
 
+private theorem deleteWitness_descent_step_or_initial_blocked_of_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ startPos skStop,
+      PatchPoolCandidate s vars on_ startPos sk skStop ∧
+      PatchPoolBlockedPathBranch s vars on_ startPos sk skStop := by
+  rcases deleteWitness_descent_step_or_initial_blocked_or_external
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hresidual
+  · exact Or.inl hgood
+  · rcases hresidual with hblocked | hexternal
+    · exact Or.inr hblocked
+    · rcases hexternal with
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, _hwit,
+          hexi_flip, hcontains_flip, _hnoPath⟩
+      exact False.elim (hnotMem (hclosed flipVar hexi_flip hcontains_flip))
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -19680,6 +19722,43 @@ private theorem deleteIndependenceSetBridge_of_deleteWitness_descent_step
         exact ih (deleteWitnessFiberCountSet s.formula vars on_ sk') hlt_n
           sk' rfl hall')
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ sk) sk rfl hall
+
+private theorem deleteIndependenceSetBridge_of_blocked_continuation_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hblocked :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolBlockedPathBranch s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_deleteWitness_descent_step hexi
+  intro of_ sk σ₀ hall hof hwit
+  rcases deleteWitness_descent_step_or_initial_blocked_of_closed
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths hclosed
+      hall hof hwit with
+    hgood | hblockedCase
+  · exact hgood
+  · rcases hblockedCase with ⟨startPos, skStop, hpool, hbranch⟩
+    exact deleteWitness_descent_step_of_good_or_forbidden_paths
+      dqbf cs hfull hon_le hon_univ hpaths
+      (hblocked hall hpool hbranch)
 
 /-- Conditional descent skeleton under the deliberately too-strong assumption
     that every local patch preserves the matrix. Keep this out of the trusted
