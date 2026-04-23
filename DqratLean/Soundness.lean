@@ -3432,6 +3432,29 @@ private theorem clauseValue_false_true_flip_implies_deleteWitness_in_clause
   exact deleteDepWitness_of_litValue_false_true_flip
     f on_ σ sk l (hfalse_lits l hlmem) hli_true
 
+private theorem clauseValue_false_true_flip_changed_lit
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (lits : Array Literal)
+    (hfalse : f.clauseValue σ sk lits = false)
+    (htrueFlip : f.clauseValue (flipUniv on_ σ) sk lits = true) :
+    ∃ l ∈ lits.toList,
+      f.litValue σ sk l = false ∧
+      f.litValue (flipUniv on_ σ) sk l = true ∧
+      DeleteDepWitness f l.var on_ sk σ := by
+  have hfalse_lits :
+      ∀ l ∈ lits.toList, f.litValue σ sk l = false :=
+    clauseValue_false_implies_all_lits_false_early f σ sk lits hfalse
+  simp only [DQBF.clauseValue, Array.any_eq_true] at htrueFlip
+  rcases htrueFlip with ⟨i, hi, hli_true⟩
+  let l := lits[i]
+  have hlmem : l ∈ lits.toList :=
+    Array.mem_toList_iff.mpr (Array.getElem_mem hi)
+  have hlfalse : f.litValue σ sk l = false :=
+    hfalse_lits l hlmem
+  exact ⟨l, hlmem, hlfalse, hli_true,
+    deleteDepWitness_of_litValue_false_true_flip
+      f on_ σ sk l hlfalse hli_true⟩
+
 private theorem clauseValue_false_true_flip_lit_in_vars_implies_deleteWitness
     (f : DQBF) (vars : Array Var) (on_ : Var)
     (σ : UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal)
@@ -19326,6 +19349,30 @@ private theorem patchPoolBlockedPathBranch_value_path_certificate
   exact ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
     hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true, hbase_eq,
     hcand_eq, hpath_cand, hno_opposite_base, hno_start_base⟩
+
+private theorem patchPoolBlockedClause_has_changed_lit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hget : s.clauses.getClause cref = some c)
+    (hclause_false : s.formula.clauseValue σ skCand c.lits = false)
+    (hon_eq : σ on_ = startPos) :
+    ∃ l ∈ c.lits.toList,
+      s.formula.litValue σ skCand l = false ∧
+      s.formula.litValue (flipUniv on_ σ) skCand l = true ∧
+      DeleteDepWitness s.formula l.var on_ skCand σ := by
+  have hflip_matrix :
+      s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = true :=
+    patchPoolCandidate_matrixValue_flip_true_of_base
+      (s := s) (vars := vars) (on_ := on_) hpool hallBase hon_eq
+  have hflip_clause :
+      s.formula.clauseValue (flipUniv on_ σ) skCand c.lits = true :=
+    clauseValue_of_matrixValue s.formula s.clauses (flipUniv on_ σ)
+      skCand cref c hflip_matrix hget
+  exact clauseValue_false_true_flip_changed_lit
+    s.formula on_ σ skCand c.lits hclause_false hflip_clause
 
 private def DeleteDependencyClosedSet
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
