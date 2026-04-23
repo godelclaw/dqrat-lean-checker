@@ -21071,6 +21071,45 @@ private def PatchPoolSelfSameStartCursorTailResidual
     PatchPoolSelfTailHead s vars on_ startPos skBase skCand σ cref c lit ∧
     SameStartComplementPathPairBlocked s vars on_ startPos
 
+private theorem patchPoolSelfBlockedValueBranch_same_start_cursor
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hself :
+      PatchPoolSelfBlockedValueBranch s vars on_ startPos skBase skCand)
+    (hblocked : SameStartComplementPathPairBlocked s vars on_ startPos) :
+    PatchPoolSelfSameStartCursorTailResidual
+        s vars on_ startPos skBase skCand := by
+  rcases hself with
+    ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+      hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+      hbase_eq, hcand_eq, hpath_cand, hno_opposite_base,
+      hno_start_base, hall_self⟩
+  exact ⟨σ, cref, c, lit,
+    ⟨hget, hclause_false, hno_compl, hlit_mem, hlit_var, hon_eq,
+      hlit_true, hlit_false, hwit, hflip_true, hbase_eq, hcand_eq,
+      hpath_cand, hno_opposite_base, hno_start_base, hall_self⟩,
+    hblocked⟩
+
+private theorem patchPoolSelfStableStartOrConnectorTailBranch_same_start_cursor
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hbranch :
+      PatchPoolSelfStableStartOrConnectorTailBranch
+        s vars on_ startPos skBase skCand)
+    (hblocked : SameStartComplementPathPairBlocked s vars on_ startPos) :
+    PatchPoolSelfSameStartCursorTailResidual
+        s vars on_ startPos skBase skCand := by
+  rcases hbranch with
+    ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+      hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+      hbase_eq, hcand_eq, hpath_cand, hno_opposite_base,
+      hno_start_base, hall_self, _htail⟩
+  exact ⟨σ, cref, c, lit,
+    ⟨hget, hclause_false, hno_compl, hlit_mem, hlit_var, hon_eq,
+      hlit_true, hlit_false, hwit, hflip_true, hbase_eq, hcand_eq,
+      hpath_cand, hno_opposite_base, hno_start_base, hall_self⟩,
+    hblocked⟩
+
 private def PatchPoolSelfConnectorTailResidual
     (s : CheckState) (vars : Array Var) (on_ : Var)
     (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
