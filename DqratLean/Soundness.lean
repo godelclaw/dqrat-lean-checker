@@ -20232,6 +20232,41 @@ private theorem patchPoolSelfTailBranch_classified
         (σ := σ) (sk := skCand) (l := other)
         hclosed hon_eq hotherTrue⟩
 
+private theorem tailClosedChangedOther_patch_step_or_path
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {other : Literal}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hon_eq : σ on_ = startPos)
+    (hother_false : s.formula.litValue σ skCand other = false)
+    (hother_mem : other.var ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula other.var on_ skCand σ) :
+    PatchPoolCandidate s vars on_ startPos skBase
+        (patchDeleteWitnessAt s.formula other.var σ skCand) ∨
+      DeletePurePath s on_ (mkLit on_ (!startPos)) other.negate := by
+  have htarget_eq :
+      other.negate =
+        mkLit other.var (s.formula.varValue σ skCand other.var) :=
+    litValue_false_negate_eq_mkLit_varValue
+      s.formula σ skCand other hother_false
+  by_cases hnoPath :
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit other.var (s.formula.varValue σ skCand other.var))
+  · left
+    exact patchPoolCandidate_patch_step
+      (s := s) (vars := vars) (on_ := on_) (patched := other.var)
+      (startPos := startPos) (skBase := skBase) (skCand := skCand)
+      (σSeed := σ) hexi hcontains hpool hother_mem hwit hon_eq hnoPath
+  · right
+    have hpath :
+        DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit other.var (s.formula.varValue σ skCand other.var)) :=
+      Classical.byContradiction hnoPath
+    simpa [htarget_eq] using hpath
+
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {start target : Literal}
