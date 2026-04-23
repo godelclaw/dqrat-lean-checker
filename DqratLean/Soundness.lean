@@ -19311,6 +19311,16 @@ private def DeleteDependencyClosedSet
     (s.formula.depset.getD of_ #[]).contains on_ = true →
     of_ ∈ vars.toList
 
+private theorem deletePurePath_target_mem_of_closed
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {start target : Literal}
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hpath : DeletePurePath s on_ start target) :
+    target.var ∈ vars.toList :=
+  hclosed target.var
+    (deletePurePath_target_isVarExistential hpath)
+    (deletePurePath_target_dependsOn hpath)
+
 private theorem patchPoolFailureBranch_blocked_or_step_or_external
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
