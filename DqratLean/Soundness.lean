@@ -13562,6 +13562,55 @@ private theorem deletePurePath_last_step_or_first
         ⟨_, _, _, hprev, hget, hcur, hnoStartNeg, htarget, hne,
           hexi, hdep⟩
 
+private inductive DeletePurePathSized
+    (st : CheckState) (on_ : Var) (start : Literal) :
+    Nat → Literal → Prop
+  | first
+      {lit : Literal} {cref : CRef} {clause : Clause}
+      (hget : st.clauses.getClause cref = some clause)
+      (hstart : start ∈ clause.lits.toList)
+      (hnoStartNeg : start.negate ∉ clause.lits.toList)
+      (hlit : lit ∈ clause.lits.toList)
+      (hne : lit ≠ start)
+      (hexi : st.formula.isVarExistential lit.var = true)
+      (hdep : (st.formula.depset.getD lit.var #[]).contains on_ = true) :
+      DeletePurePathSized st on_ start 1 lit
+  | step
+      {n : Nat} {prev lit : Literal} {cref : CRef} {clause : Clause}
+      (hprev : DeletePurePathSized st on_ start n prev)
+      (hget : st.clauses.getClause cref = some clause)
+      (hcur : prev.negate ∈ clause.lits.toList)
+      (hnoStartNeg : start.negate ∉ clause.lits.toList)
+      (hlit : lit ∈ clause.lits.toList)
+      (hne : lit ≠ prev.negate)
+      (hexi : st.formula.isVarExistential lit.var = true)
+      (hdep : (st.formula.depset.getD lit.var #[]).contains on_ = true) :
+      DeletePurePathSized st on_ start (n + 1) lit
+
+private theorem deletePurePathSized_to_path
+    {st : CheckState} {on_ : Var} {start target : Literal} {n : Nat}
+    (hpath : DeletePurePathSized st on_ start n target) :
+    DeletePurePath st on_ start target := by
+  induction hpath with
+  | first hget hstart hnoStartNeg hlit hne hexi hdep =>
+      exact DeletePurePath.first hget hstart hnoStartNeg hlit hne hexi hdep
+  | step hprev hget hcur hnoStartNeg hlit hne hexi hdep ih =>
+      exact DeletePurePath.step ih hget hcur hnoStartNeg hlit hne hexi hdep
+
+private theorem deletePurePath_to_exists_sized
+    {st : CheckState} {on_ : Var} {start target : Literal}
+    (hpath : DeletePurePath st on_ start target) :
+    ∃ n, DeletePurePathSized st on_ start n target := by
+  induction hpath with
+  | first hget hstart hnoStartNeg hlit hne hexi hdep =>
+      exact ⟨1,
+        DeletePurePathSized.first hget hstart hnoStartNeg hlit hne hexi hdep⟩
+  | step hprev hget hcur hnoStartNeg hlit hne hexi hdep ih =>
+      rcases ih with ⟨n, hsizedPrev⟩
+      exact ⟨n + 1,
+        DeletePurePathSized.step hsizedPrev hget hcur hnoStartNeg hlit hne
+          hexi hdep⟩
+
 private theorem deletePurePath_last_clause_has_other_true_lit
     {st : CheckState} {on_ : Var} {start target : Literal}
     {τ : UnivAssignment} {sk : SkolemAssignment}
@@ -13615,6 +13664,61 @@ private theorem deletePurePath_last_clause_has_other_true_lit
       exact Or.inr
         ⟨_, _, _, hprev, hget, hcur, hnoStartNeg, htarget, hne,
           l, hlmem, hl_ne_target, hltrue⟩
+
+private theorem deletePurePathSized_last_clause_has_other_true_lit
+    {st : CheckState} {on_ : Var} {start target : Literal} {n : Nat}
+    {τ : UnivAssignment} {sk : SkolemAssignment}
+    (hpath : DeletePurePathSized st on_ start n target)
+    (hclauses_true :
+      ∀ cref clause,
+        st.clauses.getClause cref = some clause →
+        st.formula.clauseValue τ sk clause.lits = true)
+    (htarget_false : st.formula.litValue τ sk target = false) :
+    (∃ cref clause,
+      st.clauses.getClause cref = some clause ∧
+      start ∈ clause.lits.toList ∧
+      start.negate ∉ clause.lits.toList ∧
+      target ∈ clause.lits.toList ∧
+      target ≠ start ∧
+      ∃ l ∈ clause.lits.toList,
+        l ≠ target ∧ st.formula.litValue τ sk l = true) ∨
+    (∃ prev cref clause m,
+      ∃ hprev : DeletePurePathSized st on_ start m prev,
+        st.clauses.getClause cref = some clause ∧
+        prev.negate ∈ clause.lits.toList ∧
+        start.negate ∉ clause.lits.toList ∧
+        target ∈ clause.lits.toList ∧
+        target ≠ prev.negate ∧
+        m < n ∧
+        ∃ l ∈ clause.lits.toList,
+          l ≠ target ∧ st.formula.litValue τ sk l = true) := by
+  cases hpath with
+  | first hget hstart hnoStartNeg htarget hne _hexi _hdep =>
+      have hclause_true := hclauses_true _ _ hget
+      rcases clauseValue_true_implies_exists_true_lit
+          st.formula τ sk _ hclause_true with
+        ⟨l, hlmem, hltrue⟩
+      have hl_ne_target : l ≠ target := by
+        intro hEq
+        subst l
+        rw [htarget_false] at hltrue
+        cases hltrue
+      exact Or.inl
+        ⟨_, _, hget, hstart, hnoStartNeg, htarget, hne,
+          l, hlmem, hl_ne_target, hltrue⟩
+  | step hprev hget hcur hnoStartNeg htarget hne _hexi _hdep =>
+      have hclause_true := hclauses_true _ _ hget
+      rcases clauseValue_true_implies_exists_true_lit
+          st.formula τ sk _ hclause_true with
+        ⟨l, hlmem, hltrue⟩
+      have hl_ne_target : l ≠ target := by
+        intro hEq
+        subst l
+        rw [htarget_false] at hltrue
+        cases hltrue
+      exact Or.inr
+        ⟨_, _, _, _, hprev, hget, hcur, hnoStartNeg, htarget, hne,
+          Nat.lt_succ_self _, l, hlmem, hl_ne_target, hltrue⟩
 
 private theorem arraySetIfInBounds_true_preserves_getD
     (a : Array Bool) (i target : Nat)
