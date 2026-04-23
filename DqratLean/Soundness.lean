@@ -22180,6 +22180,73 @@ private theorem patchPoolSelfBacktrackTailBranchSized_to_terminal_or_smaller
             · exact Or.inr (Or.inr (Or.inr (Or.inl hfirstStart)))
             · exact Or.inr (Or.inl hsameStart)
 
+private theorem patchPoolSelfConnectorBacktrackResidual_to_terminal
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hback :
+      PatchPoolSelfConnectorBacktrackResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolStrictStep s vars on_ startPos skBase skCand ∨
+      SameStartComplementPathPair s vars on_ startPos ∨
+      PatchPoolSelfBacktrackStableTailResidual
+        s vars on_ startPos skBase skCand ∨
+      PatchPoolSelfBacktrackFirstStartTailResidual
+        s vars on_ startPos skBase skCand := by
+  classical
+  rcases patchPoolSelfConnectorBacktrackResidual_to_exists_sized
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) hback with
+    ⟨n, hbackSized⟩
+  let P : Nat → Prop := fun n =>
+    PatchPoolSelfConnectorBacktrackResidualSized
+        s vars on_ startPos skBase skCand n →
+      PatchPoolStrictStep s vars on_ startPos skBase skCand ∨
+        SameStartComplementPathPair s vars on_ startPos ∨
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skCand ∨
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skCand
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih hcur
+      have htail :
+          PatchPoolSelfBacktrackTailBranchSized
+            s vars on_ startPos skBase skCand n :=
+        patchPoolSelfConnectorBacktrackResidualSized_to_tail_branch
+          (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+          (skBase := skBase) (skCand := skCand) (n := n)
+          hpool hallBase hcur
+      rcases patchPoolSelfBacktrackTailBranchSized_to_terminal_or_smaller
+          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+          (on_ := on_) (startPos := startPos) (skBase := skBase)
+          (skCand := skCand) (n := n)
+          hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+          hpool htail with
+        hstrict | hrest
+      · exact Or.inl hstrict
+      · rcases hrest with hpair | hrest
+        · exact Or.inr (Or.inl hpair)
+        · rcases hrest with hstable | hrest
+          · exact Or.inr (Or.inr (Or.inl hstable))
+          · rcases hrest with hfirst | hsmall
+            · exact Or.inr (Or.inr (Or.inr hfirst))
+            · rcases hsmall with ⟨m, hlt, hsmallSized⟩
+              exact ih m hlt hsmallSized)
+  exact hP n hbackSized
+
 private theorem patchPoolSelfClassifiedTailBranch_to_strict_outcome
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
