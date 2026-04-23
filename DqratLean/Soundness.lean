@@ -21817,6 +21817,53 @@ private theorem deleteWitness_descent_step_or_initial_tail_outcome_closed
         hpool hall hbranch
     exact Or.inr ⟨startPos, skStop, hpool, houtcome⟩
 
+private theorem deleteWitness_descent_step_or_initial_tail_residual_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ startPos,
+      SameStartComplementPathPair s vars on_ startPos ∨
+      ∃ skStop,
+        PatchPoolCandidate s vars on_ startPos sk skStop ∧
+        PatchPoolSelfStableStartOrConnectorTailBranch
+          s vars on_ startPos sk skStop := by
+  rcases deleteWitness_descent_step_or_initial_tail_outcome_closed
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths hclosed
+      hall hof hwit with
+    hgood | houtcome
+  · exact Or.inl hgood
+  · rcases houtcome with ⟨startPos, skStop, hpool, htailOutcome⟩
+    rcases htailOutcome with hnext | hpairOrStable
+    · rcases hnext with ⟨skNext, hpoolNext⟩
+      rcases patchPoolCandidate_iterate_descent_or_tail_residual_closed
+          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+          (on_ := on_) (startPos := startPos) (skBase := sk)
+          (skCand := skNext)
+          hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+          hpoolNext hall with
+        hgood | hresidual
+      · exact Or.inl hgood
+      · exact Or.inr ⟨startPos, hresidual⟩
+    · rcases hpairOrStable with hpair | hstable
+      · exact Or.inr ⟨startPos, Or.inl hpair⟩
+      · exact Or.inr ⟨startPos, Or.inr ⟨skStop, hpool, hstable⟩⟩
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -21934,6 +21981,46 @@ private theorem deleteIndependenceSetBridge_of_tail_outcome_continuation_closed
     exact deleteWitness_descent_step_of_good_or_forbidden_paths
       dqbf cs hfull hon_le hon_univ hpaths
       (htail hall hpool htailOutcome)
+
+private theorem deleteIndependenceSetBridge_of_tail_residual_continuation_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (htail :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        (SameStartComplementPathPair s vars on_ startPos ∨
+          ∃ skStop,
+            PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+            PatchPoolSelfStableStartOrConnectorTailBranch
+              s vars on_ startPos skBase skStop) →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_deleteWitness_descent_step hexi
+  intro of_ sk σ₀ hall hof hwit
+  rcases deleteWitness_descent_step_or_initial_tail_residual_closed
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths hclosed
+      hall hof hwit with
+    hgood | hresidual
+  · exact hgood
+  · rcases hresidual with ⟨startPos, htailResidual⟩
+    exact deleteWitness_descent_step_of_good_or_forbidden_paths
+      dqbf cs hfull hon_le hon_univ hpaths
+      (htail hall htailResidual)
 
 private theorem deleteIndependenceSetBridge_of_blocked_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
