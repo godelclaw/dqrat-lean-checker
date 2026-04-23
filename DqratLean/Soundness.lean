@@ -2358,6 +2358,44 @@ private theorem deleteWitnessFiberList_patchDeleteWitnessAt_eq_of_ne
           f patched of_ on_ σ₀ sk args hneq).2 hold)
     simp [deleteWitnessFiberPred, hpatch, hold]
 
+-- Exposes the paper-style descent invariant: a self-patch removes a proper
+-- finite set of bad fibers, rather than relying on an opaque numeric decrement.
+private theorem deleteWitnessFiberList_patchDeleteWitnessAt_proper_subset_self
+    (f : DQBF) (of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀) :
+    (∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_
+          (patchDeleteWitnessAt f of_ σ₀ sk) →
+        args ∈ deleteWitnessFiberList f of_ on_ sk) ∧
+      ∃ args,
+        args ∈ deleteWitnessFiberList f of_ on_ sk ∧
+          args ∉ deleteWitnessFiberList f of_ on_
+            (patchDeleteWitnessAt f of_ σ₀ sk) := by
+  constructor
+  · intro args hmem
+    rw [mem_deleteWitnessFiberList_iff] at hmem ⊢
+    exact ⟨hmem.1,
+      deleteWitnessFiber_patchDeleteWitnessAt_imp_old_self
+        f of_ on_ σ₀ sk args hexi hcontains hwit hmem.2⟩
+  · let targetArgs := deleteDepArgs f of_ on_ σ₀
+    refine ⟨targetArgs, ?_, ?_⟩
+    · rw [mem_deleteWitnessFiberList_iff]
+      exact ⟨by
+        simpa [targetArgs, deleteDepArgs_size f of_ on_ σ₀] using
+          mem_allBoolArrays_of_size targetArgs,
+        ⟨σ₀, rfl, hwit⟩⟩
+    · intro hmem
+      have hfiber :
+          DeleteWitnessFiber f of_ on_
+            (patchDeleteWitnessAt f of_ σ₀ sk) targetArgs :=
+        (mem_deleteWitnessFiberList_iff f of_ on_
+          (patchDeleteWitnessAt f of_ σ₀ sk) targetArgs).1 hmem |>.2
+      exact not_deleteWitnessFiber_patchDeleteWitnessAt_target_self
+        f of_ on_ σ₀ sk hexi hcontains hwit hfiber
+
 private theorem deleteWitnessFiberCountVar_patchDeleteWitnessAt_eq_of_ne
     (f : DQBF) (patched of_ on_ : Var) (σ₀ : UnivAssignment)
     (sk : SkolemAssignment)
