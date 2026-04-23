@@ -19475,6 +19475,106 @@ private theorem patchPoolBlockedClause_has_closed_changed_lit
     exact Or.inl ⟨hclosed l.var hexi hdep, hexi, hdep⟩
   · exact Or.inr hUniv
 
+private theorem patchPoolBlockedValue_universal_changed_lit_impossible
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skCand : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause}
+    {lit changed : Literal}
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hget : s.clauses.getClause cref = some c)
+    (hno_compl : ∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList)
+    (hlit_mem : lit ∈ c.lits.toList)
+    (hlit_var : lit.var ∈ vars.toList)
+    (hon_eq : σ on_ = startPos)
+    (hbase_eq : lit = mkLit lit.var (s.formula.varValue σ skCand lit.var))
+    (hno_opposite_base :
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skCand lit.var)))
+    (hchanged_mem : changed ∈ c.lits.toList)
+    (hchanged_false : s.formula.litValue σ skCand changed = false)
+    (hchanged_univ : s.formula.isVarExistential changed.var = false)
+    (hchanged_on : changed.var = on_) :
+    False := by
+  have hchanged_eq :
+      changed = mkLit on_ (!startPos) := by
+    have hchanged_eq' :
+        changed = mkLit on_ (!(σ on_)) :=
+      universal_lit_false_eq_mkLit_not_sigma
+        s.formula on_ σ skCand changed hchanged_univ hchanged_on
+        hchanged_false
+    simpa [hon_eq] using hchanged_eq'
+  have hstart_mem : mkLit on_ (!startPos) ∈ c.lits.toList := by
+    simpa [← hchanged_eq] using hchanged_mem
+  have hnoStartNeg :
+      (mkLit on_ (!startPos)).negate ∉ c.lits.toList := by
+    simpa [← hchanged_eq] using hno_compl changed hchanged_mem
+  have hlit_ne_start : lit ≠ mkLit on_ (!startPos) := by
+    intro hEq
+    have hvar := congrArg Literal.var hEq
+    have hlt : on_ < lit.var := hgt lit.var hlit_var
+    exact Nat.ne_of_gt hlt (by simpa [mkLit_var_early] using hvar)
+  have hpath_lit :
+      DeletePurePath s on_ (mkLit on_ (!startPos)) lit :=
+    DeletePurePath.first hget hstart_mem hnoStartNeg hlit_mem hlit_ne_start
+      (hexi lit.var hlit_var)
+      (hcontains lit.var hlit_var)
+  have hpath_base :
+      DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skCand lit.var)) := by
+    simpa [← hbase_eq] using hpath_lit
+  exact hno_opposite_base hpath_base
+
+private theorem patchPoolBlockedValue_has_existential_changed_lit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal}
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hget : s.clauses.getClause cref = some c)
+    (hclause_false : s.formula.clauseValue σ skCand c.lits = false)
+    (hno_compl : ∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList)
+    (hlit_mem : lit ∈ c.lits.toList)
+    (hlit_var : lit.var ∈ vars.toList)
+    (hon_eq : σ on_ = startPos)
+    (hbase_eq : lit = mkLit lit.var (s.formula.varValue σ skCand lit.var))
+    (hno_opposite_base :
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skCand lit.var))) :
+    ∃ changed ∈ c.lits.toList,
+      changed.var ∈ vars.toList ∧
+      s.formula.litValue σ skCand changed = false ∧
+      s.formula.litValue (flipUniv on_ σ) skCand changed = true ∧
+      DeleteDepWitness s.formula changed.var on_ skCand σ ∧
+      s.formula.isVarExistential changed.var = true ∧
+      (s.formula.depset.getD changed.var #[]).contains on_ = true := by
+  rcases patchPoolBlockedClause_has_closed_changed_lit
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (σ := σ)
+      (cref := cref) (c := c)
+      hclosed hpool hallBase hget hclause_false hon_eq with
+    ⟨changed, hchanged_mem, hchanged_false, hchanged_true, hwit, hclass⟩
+  rcases hclass with hExi | hUniv
+  · rcases hExi with ⟨hchanged_var, hchanged_exi, hchanged_dep⟩
+    exact ⟨changed, hchanged_mem, hchanged_var, hchanged_false,
+      hchanged_true, hwit, hchanged_exi, hchanged_dep⟩
+  · rcases hUniv with ⟨hchanged_univ, hchanged_on⟩
+    exact False.elim
+      (patchPoolBlockedValue_universal_changed_lit_impossible
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (skCand := skCand) (σ := σ) (cref := cref) (c := c)
+        (lit := lit) (changed := changed)
+        hgt hexi hcontains hget hno_compl hlit_mem hlit_var hon_eq
+        hbase_eq hno_opposite_base hchanged_mem hchanged_false
+        hchanged_univ hchanged_on)
+
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {start target : Literal}
