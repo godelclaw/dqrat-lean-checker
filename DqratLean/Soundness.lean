@@ -20639,8 +20639,57 @@ private theorem patchPoolSelfClassifiedTailBranch_to_outcome
             · exact Or.inr (Or.inl hstart)
           exact Or.inr (Or.inr (stableResidual (Or.inr
             ⟨prev, tailCref, tailClause, other, hprevPath, htailGet,
-              hprevMem, hnoStartNeg, htargetMem, htargetNe, hotherMem,
-              hotherNe, hotherTrue, hstableStartConnector⟩)))
+            hprevMem, hnoStartNeg, htargetMem, htargetNe, hotherMem,
+            hotherNe, hotherTrue, hstableStartConnector⟩)))
+
+private theorem patchPoolSelfTailBranch_to_outcome
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (htail :
+      PatchPoolSelfTailBranch s vars on_ startPos skBase skCand) :
+    (∃ skNext,
+      PatchPoolCandidate s vars on_ startPos skBase skNext) ∨
+      SameStartComplementPathPair s vars on_ startPos ∨
+      PatchPoolSelfStableStartOrConnectorTailBranch
+        s vars on_ startPos skBase skCand :=
+  patchPoolSelfClassifiedTailBranch_to_outcome
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skCand := skCand)
+    hgt hexi hcontains hpool
+    (patchPoolSelfTailBranch_classified
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) hclosed htail)
+
+private theorem patchPoolSelfBlockedValueBranch_to_tail_outcome
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hself :
+      PatchPoolSelfBlockedValueBranch s vars on_ startPos skBase skCand) :
+    (∃ skNext,
+      PatchPoolCandidate s vars on_ startPos skBase skNext) ∨
+      SameStartComplementPathPair s vars on_ startPos ∨
+      PatchPoolSelfStableStartOrConnectorTailBranch
+        s vars on_ startPos skBase skCand :=
+  patchPoolSelfTailBranch_to_outcome
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skCand := skCand)
+    hclosed hgt hexi hcontains hpool
+    (patchPoolSelfBlockedValueBranch_to_tail_branch
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) hpool hallBase hself)
 
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
