@@ -13533,6 +13533,35 @@ private theorem deletePurePath_target_dependsOn
   | step _ _ _ _ _ _ _ hdep _ =>
       exact hdep
 
+private theorem deletePurePath_last_step_or_first
+    {st : CheckState} {on_ : Var} {start target : Literal}
+    (hpath : DeletePurePath st on_ start target) :
+    (∃ cref clause,
+      st.clauses.getClause cref = some clause ∧
+      start ∈ clause.lits.toList ∧
+      start.negate ∉ clause.lits.toList ∧
+      target ∈ clause.lits.toList ∧
+      target ≠ start ∧
+      st.formula.isVarExistential target.var = true ∧
+      (st.formula.depset.getD target.var #[]).contains on_ = true) ∨
+    (∃ prev cref clause,
+      DeletePurePath st on_ start prev ∧
+      st.clauses.getClause cref = some clause ∧
+      prev.negate ∈ clause.lits.toList ∧
+      start.negate ∉ clause.lits.toList ∧
+      target ∈ clause.lits.toList ∧
+      target ≠ prev.negate ∧
+      st.formula.isVarExistential target.var = true ∧
+      (st.formula.depset.getD target.var #[]).contains on_ = true) := by
+  cases hpath with
+  | first hget hstart hnoStartNeg htarget hne hexi hdep =>
+      exact Or.inl
+        ⟨_, _, hget, hstart, hnoStartNeg, htarget, hne, hexi, hdep⟩
+  | step hprev hget hcur hnoStartNeg htarget hne hexi hdep =>
+      exact Or.inr
+        ⟨_, _, _, hprev, hget, hcur, hnoStartNeg, htarget, hne,
+          hexi, hdep⟩
+
 private theorem arraySetIfInBounds_true_preserves_getD
     (a : Array Bool) (i target : Nat)
     (h : a.getD target false = true) :
