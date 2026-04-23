@@ -19250,7 +19250,11 @@ private theorem patchPoolBlockedPathBranch_value_path_certificate
     (hon_univ : s.formula.isVarExistential on_ = false)
     (hpaths : NoDeleteCrossPathsSet s vars on_)
     (hbranch : PatchPoolBlockedPathBranch s vars on_ startPos skBase skCand) :
-    ∃ σ lit,
+    ∃ σ cref c lit,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue σ skCand c.lits = false ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      lit ∈ c.lits.toList ∧
       lit.var ∈ vars.toList ∧
       s.formula.litValue σ skBase lit = true ∧
       s.formula.litValue σ skCand lit = false ∧
@@ -19263,8 +19267,8 @@ private theorem patchPoolBlockedPathBranch_value_path_certificate
       ¬ DeletePurePath s on_ (mkLit on_ startPos)
         (mkLit lit.var (s.formula.varValue σ skBase lit.var)) := by
   rcases hbranch with
-    ⟨σ, _cref, _c, lit, _hget, _hclause_false, _hno_compl,
-      _hlit_mem, hlit_var, _hon_eq, hlit_true, hlit_false,
+    ⟨σ, cref, c, lit, hget, hclause_false, hno_compl,
+      hlit_mem, hlit_var, _hon_eq, hlit_true, hlit_false,
       hno_opposite, _hwit, _hexi_lit, _hcontains_lit, hpath_neg⟩
   have hbase_eq :
       lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) :=
@@ -19296,8 +19300,9 @@ private theorem patchPoolBlockedPathBranch_value_path_certificate
     intro hpath
     rw [← hbase_eq] at hpath
     exact hno_start hpath
-  exact ⟨σ, lit, hlit_var, hlit_true, hlit_false, hbase_eq, hcand_eq,
-    hpath_cand, hno_opposite_base, hno_start_base⟩
+  exact ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+    hlit_var, hlit_true, hlit_false, hbase_eq, hcand_eq, hpath_cand,
+    hno_opposite_base, hno_start_base⟩
 
 private def DeleteDependencyClosedSet
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
@@ -19892,9 +19897,13 @@ private theorem deleteIndependenceSetBridge_of_blocked_value_continuation_closed
     (hclosed : DeleteDependencyClosedSet s vars on_)
     (hblocked :
       ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
-        {σ : UnivAssignment} {lit : Literal},
+        {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal},
         (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
         PatchPoolCandidate s vars on_ startPos skBase skStop →
+        s.clauses.getClause cref = some c →
+        s.formula.clauseValue σ skStop c.lits = false →
+        (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) →
+        lit ∈ c.lits.toList →
         lit.var ∈ vars.toList →
         s.formula.litValue σ skBase lit = true →
         s.formula.litValue σ skStop lit = false →
@@ -19922,9 +19931,11 @@ private theorem deleteIndependenceSetBridge_of_blocked_value_continuation_closed
       (on_ := on_) (startPos := startPos) (skBase := skBase)
       (skCand := skStop)
       hfull hon_le hon_univ hpaths hbranch with
-    ⟨σ, lit, hlit_var, hlit_true, hlit_false, hbase_eq, hcand_eq,
+    ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+      hlit_var, hlit_true, hlit_false, hbase_eq, hcand_eq,
       hpath_cand, hno_opposite_base, hno_start_base⟩
-  exact hblocked hall hpool hlit_var hlit_true hlit_false hbase_eq
+  exact hblocked hall hpool hget hclause_false hno_compl hlit_mem
+    hlit_var hlit_true hlit_false hbase_eq
     hcand_eq hpath_cand hno_opposite_base hno_start_base
 
 /-- Conditional descent skeleton under the deliberately too-strong assumption
