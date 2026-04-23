@@ -20091,21 +20091,32 @@ private theorem litValue_flip_true_stable_or_closed_changed_or_start
     (hon_eq : σ on_ = startPos)
     (hflip_true : s.formula.litValue (flipUniv on_ σ) sk l = true) :
     s.formula.litValue σ sk l = true ∨
-      (l.var ∈ vars.toList ∧
+      (s.formula.litValue σ sk l = false ∧
+        l.var ∈ vars.toList ∧
         DeleteDepWitness s.formula l.var on_ sk σ ∧
         s.formula.isVarExistential l.var = true ∧
         (s.formula.depset.getD l.var #[]).contains on_ = true) ∨
       l = mkLit on_ (!startPos) := by
-  rcases litValue_flip_true_stable_or_deleteWitness_classified
-      s.formula on_ σ sk l hflip_true with
-    hstable | hchanged
+  by_cases hstable : s.formula.litValue σ sk l = true
   · exact Or.inl hstable
   · right
-    rcases hchanged with ⟨hwit, hclass⟩
-    rcases hclass with hExi | hUniv
-    · rcases hExi with ⟨hexi, hcontains⟩
-      exact Or.inl ⟨hclosed l.var hexi hcontains, hwit, hexi, hcontains⟩
-    · rcases hUniv with ⟨huniv, hvar⟩
+    have hfalse : s.formula.litValue σ sk l = false := by
+      cases hval : s.formula.litValue σ sk l <;> simp_all
+    have hwit : DeleteDepWitness s.formula l.var on_ sk σ :=
+      deleteDepWitness_of_litValue_false_true_flip
+        s.formula on_ σ sk l hfalse hflip_true
+    by_cases hexi : s.formula.isVarExistential l.var = true
+    · have hcontains :
+          (s.formula.depset.getD l.var #[]).contains on_ = true :=
+        litValue_false_true_flip_existential_contains
+          s.formula on_ σ sk l hexi hfalse hflip_true
+      exact Or.inl
+        ⟨hfalse, hclosed l.var hexi hcontains, hwit, hexi, hcontains⟩
+    · have huniv : s.formula.isVarExistential l.var = false := by
+        cases h : s.formula.isVarExistential l.var <;> simp_all
+      have hvar : l.var = on_ :=
+        litValue_false_true_flip_universal_eq_on
+          s.formula on_ σ sk l huniv hfalse hflip_true
       exact Or.inr
         (litValue_flip_true_universal_on_eq_start
           (s := s) (on_ := on_) (startPos := startPos)
@@ -20117,7 +20128,8 @@ private def TailOtherClassification
     (startPos : Bool) (σ : UnivAssignment)
     (sk : SkolemAssignment) (other : Literal) : Prop :=
   s.formula.litValue σ sk other = true ∨
-    (other.var ∈ vars.toList ∧
+    (s.formula.litValue σ sk other = false ∧
+      other.var ∈ vars.toList ∧
       DeleteDepWitness s.formula other.var on_ sk σ ∧
       s.formula.isVarExistential other.var = true ∧
       (s.formula.depset.getD other.var #[]).contains on_ = true) ∨
