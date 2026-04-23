@@ -20052,6 +20052,37 @@ private theorem litValue_flip_true_stable_or_deleteWitness_classified
           litValue_false_true_flip_universal_eq_on
             f on_ σ sk l huniv hfalse hflip⟩
 
+private theorem universal_lit_true_eq_mkLit_sigma
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (l : Literal)
+    (huniv : f.isVarExistential l.var = false)
+    (hvar : l.var = on_)
+    (htrue : f.litValue σ sk l = true) :
+    l = mkLit on_ (σ on_) := by
+  have hl : l = mkLit l.var l.isPos := literal_eq_mkLit_var_isPos l
+  have htrue' := htrue
+  simp only [DQBF.litValue, DQBF.varValue] at htrue'
+  rw [huniv] at htrue'
+  simp only [Bool.false_eq_true, ↓reduceIte] at htrue'
+  rw [hvar] at htrue'
+  rw [hl, hvar]
+  cases hp : l.isPos <;> cases hs : σ on_ <;>
+    simp [hp, hs] at htrue' ⊢
+
+private theorem litValue_flip_true_universal_on_eq_start
+    {s : CheckState} {on_ : Var} {startPos : Bool}
+    {σ : UnivAssignment} {sk : SkolemAssignment} {l : Literal}
+    (hon_eq : σ on_ = startPos)
+    (huniv : s.formula.isVarExistential l.var = false)
+    (hvar : l.var = on_)
+    (hflip_true : s.formula.litValue (flipUniv on_ σ) sk l = true) :
+    l = mkLit on_ (!startPos) := by
+  have hl :
+      l = mkLit on_ ((flipUniv on_ σ) on_) :=
+    universal_lit_true_eq_mkLit_sigma
+      s.formula on_ (flipUniv on_ σ) sk l huniv hvar hflip_true
+  simpa [flipUniv, hon_eq] using hl
+
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {start target : Literal}
