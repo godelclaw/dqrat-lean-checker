@@ -19258,6 +19258,7 @@ private theorem patchPoolBlockedPathBranch_value_path_certificate
       lit.var ∈ vars.toList ∧
       s.formula.litValue σ skBase lit = true ∧
       s.formula.litValue σ skCand lit = false ∧
+      DeleteDepWitness s.formula lit.var on_ skCand σ ∧
       lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) ∧
       lit.negate = mkLit lit.var (s.formula.varValue σ skCand lit.var) ∧
       DeletePurePath s on_ (mkLit on_ (!startPos))
@@ -19269,7 +19270,7 @@ private theorem patchPoolBlockedPathBranch_value_path_certificate
   rcases hbranch with
     ⟨σ, cref, c, lit, hget, hclause_false, hno_compl,
       hlit_mem, hlit_var, _hon_eq, hlit_true, hlit_false,
-      hno_opposite, _hwit, _hexi_lit, _hcontains_lit, hpath_neg⟩
+      hno_opposite, hwit, _hexi_lit, _hcontains_lit, hpath_neg⟩
   have hbase_eq :
       lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) :=
     lit_eq_mkLit_varValue_of_var_and_true
@@ -19301,7 +19302,7 @@ private theorem patchPoolBlockedPathBranch_value_path_certificate
     rw [← hbase_eq] at hpath
     exact hno_start hpath
   exact ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
-    hlit_var, hlit_true, hlit_false, hbase_eq, hcand_eq, hpath_cand,
+    hlit_var, hlit_true, hlit_false, hwit, hbase_eq, hcand_eq, hpath_cand,
     hno_opposite_base, hno_start_base⟩
 
 private def DeleteDependencyClosedSet
@@ -19917,6 +19918,7 @@ private theorem deleteIndependenceSetBridge_of_blocked_value_continuation_closed
         lit.var ∈ vars.toList →
         s.formula.litValue σ skBase lit = true →
         s.formula.litValue σ skStop lit = false →
+        DeleteDepWitness s.formula lit.var on_ skStop σ →
         lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) →
         lit.negate = mkLit lit.var (s.formula.varValue σ skStop lit.var) →
         DeletePurePath s on_ (mkLit on_ (!startPos))
@@ -19942,10 +19944,10 @@ private theorem deleteIndependenceSetBridge_of_blocked_value_continuation_closed
       (skCand := skStop)
       hfull hon_le hon_univ hpaths hbranch with
     ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
-      hlit_var, hlit_true, hlit_false, hbase_eq, hcand_eq,
+      hlit_var, hlit_true, hlit_false, hwit, hbase_eq, hcand_eq,
       hpath_cand, hno_opposite_base, hno_start_base⟩
   exact hblocked hall hpool hget hclause_false hno_compl hlit_mem
-    hlit_var hlit_true hlit_false hbase_eq
+    hlit_var hlit_true hlit_false hwit hbase_eq
     hcand_eq hpath_cand hno_opposite_base hno_start_base
 
 /-- Conditional descent skeleton under the deliberately too-strong assumption
