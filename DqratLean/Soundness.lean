@@ -19878,6 +19878,55 @@ private theorem deleteIndependenceSetBridge_of_blocked_continuation_closed
       dqbf cs hfull hon_le hon_univ hpaths
       (hblocked hall hpool hbranch)
 
+private theorem deleteIndependenceSetBridge_of_blocked_value_continuation_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hblocked :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
+        {σ : UnivAssignment} {lit : Literal},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        lit.var ∈ vars.toList →
+        s.formula.litValue σ skBase lit = true →
+        s.formula.litValue σ skStop lit = false →
+        lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) →
+        lit.negate = mkLit lit.var (s.formula.varValue σ skStop lit.var) →
+        DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit lit.var (s.formula.varValue σ skStop lit.var)) →
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+        ¬ DeletePurePath s on_ (mkLit on_ startPos)
+          (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+        (∃ sk',
+          (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_blocked_continuation_closed
+    dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+  intro startPos skBase skStop hall hpool hbranch
+  rcases patchPoolBlockedPathBranch_value_path_certificate
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skStop)
+      hfull hon_le hon_univ hpaths hbranch with
+    ⟨σ, lit, hlit_var, hlit_true, hlit_false, hbase_eq, hcand_eq,
+      hpath_cand, hno_opposite_base, hno_start_base⟩
+  exact hblocked hall hpool hlit_var hlit_true hlit_false hbase_eq
+    hcand_eq hpath_cand hno_opposite_base hno_start_base
+
 /-- Conditional descent skeleton under the deliberately too-strong assumption
     that every local patch preserves the matrix. Keep this out of the trusted
     dependency-removal chain; `deleteBridge_fixedWitnessPatchRouteTooStrong`
