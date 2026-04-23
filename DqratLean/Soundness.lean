@@ -23697,6 +23697,115 @@ private theorem deleteIndependenceSetBridge_of_backtracking_connector_continuati
       (skCand := skStop)
       hfull hon_le hon_univ hpaths hclosed hconnectorRaw)
 
+private theorem deleteIndependenceSetBridge_of_terminal_tail_continuation_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hstrict :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolStrictStep s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hstable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfStableTailResidual s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hfirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_blocked_same_start_continuation_closed
+    dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+    hpair hstable hfirstStart
+  intro startPos skBase skStop hall hpool hconnectorRaw
+  rcases patchPoolSelfConnectorTailResidual_to_terminal
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skStop)
+      hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+      hpool hall hconnectorRaw with
+    hstrictStep | hrest
+  · exact hstrict hall hpool hstrictStep
+  · rcases hrest with hsameStart | hrest
+    · exact hpair hall
+        (sameStartComplementPathPair_forces_opposite_nonpaths
+          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+          (on_ := on_) (startPos := startPos)
+          hfull hon_le hon_univ hpaths hsameStart)
+    · rcases hrest with hbackStableResidual | hbackFirstResidual
+      · exact hbackStable hall hpool hbackStableResidual
+      · exact hbackFirstStart hall hpool hbackFirstResidual
+
 private theorem deleteIndependenceSetBridge_of_blocked_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
