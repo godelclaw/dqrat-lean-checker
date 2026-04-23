@@ -19374,12 +19374,77 @@ private theorem patchPoolBlockedClause_has_changed_lit
   exact clauseValue_false_true_flip_changed_lit
     s.formula on_ σ skCand c.lits hclause_false hflip_clause
 
+private theorem patchPoolBlockedClause_has_classified_changed_lit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hget : s.clauses.getClause cref = some c)
+    (hclause_false : s.formula.clauseValue σ skCand c.lits = false)
+    (hon_eq : σ on_ = startPos) :
+    ∃ l ∈ c.lits.toList,
+      s.formula.litValue σ skCand l = false ∧
+      s.formula.litValue (flipUniv on_ σ) skCand l = true ∧
+      DeleteDepWitness s.formula l.var on_ skCand σ ∧
+      ((s.formula.isVarExistential l.var = true ∧
+          (s.formula.depset.getD l.var #[]).contains on_ = true) ∨
+        (s.formula.isVarExistential l.var = false ∧ l.var = on_)) := by
+  rcases patchPoolBlockedClause_has_changed_lit
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (σ := σ)
+      (cref := cref) (c := c)
+      hpool hallBase hget hclause_false hon_eq with
+    ⟨l, hlmem, hlfalse, hltrue, hwit⟩
+  refine ⟨l, hlmem, hlfalse, hltrue, hwit, ?_⟩
+  by_cases hexi : s.formula.isVarExistential l.var = true
+  · exact Or.inl
+      ⟨hexi,
+        litValue_false_true_flip_existential_contains
+          s.formula on_ σ skCand l hexi hlfalse hltrue⟩
+  · have huniv : s.formula.isVarExistential l.var = false := by
+      cases h : s.formula.isVarExistential l.var <;> simp_all
+    exact Or.inr
+      ⟨huniv,
+        litValue_false_true_flip_universal_eq_on
+          s.formula on_ σ skCand l huniv hlfalse hltrue⟩
+
 private def DeleteDependencyClosedSet
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   ∀ of_,
     s.formula.isVarExistential of_ = true →
     (s.formula.depset.getD of_ #[]).contains on_ = true →
     of_ ∈ vars.toList
+
+private theorem patchPoolBlockedClause_has_closed_changed_lit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause}
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hget : s.clauses.getClause cref = some c)
+    (hclause_false : s.formula.clauseValue σ skCand c.lits = false)
+    (hon_eq : σ on_ = startPos) :
+    ∃ l ∈ c.lits.toList,
+      s.formula.litValue σ skCand l = false ∧
+      s.formula.litValue (flipUniv on_ σ) skCand l = true ∧
+      DeleteDepWitness s.formula l.var on_ skCand σ ∧
+      ((l.var ∈ vars.toList ∧
+          s.formula.isVarExistential l.var = true ∧
+          (s.formula.depset.getD l.var #[]).contains on_ = true) ∨
+        (s.formula.isVarExistential l.var = false ∧ l.var = on_)) := by
+  rcases patchPoolBlockedClause_has_classified_changed_lit
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (σ := σ)
+      (cref := cref) (c := c)
+      hpool hallBase hget hclause_false hon_eq with
+    ⟨l, hlmem, hlfalse, hltrue, hwit, hclass⟩
+  refine ⟨l, hlmem, hlfalse, hltrue, hwit, ?_⟩
+  rcases hclass with hExi | hUniv
+  · rcases hExi with ⟨hexi, hdep⟩
+    exact Or.inl ⟨hclosed l.var hexi hdep, hexi, hdep⟩
+  · exact Or.inr hUniv
 
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
