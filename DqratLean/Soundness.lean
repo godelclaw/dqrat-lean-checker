@@ -21192,6 +21192,53 @@ private theorem deleteWitness_descent_step_or_initial_blocked_of_closed
           hexi_flip, hcontains_flip, _hnoPath⟩
       exact False.elim (hnotMem (hclosed flipVar hexi_flip hcontains_flip))
 
+private theorem deleteWitness_descent_step_or_initial_tail_outcome_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ startPos skStop,
+      PatchPoolCandidate s vars on_ startPos sk skStop ∧
+      ((∃ skNext,
+        PatchPoolCandidate s vars on_ startPos sk skNext) ∨
+        SameStartComplementPathPair s vars on_ startPos ∨
+        PatchPoolSelfStableStartOrConnectorTailBranch
+          s vars on_ startPos sk skStop) := by
+  rcases deleteWitness_descent_step_or_initial_blocked_of_closed
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths hclosed
+      hall hof hwit with
+    hgood | hblocked
+  · exact Or.inl hgood
+  · rcases hblocked with ⟨startPos, skStop, hpool, hbranch⟩
+    have houtcome :
+        (∃ skNext,
+          PatchPoolCandidate s vars on_ startPos sk skNext) ∨
+        SameStartComplementPathPair s vars on_ startPos ∨
+        PatchPoolSelfStableStartOrConnectorTailBranch
+          s vars on_ startPos sk skStop :=
+      patchPoolBlockedPathBranch_to_tail_outcome_closed
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+        (on_ := on_) (startPos := startPos) (skBase := sk)
+        (skCand := skStop)
+        hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+        hpool hall hbranch
+    exact Or.inr ⟨startPos, skStop, hpool, houtcome⟩
+
 private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
