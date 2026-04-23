@@ -20389,6 +20389,92 @@ private theorem tailStepClosedChangedOther_patch_or_same_start_pair
   · exact Or.inl hpatch
   · exact Or.inr ⟨hpath_other, hpath_neg⟩
 
+private def SameStartComplementPathPair
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) : Prop :=
+  ∃ other,
+    other.var ∈ vars.toList ∧
+    DeletePurePath s on_ (mkLit on_ (!startPos)) other ∧
+    DeletePurePath s on_ (mkLit on_ (!startPos)) other.negate
+
+private theorem tailFirstClassification_patch_or_pair_or_stable_or_start
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {tailCref : CRef} {tailClause : Clause}
+    {other : Literal}
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hon_eq : σ on_ = startPos)
+    (hget : s.clauses.getClause tailCref = some tailClause)
+    (hstart : mkLit on_ (!startPos) ∈ tailClause.lits.toList)
+    (hnoStartNeg : (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList)
+    (hother_mem_clause : other ∈ tailClause.lits.toList)
+    (hclass : TailOtherClassification s vars on_ startPos σ skCand other) :
+    PatchPoolCandidate s vars on_ startPos skBase
+        (patchDeleteWitnessAt s.formula other.var σ skCand) ∨
+      SameStartComplementPathPair s vars on_ startPos ∨
+      s.formula.litValue σ skCand other = true ∨
+      other = mkLit on_ (!startPos) := by
+  rcases hclass with hstable | hchangedOrStart
+  · exact Or.inr (Or.inr (Or.inl hstable))
+  · rcases hchangedOrStart with hchanged | hstartLit
+    · rcases hchanged with
+        ⟨hother_false, hother_mem, hwit, _hexi_other, _hdep_other⟩
+      rcases tailFirstClosedChangedOther_patch_or_same_start_pair
+          (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+          (skBase := skBase) (skCand := skCand) (σ := σ)
+          (tailCref := tailCref) (tailClause := tailClause)
+          (other := other)
+          hgt hexi hcontains hpool hon_eq hget hstart hnoStartNeg
+          hother_mem_clause hother_false hother_mem hwit with
+        hpatch | hpair
+      · exact Or.inl hpatch
+      · exact Or.inr (Or.inl ⟨other, hother_mem, hpair⟩)
+    · exact Or.inr (Or.inr (Or.inr hstartLit))
+
+private theorem tailStepClassification_patch_or_pair_or_stable_or_start
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {prev other : Literal}
+    {tailCref : CRef} {tailClause : Clause}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hon_eq : σ on_ = startPos)
+    (hprevPath : DeletePurePath s on_ (mkLit on_ (!startPos)) prev)
+    (hget : s.clauses.getClause tailCref = some tailClause)
+    (hprevMem : prev.negate ∈ tailClause.lits.toList)
+    (hnoStartNeg : (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList)
+    (hother_mem_clause : other ∈ tailClause.lits.toList)
+    (hother_ne_prev : other ≠ prev.negate)
+    (hclass : TailOtherClassification s vars on_ startPos σ skCand other) :
+    PatchPoolCandidate s vars on_ startPos skBase
+        (patchDeleteWitnessAt s.formula other.var σ skCand) ∨
+      SameStartComplementPathPair s vars on_ startPos ∨
+      s.formula.litValue σ skCand other = true ∨
+      other = mkLit on_ (!startPos) := by
+  rcases hclass with hstable | hchangedOrStart
+  · exact Or.inr (Or.inr (Or.inl hstable))
+  · rcases hchangedOrStart with hchanged | hstartLit
+    · rcases hchanged with
+        ⟨hother_false, hother_mem, hwit, _hexi_other, _hdep_other⟩
+      rcases tailStepClosedChangedOther_patch_or_same_start_pair
+          (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+          (skBase := skBase) (skCand := skCand) (σ := σ)
+          (prev := prev) (other := other) (tailCref := tailCref)
+          (tailClause := tailClause)
+          hexi hcontains hpool hon_eq hprevPath hget hprevMem
+          hnoStartNeg hother_mem_clause hother_ne_prev hother_false
+          hother_mem hwit with
+        hpatch | hpair
+      · exact Or.inl hpatch
+      · exact Or.inr (Or.inl ⟨other, hother_mem, hpair⟩)
+    · exact Or.inr (Or.inr (Or.inr hstartLit))
+
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {start target : Literal}
