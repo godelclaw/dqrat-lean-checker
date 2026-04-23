@@ -20112,6 +20112,114 @@ private theorem litValue_flip_true_stable_or_closed_changed_or_start
           (σ := σ) (sk := sk) (l := l)
           hon_eq huniv hvar hflip_true)
 
+private def TailOtherClassification
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (other : Literal) : Prop :=
+  s.formula.litValue σ sk other = true ∨
+    (other.var ∈ vars.toList ∧
+      DeleteDepWitness s.formula other.var on_ sk σ ∧
+      s.formula.isVarExistential other.var = true ∧
+      (s.formula.depset.getD other.var #[]).contains on_ = true) ∨
+    other = mkLit on_ (!startPos)
+
+private def PatchPoolSelfClassifiedTailBranch
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  ∃ σ cref c lit,
+    s.clauses.getClause cref = some c ∧
+    s.formula.clauseValue σ skCand c.lits = false ∧
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+    lit ∈ c.lits.toList ∧
+    lit.var ∈ vars.toList ∧
+    σ on_ = startPos ∧
+    s.formula.litValue σ skBase lit = true ∧
+    s.formula.litValue σ skCand lit = false ∧
+    DeleteDepWitness s.formula lit.var on_ skCand σ ∧
+    s.formula.litValue (flipUniv on_ σ) skCand lit = true ∧
+    lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) ∧
+    lit.negate = mkLit lit.var (s.formula.varValue σ skCand lit.var) ∧
+    DeletePurePath s on_ (mkLit on_ (!startPos))
+      (mkLit lit.var (s.formula.varValue σ skCand lit.var)) ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+      (mkLit lit.var (s.formula.varValue σ skBase lit.var)) ∧
+    ¬ DeletePurePath s on_ (mkLit on_ startPos)
+      (mkLit lit.var (s.formula.varValue σ skBase lit.var)) ∧
+    (∀ changed,
+      changed ∈ c.lits.toList →
+      changed.var ∈ vars.toList →
+      s.formula.litValue σ skCand changed = false →
+      s.formula.litValue (flipUniv on_ σ) skCand changed = true →
+      DeleteDepWitness s.formula changed.var on_ skCand σ →
+      s.formula.isVarExistential changed.var = true →
+      (s.formula.depset.getD changed.var #[]).contains on_ = true →
+      changed = lit) ∧
+    ((∃ tailCref tailClause other,
+      s.clauses.getClause tailCref = some tailClause ∧
+      mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+      mkLit lit.var (s.formula.varValue σ skCand lit.var) ∈
+        tailClause.lits.toList ∧
+      mkLit lit.var (s.formula.varValue σ skCand lit.var) ≠
+        mkLit on_ (!startPos) ∧
+      other ∈ tailClause.lits.toList ∧
+      other ≠ mkLit lit.var (s.formula.varValue σ skCand lit.var) ∧
+      s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+      TailOtherClassification s vars on_ startPos σ skCand other) ∨
+    (∃ prev tailCref tailClause other,
+      DeletePurePath s on_ (mkLit on_ (!startPos)) prev ∧
+      s.clauses.getClause tailCref = some tailClause ∧
+      prev.negate ∈ tailClause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+      mkLit lit.var (s.formula.varValue σ skCand lit.var) ∈
+        tailClause.lits.toList ∧
+      mkLit lit.var (s.formula.varValue σ skCand lit.var) ≠ prev.negate ∧
+      other ∈ tailClause.lits.toList ∧
+      other ≠ mkLit lit.var (s.formula.varValue σ skCand lit.var) ∧
+      s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+      TailOtherClassification s vars on_ startPos σ skCand other))
+
+private theorem patchPoolSelfTailBranch_classified
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (htail :
+      PatchPoolSelfTailBranch s vars on_ startPos skBase skCand) :
+    PatchPoolSelfClassifiedTailBranch s vars on_ startPos skBase skCand := by
+  rcases htail with
+    ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+      hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+      hbase_eq, hcand_eq, hpath_cand, hno_opposite_base,
+      hno_start_base, hall_self, htailCases⟩
+  refine ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+    hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+    hbase_eq, hcand_eq, hpath_cand, hno_opposite_base, hno_start_base,
+    hall_self, ?_⟩
+  rcases htailCases with hfirst | hstep
+  · left
+    rcases hfirst with
+      ⟨tailCref, tailClause, htailGet, hstartMem, hnoStartNeg,
+        htargetMem, htargetNe, other, hotherMem, hotherNe, hotherTrue⟩
+    exact ⟨tailCref, tailClause, other, htailGet, hstartMem,
+      hnoStartNeg, htargetMem, htargetNe, hotherMem, hotherNe,
+      hotherTrue,
+      litValue_flip_true_stable_or_closed_changed_or_start
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (σ := σ) (sk := skCand) (l := other)
+        hclosed hon_eq hotherTrue⟩
+  · right
+    rcases hstep with
+      ⟨prev, tailCref, tailClause, hprevPath, htailGet, hprevMem,
+        hnoStartNeg, htargetMem, htargetNe, other, hotherMem,
+        hotherNe, hotherTrue⟩
+    exact ⟨prev, tailCref, tailClause, other, hprevPath, htailGet,
+      hprevMem, hnoStartNeg, htargetMem, htargetNe, hotherMem,
+      hotherNe, hotherTrue,
+      litValue_flip_true_stable_or_closed_changed_or_start
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (σ := σ) (sk := skCand) (l := other)
+        hclosed hon_eq hotherTrue⟩
+
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {start target : Literal}
