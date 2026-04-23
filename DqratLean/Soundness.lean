@@ -20267,6 +20267,49 @@ private theorem tailClosedChangedOther_patch_step_or_path
       Classical.byContradiction hnoPath
     simpa [htarget_eq] using hpath
 
+private theorem tailFirstClosedChangedOther_path
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {tailCref : CRef} {tailClause : Clause}
+    {other : Literal}
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hget : s.clauses.getClause tailCref = some tailClause)
+    (hstart : mkLit on_ (!startPos) ∈ tailClause.lits.toList)
+    (hnoStartNeg : (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList)
+    (hother_mem_clause : other ∈ tailClause.lits.toList)
+    (hother_mem : other.var ∈ vars.toList) :
+    DeletePurePath s on_ (mkLit on_ (!startPos)) other := by
+  have hne : other ≠ mkLit on_ (!startPos) := by
+    intro hEq
+    have hvar := congrArg Literal.var hEq
+    have hlt : on_ < other.var := hgt other.var hother_mem
+    exact Nat.ne_of_gt hlt (by simpa [mkLit_var_early] using hvar)
+  exact DeletePurePath.first hget hstart hnoStartNeg hother_mem_clause hne
+    (hexi other.var hother_mem)
+    (hcontains other.var hother_mem)
+
+private theorem tailStepClosedChangedOther_path
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {prev other : Literal}
+    {tailCref : CRef} {tailClause : Clause}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hprevPath : DeletePurePath s on_ (mkLit on_ (!startPos)) prev)
+    (hget : s.clauses.getClause tailCref = some tailClause)
+    (hprevMem : prev.negate ∈ tailClause.lits.toList)
+    (hnoStartNeg : (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList)
+    (hother_mem_clause : other ∈ tailClause.lits.toList)
+    (hother_ne_prev : other ≠ prev.negate)
+    (hother_mem : other.var ∈ vars.toList) :
+    DeletePurePath s on_ (mkLit on_ (!startPos)) other :=
+  DeletePurePath.step hprevPath hget hprevMem hnoStartNeg
+    hother_mem_clause hother_ne_prev
+    (hexi other.var hother_mem)
+    (hcontains other.var hother_mem)
+
 private theorem deletePurePath_target_mem_of_closed
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {start target : Literal}
