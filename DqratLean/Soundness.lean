@@ -18710,6 +18710,13 @@ private theorem deleteWitness_descent_step_or_oriented_second_patch_pool_step_ca
         hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
         hnext_false, hnext_true, hwit_next, hnext_nonpath, hremoved⟩
 
+-- Lean bookkeeping for the paper's failed-patch chase. A candidate is not a
+-- satisfying witness; it is a witness obtained by one or more dependency
+-- patches whose remaining bad fibers are included in the original bad fibers
+-- and whose total bad-fiber count is strictly smaller. The last field records
+-- the path-side invariant used by the D^forall-pure argument: every changed
+-- value is an in-scope dependency and has not already been reached from the
+-- opposite start polarity.
 private def PatchPoolCandidate
     (s : CheckState) (vars : Array Var) (on_ : Var)
     (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
@@ -22488,6 +22495,13 @@ private theorem patchPoolSelfStableStartOrConnectorTailBranch_split_terminal
           · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl hbackStable))))
           · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr hbackFirst))))
 
+-- Cursor residuals are the named terminal cases of the paper's failed-patch
+-- chase after strict patch steps and connector backtracking have been consumed.
+-- `Stable` means the tail clause has a helper literal true under both the
+-- current assignment and the flipped one. `FirstStart` means the tail closes
+-- through the initial universal literal. `SameStartCursor` preserves the failed
+-- clause head together with a same-start complementary pair, avoiding the
+-- earlier mistake of treating that pair as a context-free contradiction.
 private def PatchPoolSelfStableCursorTailResidual
     (s : CheckState) (vars : Array Var) (on_ : Var)
     (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
@@ -24857,6 +24871,10 @@ private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_continuation
     exact hfirstCursor hall hpool
       (patchPoolSelfBacktrackFirstStartTailResidual_to_cursor hfirst)
 
+-- Conditional assembly lemma. It does not solve the semantic residual cases;
+-- it exposes exactly the remaining paper continuations under the closed-set
+-- assumption: blocked same-start pair, same-start cursor, stable cursor, and
+-- first-start cursor. This keeps the final frontier auditable.
 private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_start_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
