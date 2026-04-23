@@ -20275,6 +20275,90 @@ private def PatchPoolStrictStep
     deleteWitnessFiberCountSet s.formula vars on_ skNext <
       deleteWitnessFiberCountSet s.formula vars on_ skCand
 
+private theorem patchPoolBlockedValue_nonself_changed_strict_step_or_all_self
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hget : s.clauses.getClause cref = some c)
+    (hclause_false : s.formula.clauseValue σ skCand c.lits = false)
+    (hlit_mem : lit ∈ c.lits.toList)
+    (hlit_var : lit.var ∈ vars.toList)
+    (hon_eq : σ on_ = startPos)
+    (hbase_eq : lit = mkLit lit.var (s.formula.varValue σ skBase lit.var))
+    (hno_opposite_base :
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skBase lit.var))) :
+    PatchPoolStrictStep s vars on_ startPos skBase skCand ∨
+    (∀ changed,
+      changed ∈ c.lits.toList →
+      changed.var ∈ vars.toList →
+      s.formula.litValue σ skCand changed = false →
+      s.formula.litValue (flipUniv on_ σ) skCand changed = true →
+      DeleteDepWitness s.formula changed.var on_ skCand σ →
+      s.formula.isVarExistential changed.var = true →
+      (s.formula.depset.getD changed.var #[]).contains on_ = true →
+      changed = lit) := by
+  rcases patchPoolBlockedValue_nonself_changed_step_or_all_self
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (σ := σ)
+      (cref := cref) (c := c) (lit := lit)
+      hon_univ hexi hcontains hpool hget hclause_false hlit_mem
+      hlit_var hon_eq hbase_eq hno_opposite_base with
+    hstep | hall_self
+  · rcases hstep with
+      ⟨changed, _hchanged_mem, hchanged_var, _hchanged_false,
+        _hchanged_true, hwit_changed, hchanged_exi, hchanged_dep,
+        _hchanged_ne, hpool_next⟩
+    exact Or.inl
+      ⟨patchDeleteWitnessAt s.formula changed.var σ skCand, hpool_next,
+        deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+          s.formula vars changed.var on_ σ skCand hchanged_var
+          hchanged_exi hchanged_dep hwit_changed⟩
+  · exact Or.inr hall_self
+
+private theorem patchPoolBlockedPathBranch_self_or_nonself_strict_step
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hbranch : PatchPoolBlockedPathBranch s vars on_ startPos skBase skCand) :
+    PatchPoolSelfBlockedValueBranch s vars on_ startPos skBase skCand ∨
+      PatchPoolStrictStep s vars on_ startPos skBase skCand := by
+  rcases patchPoolBlockedPathBranch_value_path_certificate
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skCand)
+      hfull hon_le hon_univ hpaths hbranch with
+    ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+      hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+      hbase_eq, hcand_eq, hpath_cand, hno_opposite_base,
+      hno_start_base⟩
+  rcases patchPoolBlockedValue_nonself_changed_strict_step_or_all_self
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (σ := σ)
+      (cref := cref) (c := c) (lit := lit)
+      hon_univ hexi hcontains hpool hget hclause_false hlit_mem
+      hlit_var hon_eq hbase_eq hno_opposite_base with
+    hstrict | hall_self
+  · exact Or.inr hstrict
+  · exact Or.inl
+      ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+        hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+        hbase_eq, hcand_eq, hpath_cand, hno_opposite_base,
+        hno_start_base, hall_self⟩
+
 private theorem tailClosedChangedOther_strict_step_or_path
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
