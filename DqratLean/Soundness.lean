@@ -174,6 +174,11 @@ private theorem literal_eq_mkLit_var_isPos (l : Literal) :
       · simp [hmod]
         omega
 
+private theorem mkLit_same_var_pos_eq
+    {v : Var} {p q : Bool} (h : mkLit v p = mkLit v q) :
+    p = q := by
+  cases p <;> cases q <;> simp [mkLit] at h ⊢ <;> omega
+
 private theorem litValue_negate_early
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal) :
     f.litValue σ sk l.negate = !(f.litValue σ sk l) := by
@@ -315,6 +320,12 @@ theorem literal_eq_or_negate_of_same_var (l pivot : Literal)
   by_cases heq : l.x = pivot.x
   · left; cases l; cases pivot; simp_all [Literal.var]
   · right; exact lit_ne_pivot_of_same_var l pivot h (by cases l; cases pivot; simp_all)
+
+private theorem literal_eq_of_same_var_and_not_negate (l r : Literal)
+    (hvar : l.var = r.var) (hnot : r ≠ l.negate) : r = l := by
+  rcases literal_eq_or_negate_of_same_var r l hvar.symm with hEq | hNeg
+  · exact hEq
+  · exact False.elim (hnot hNeg)
 
 private theorem noCompl_other_lit_var_ne
     {lits : Array Literal} {target l : Literal}
@@ -13416,6 +13427,30 @@ private theorem noDeleteCrossPaths_not_reachPos_lit_reachNeg_negate
     exact noDeleteCrossPaths_not_reachPos_pos_reachNeg_neg hpaths (by
       simpa [mkLit] using hbad)
 
+private theorem not_noDeleteCrossPaths_reach_pair
+    {st : CheckState} {on_ of_ : Var}
+    (hbad : ¬ NoDeleteCrossPaths st on_ of_) :
+    ((getReachable st (mkLit on_ true)).getD (of_ * 2) false = true ∧
+       (getReachable st (mkLit on_ false)).getD (of_ * 2 + 1) false = true) ∨
+    ((getReachable st (mkLit on_ true)).getD (of_ * 2 + 1) false = true ∧
+       (getReachable st (mkLit on_ false)).getD (of_ * 2) false = true) := by
+  let a := (getReachable st (mkLit on_ true)).getD (of_ * 2) false
+  let b := (getReachable st (mkLit on_ false)).getD (of_ * 2 + 1) false
+  let c := (getReachable st (mkLit on_ true)).getD (of_ * 2 + 1) false
+  let d := (getReachable st (mkLit on_ false)).getD (of_ * 2) false
+  cases ha : a <;> cases hb : b <;> cases hc : c <;> cases hd : d <;>
+    simp [NoDeleteCrossPaths, a, b, c, d, ha, hb, hc, hd] at hbad ⊢
+
+private theorem not_noDeleteCrossPaths_exists_reach_pair
+    {st : CheckState} {on_ of_ : Var}
+    (hbad : ¬ NoDeleteCrossPaths st on_ of_) :
+    ∃ pos : Bool,
+      (getReachable st (mkLit on_ true)).getD (mkLit of_ pos).x false = true ∧
+      (getReachable st (mkLit on_ false)).getD (mkLit of_ (!pos)).x false = true := by
+  rcases not_noDeleteCrossPaths_reach_pair hbad with hnegPos | hposNeg
+  · exact ⟨false, by simpa [mkLit] using hnegPos⟩
+  · exact ⟨true, by simpa [mkLit] using hposNeg⟩
+
 private theorem noDeleteCrossPathsSet_not_reachPos_lit_reachNeg_negate
     {st : CheckState} {vars : Array Var} {on_ of_ : Var} {pos : Bool}
     (hpaths : NoDeleteCrossPathsSet st vars on_)
@@ -17528,6 +17563,87 @@ private theorem computeDeps_indepOf_gt_on
   exact computeDeps_member_gt_on
     dqbf cs hfull hon hon_le hon_univ hrun hmem
 
+private theorem computeDeps_member_of_exivars_gt_noDeleteCrossPaths
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {of_ on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hpaths : NoDeleteCrossPaths s on_ of_) :
+    of_ ∈ (s₁.indepOf.getD (on_ - 1) #[]).toList := by
+  have hidx : on_ - 1 < s.indepOf.size := by
+    rw [hfull.toCorrect.toSound.indepOf_size]
+    exact Nat.lt_of_lt_of_le (Nat.sub_lt hon (by decide)) hon_le
+  let reachPos := getReachable s (mkLit on_ true)
+  let reachNeg := getReachable s (mkLit on_ false)
+  let indep := s.formula.exivars.filter fun xvar =>
+    if xvar <= on_ then false
+    else
+      let xNeg := xvar * 2
+      let xPos := xvar * 2 + 1
+      !((reachPos.getD xNeg false && reachNeg.getD xPos false) ||
+        (reachPos.getD xPos false && reachNeg.getD xNeg false))
+  have hrun' := hrun
+  simp [computeDeps, Bind.bind, EStateM.bind, get, getThe,
+    MonadState.get, MonadStateOf.get, EStateM.get, modify, modifyGet,
+    MonadStateOf.modifyGet, EStateM.modifyGet, EStateM.pure, Pure.pure,
+    hon_univ] at hrun'
+  cases hrun'
+  have hof_filter :
+      of_ ∈ s.formula.exivars.filter fun xvar =>
+        if xvar <= on_ then false
+        else
+          let xNeg := xvar * 2
+          let xPos := xvar * 2 + 1
+          !(((getReachable s (mkLit on_ true)).getD xNeg false &&
+              (getReachable s (mkLit on_ false)).getD xPos false) ||
+            ((getReachable s (mkLit on_ true)).getD xPos false &&
+              (getReachable s (mkLit on_ false)).getD xNeg false)) := by
+    apply Array.mem_filter.mpr
+    refine ⟨Array.mem_toList_iff.mp hexivar, ?_⟩
+    have hnot_le : ¬ of_ ≤ on_ := Nat.not_le_of_gt hgt
+    simpa [hnot_le, NoDeleteCrossPaths] using hpaths
+  simpa [hidx] using Array.mem_toList_iff.mpr hof_filter
+
+private theorem computeDeps_not_mem_indepOf_of_exivars_gt_imp_not_noDeleteCrossPaths
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {of_ on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hnot_mem : of_ ∉ (s₁.indepOf.getD (on_ - 1) #[]).toList) :
+    ¬ NoDeleteCrossPaths s on_ of_ := by
+  intro hpaths
+  exact hnot_mem
+    (computeDeps_member_of_exivars_gt_noDeleteCrossPaths
+      dqbf cs hfull hon hon_le hon_univ hrun hexivar hgt hpaths)
+
+private theorem computeDeps_not_mem_indepOf_of_exivars_gt_imp_reach_pair
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {of_ on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hnot_mem : of_ ∉ (s₁.indepOf.getD (on_ - 1) #[]).toList) :
+    ∃ pos : Bool,
+      (getReachable s (mkLit on_ true)).getD (mkLit of_ pos).x false = true ∧
+      (getReachable s (mkLit on_ false)).getD (mkLit of_ (!pos)).x false = true := by
+  exact not_noDeleteCrossPaths_exists_reach_pair
+    (computeDeps_not_mem_indepOf_of_exivars_gt_imp_not_noDeleteCrossPaths
+      dqbf cs hfull hon hon_le hon_univ hrun hexivar hgt hnot_mem)
+
 private theorem noDeleteCrossPathsSet_filter_contains
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hpaths : NoDeleteCrossPathsSet s vars on_) :
@@ -18710,13 +18826,13 @@ private theorem deleteWitness_descent_step_or_oriented_second_patch_pool_step_ca
         hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
         hnext_false, hnext_true, hwit_next, hnext_nonpath, hremoved⟩
 
--- Lean bookkeeping for the paper's failed-patch chase. A candidate is not a
--- satisfying witness; it is a witness obtained by one or more dependency
--- patches whose remaining bad fibers are included in the original bad fibers
--- and whose total bad-fiber count is strictly smaller. The last field records
--- the path-side invariant used by the D^forall-pure argument: every changed
--- value is an in-scope dependency and has not already been reached from the
--- opposite start polarity.
+-- Lean bookkeeping for the paper's repair-pool chase. A repair-pool
+-- candidate is not assumed to satisfy the matrix; it is a Skolem assignment
+-- obtained by one or more dependency repairs whose remaining bad fibers are
+-- included in the original bad fibers and whose total bad-fiber count is
+-- strictly smaller. The last field records the path-side invariant used by the
+-- D^forall-pure argument: every changed value is an in-scope dependency and
+-- has not already been reached from the opposite start polarity.
 private def PatchPoolCandidate
     (s : CheckState) (vars : Array Var) (on_ : Var)
     (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
@@ -18732,6 +18848,45 @@ private def PatchPoolCandidate
         σ on_ = startPos ∧
         ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
           (mkLit of_ (s.formula.varValue σ skBase of_))
+
+private abbrev RepairPoolCandidate
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  PatchPoolCandidate s vars on_ startPos skBase skCand
+
+private def FlexibleRepairPoolCandidate
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand : SkolemAssignment) : Prop :=
+  deleteWitnessFiberCountSet s.formula vars on_ skCand <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase ∧
+    (∀ of_ ∈ vars.toList, ∀ args,
+      DeleteWitnessFiber s.formula of_ on_ skCand args →
+        DeleteWitnessFiber s.formula of_ on_ skBase args) ∧
+    ∀ of_ σ,
+      s.formula.varValue σ skCand of_ ≠
+        s.formula.varValue σ skBase of_ →
+      of_ ∈ vars.toList ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+          (mkLit of_ (s.formula.varValue σ skBase of_))
+
+private def FlexibleRepairStrictStep
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand : SkolemAssignment) : Prop :=
+  ∃ skNext,
+    FlexibleRepairPoolCandidate s vars on_ skBase skNext ∧
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skCand
+
+private theorem flexibleRepairPoolCandidate_of_patchPoolCandidate
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand) :
+    FlexibleRepairPoolCandidate s vars on_ skBase skCand := by
+  refine ⟨hpool.1, hpool.2.1, ?_⟩
+  intro of_ σ hdiff
+  rcases hpool.2.2 of_ σ hdiff with ⟨hof, hon_eq, hnoPath⟩
+  refine ⟨hof, ?_⟩
+  simpa [hon_eq] using hnoPath
 
 private theorem varValue_patchDeleteWitnessAt_ne_implies_active_fullDepArgs
     (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
@@ -18756,6 +18911,71 @@ private theorem varValue_patchDeleteWitnessAt_ne_implies_active_fullDepArgs
           f.varValue σ sk v :=
       varValue_patchDeleteWitnessAt_eq_of_ne f of_ σ₀ σ sk hv
     exact False.elim (hneq hsame)
+
+private theorem flexibleRepairPoolCandidate_patch_step
+    {s : CheckState} {vars : Array Var} {on_ patched : Var}
+    {skBase skCand : SkolemAssignment} {σSeed : UnivAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hpatched_mem : patched ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula patched on_ skCand σSeed)
+    (hnoPathSeed :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σSeed on_)))
+        (mkLit patched (s.formula.varValue σSeed skCand patched))) :
+    FlexibleRepairPoolCandidate s vars on_ skBase
+      (patchDeleteWitnessAt s.formula patched σSeed skCand) := by
+  constructor
+  · exact Nat.lt_trans
+      (deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+        s.formula vars patched on_ σSeed skCand hpatched_mem
+        (hexi patched hpatched_mem) (hcontains patched hpatched_mem) hwit)
+      hpool.1
+  constructor
+  · intro z hz args hfiber
+    by_cases hz_patched : z = patched
+    · subst z
+      exact hpool.2.1 patched hpatched_mem args
+        (deleteWitnessFiber_patchDeleteWitnessAt_imp_old_self
+          s.formula patched on_ σSeed skCand args
+          (hexi patched hpatched_mem) (hcontains patched hpatched_mem)
+          hwit hfiber)
+    · exact hpool.2.1 z hz args
+        ((deleteWitnessFiber_patchDeleteWitnessAt_iff_of_ne
+          s.formula patched z on_ σSeed skCand args hz_patched).1 hfiber)
+  · intro z σ hdiff
+    by_cases hcand_base :
+        s.formula.varValue σ skCand z =
+          s.formula.varValue σ skBase z
+    · have hdiff_cand :
+          s.formula.varValue σ
+              (patchDeleteWitnessAt s.formula patched σSeed skCand) z ≠
+            s.formula.varValue σ skCand z := by
+        intro hsame
+        exact hdiff (hsame.trans hcand_base)
+      rcases varValue_patchDeleteWitnessAt_ne_implies_active_fullDepArgs
+          s.formula patched σSeed σ skCand z
+          (hexi patched hpatched_mem) hdiff_cand with
+        ⟨hz_eq, hfull⟩
+      subst z
+      have hon_eq : σ on_ = σSeed on_ :=
+        fullDepArgs_eq_implies_on_eq_of_contains
+          s.formula patched on_ σ σSeed
+          (hcontains patched hpatched_mem) hfull
+      have hvar_eq :
+          s.formula.varValue σ skCand patched =
+            s.formula.varValue σSeed skCand patched :=
+        varValue_eq_of_fullDepArgs_eq
+          s.formula patched σ σSeed skCand
+          (hexi patched hpatched_mem) hfull
+      have hbase_eq :
+          s.formula.varValue σ skBase patched =
+            s.formula.varValue σSeed skCand patched := by
+        rw [← hcand_base, hvar_eq]
+      refine ⟨hpatched_mem, ?_⟩
+      simpa [hon_eq, hbase_eq] using hnoPathSeed
+    · exact hpool.2.2 z σ hcand_base
 
 private theorem patchPoolCandidate_initial_patch
     {s : CheckState} {vars : Array Var} {on_ of_ : Var}
@@ -18891,6 +19111,901 @@ private theorem litValue_false_negate_eq_mkLit_varValue
     simp
   exact lit_eq_mkLit_varValue_of_var_and_true
     f l.var σ sk l.negate (by simp [literal_negate_var]) hneg_true
+
+private theorem flexibleRepairPoolCandidate_false_matrix_changed_lit_with_clause_false
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    ∃ cref c l,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue σ skCand c.lits = false ∧
+      l ∈ c.lits.toList ∧
+      l.var ∈ vars.toList ∧
+      s.formula.litValue σ skBase l = true ∧
+      s.formula.litValue σ skCand l = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) l := by
+  rcases matrixValue_false_implies_exists_false_clause
+      s.formula s.clauses σ skCand hfalse with
+    ⟨cref, c, hget, hclause_false⟩
+  have hclause_true :
+      s.formula.clauseValue σ skBase c.lits = true :=
+    clauseValue_of_matrixValue s.formula s.clauses σ skBase cref c
+      (hallBase σ) hget
+  rcases clauseValue_true_false_implies_exists_true_false_lit
+      s.formula σ skBase skCand c.lits hclause_true hclause_false with
+    ⟨l, hlmem, hltrue, hlfalse⟩
+  have hdiff :
+      s.formula.varValue σ skCand l.var ≠
+        s.formula.varValue σ skBase l.var :=
+    litValue_true_false_implies_varValue_ne
+      s.formula σ skBase skCand l hltrue hlfalse
+  rcases hpool.2.2 l.var σ hdiff with ⟨hmem, hnoPath⟩
+  have hl_eq :
+      l = mkLit l.var (s.formula.varValue σ skBase l.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula l.var σ skBase l rfl hltrue
+  have hnoPath_l :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) l := by
+    rw [hl_eq]
+    exact hnoPath
+  exact ⟨cref, c, l, hget, hclause_false, hlmem, hmem, hltrue,
+    hlfalse, hnoPath_l⟩
+
+private theorem flexibleRepairPoolCandidate_false_matrix_changed_lit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    ∃ cref c l,
+      s.clauses.getClause cref = some c ∧
+      l ∈ c.lits.toList ∧
+      l.var ∈ vars.toList ∧
+      s.formula.litValue σ skBase l = true ∧
+      s.formula.litValue σ skCand l = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) l := by
+  rcases flexibleRepairPoolCandidate_false_matrix_changed_lit_with_clause_false
+      hpool hallBase hfalse with
+    ⟨cref, c, l, hget, _hclause_false, hlmem, hmem, hltrue,
+      hlfalse, hnoPath⟩
+  exact ⟨cref, c, l, hget, hlmem, hmem, hltrue, hlfalse, hnoPath⟩
+
+private theorem false_lit_deleteWitness_or_flip_false
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hfalse : f.litValue σ sk l = false) :
+    DeleteDepWitness f l.var on_ sk σ ∨
+      f.litValue (flipUniv on_ σ) sk l = false := by
+  by_cases hwit : DeleteDepWitness f l.var on_ sk σ
+  · exact Or.inl hwit
+  · exact Or.inr
+      (litValue_flip_false_of_no_deleteDepWitness f on_ σ sk l hwit hfalse)
+
+private theorem false_clause_flip_witness_or_flip_matrix_false
+    {s : CheckState} {on_ : Var}
+    {sk : SkolemAssignment} {σ : UnivAssignment}
+    {cref : CRef} {c : Clause}
+    (hget : s.clauses.getClause cref = some c)
+    (hclause_false : s.formula.clauseValue σ sk c.lits = false) :
+    (∃ flipLit,
+      flipLit ∈ c.lits.toList ∧
+      s.formula.litValue σ sk flipLit = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk flipLit = true ∧
+      DeleteDepWitness s.formula flipLit.var on_ sk σ) ∨
+    s.clauses.matrixValue s.formula (flipUniv on_ σ) sk = false := by
+  by_cases hflip_matrix :
+      s.clauses.matrixValue s.formula (flipUniv on_ σ) sk = true
+  · left
+    have hflip_clause :
+        s.formula.clauseValue (flipUniv on_ σ) sk c.lits = true :=
+      clauseValue_of_matrixValue s.formula s.clauses (flipUniv on_ σ)
+        sk cref c hflip_matrix hget
+    rcases clauseValue_false_true_flip_changed_lit
+        s.formula on_ σ sk c.lits hclause_false hflip_clause with
+      ⟨flipLit, hmem, hfalse, htrue, hwit⟩
+    exact ⟨flipLit, hmem, hfalse, htrue, hwit⟩
+  · right
+    cases hval :
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) sk with
+    | false => rfl
+    | true => exact False.elim (hflip_matrix hval)
+
+private theorem false_clause_flip_witness_or_same_clause_flip_false
+    {s : CheckState} {on_ : Var}
+    {sk : SkolemAssignment} {σ : UnivAssignment}
+    {c : Clause}
+    (hclause_false : s.formula.clauseValue σ sk c.lits = false) :
+    (∃ flipLit,
+      flipLit ∈ c.lits.toList ∧
+      s.formula.litValue σ sk flipLit = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk flipLit = true ∧
+      DeleteDepWitness s.formula flipLit.var on_ sk σ) ∨
+    s.formula.clauseValue (flipUniv on_ σ) sk c.lits = false := by
+  by_cases hflip_clause :
+      s.formula.clauseValue (flipUniv on_ σ) sk c.lits = true
+  · left
+    rcases clauseValue_false_true_flip_changed_lit
+        s.formula on_ σ sk c.lits hclause_false hflip_clause with
+      ⟨flipLit, hmem, hfalse, htrue, hwit⟩
+    exact ⟨flipLit, hmem, hfalse, htrue, hwit⟩
+  · right
+    cases hval : s.formula.clauseValue (flipUniv on_ σ) sk c.lits with
+    | false => rfl
+    | true => exact False.elim (hflip_clause hval)
+
+private theorem flexibleRepairPoolCandidate_false_matrix_flip_witness_or_flip_false
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    ∃ cref c baseLit,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue σ skCand c.lits = false ∧
+      baseLit ∈ c.lits.toList ∧
+      baseLit.var ∈ vars.toList ∧
+      s.formula.litValue σ skBase baseLit = true ∧
+      s.formula.litValue σ skCand baseLit = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) baseLit ∧
+      ((∃ flipLit,
+        flipLit ∈ c.lits.toList ∧
+        s.formula.litValue σ skCand flipLit = false ∧
+        s.formula.litValue (flipUniv on_ σ) skCand flipLit = true ∧
+        DeleteDepWitness s.formula flipLit.var on_ skCand σ) ∨
+      s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false) := by
+  rcases flexibleRepairPoolCandidate_false_matrix_changed_lit_with_clause_false
+      hpool hallBase hfalse with
+    ⟨cref, c, baseLit, hget, hclause_false, hbase_mem, hbase_var,
+      hbase_true, hbase_false, hbase_no_path⟩
+  exact ⟨cref, c, baseLit, hget, hclause_false, hbase_mem, hbase_var,
+    hbase_true, hbase_false, hbase_no_path,
+    false_clause_flip_witness_or_flip_matrix_false
+      (s := s) (on_ := on_) (sk := skCand) (σ := σ)
+      (cref := cref) (c := c) hget hclause_false⟩
+
+private theorem flexibleRepairPoolCandidate_false_matrix_flip_witness_existential_or_flip_false
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    ∃ cref c baseLit,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue σ skCand c.lits = false ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      baseLit ∈ c.lits.toList ∧
+      baseLit.var ∈ vars.toList ∧
+      s.formula.litValue σ skBase baseLit = true ∧
+      s.formula.litValue σ skCand baseLit = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) baseLit ∧
+      ((∃ flipLit,
+        flipLit ∈ c.lits.toList ∧
+        s.formula.litValue σ skCand flipLit = false ∧
+        s.formula.litValue (flipUniv on_ σ) skCand flipLit = true ∧
+        DeleteDepWitness s.formula flipLit.var on_ skCand σ ∧
+        s.formula.isVarExistential flipLit.var = true ∧
+        (s.formula.depset.getD flipLit.var #[]).contains on_ = true) ∨
+      s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false) := by
+  classical
+  rcases flexibleRepairPoolCandidate_false_matrix_flip_witness_or_flip_false
+      hpool hallBase hfalse with
+    ⟨cref, c, baseLit, hget, hclause_false, hbase_mem, hbase_var,
+      hbase_true, hbase_false, hbase_no_path, hflipOrFalse⟩
+  have hno_compl :
+      ∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList := by
+    intro l hl hneg
+    have htaut :
+        s.formula.clauseValue σ skCand c.lits = true :=
+      clauseValue_true_of_mem_lit_and_negate
+        s.formula σ skCand (lits := c.lits) (l := l) hl hneg
+    rw [hclause_false] at htaut
+    cases htaut
+  refine ⟨cref, c, baseLit, hget, hclause_false, hno_compl,
+    hbase_mem, hbase_var, hbase_true, hbase_false, hbase_no_path, ?_⟩
+  rcases hflipOrFalse with hflip | hflipFalse
+  · rcases hflip with
+      ⟨flipLit, hflip_mem, hflip_false, hflip_true, hwit⟩
+    by_cases hexi_flip : s.formula.isVarExistential flipLit.var = true
+    · have hcontains_flip :
+          (s.formula.depset.getD flipLit.var #[]).contains on_ = true :=
+        litValue_false_true_flip_existential_contains
+          s.formula on_ σ skCand flipLit hexi_flip hflip_false hflip_true
+      exact Or.inl ⟨flipLit, hflip_mem, hflip_false, hflip_true, hwit,
+        hexi_flip, hcontains_flip⟩
+    · have huniv_flip :
+          s.formula.isVarExistential flipLit.var = false := by
+        cases hval : s.formula.isVarExistential flipLit.var <;> simp_all
+      have hvar_on : flipLit.var = on_ :=
+        litValue_false_true_flip_universal_eq_on
+          s.formula on_ σ skCand flipLit huniv_flip hflip_false hflip_true
+      have hstart_eq : flipLit = mkLit on_ (!(σ on_)) :=
+        universal_lit_false_eq_mkLit_not_sigma
+          s.formula on_ σ skCand flipLit huniv_flip hvar_on hflip_false
+      have hstart_mem : mkLit on_ (!(σ on_)) ∈ c.lits.toList := by
+        simpa [← hstart_eq] using hflip_mem
+      have hnoStartNeg :
+          (mkLit on_ (!(σ on_))).negate ∉ c.lits.toList := by
+        simpa [← hstart_eq] using hno_compl flipLit hflip_mem
+      have hbase_ne_start : baseLit ≠ mkLit on_ (!(σ on_)) := by
+        intro hEq
+        have hvar := congrArg Literal.var hEq
+        exact Nat.ne_of_gt (hgt baseLit.var hbase_var)
+          (by simpa [mkLit_var_early] using hvar)
+      have hpath_base :
+          DeletePurePath s on_ (mkLit on_ (!(σ on_))) baseLit :=
+        DeletePurePath.first hget hstart_mem hnoStartNeg hbase_mem
+          hbase_ne_start (hexi baseLit.var hbase_var)
+          (hcontains baseLit.var hbase_var)
+      exact False.elim (hbase_no_path hpath_base)
+  · exact Or.inr hflipFalse
+
+private theorem flexibleRepairPoolCandidate_false_matrix_step_or_path_or_flip_false
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    FlexibleRepairStrictStep s vars on_ skBase skCand ∨
+      (∃ cref c baseLit flipLit,
+        s.clauses.getClause cref = some c ∧
+        s.formula.clauseValue σ skCand c.lits = false ∧
+        (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+        baseLit ∈ c.lits.toList ∧
+        baseLit.var ∈ vars.toList ∧
+        s.formula.litValue σ skBase baseLit = true ∧
+        s.formula.litValue σ skCand baseLit = false ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) baseLit ∧
+        flipLit ∈ c.lits.toList ∧
+        flipLit.var ∈ vars.toList ∧
+        s.formula.litValue σ skCand flipLit = false ∧
+        s.formula.litValue (flipUniv on_ σ) skCand flipLit = true ∧
+        DeleteDepWitness s.formula flipLit.var on_ skCand σ ∧
+        DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+          (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var))) ∨
+      s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false := by
+  classical
+  rcases flexibleRepairPoolCandidate_false_matrix_flip_witness_existential_or_flip_false
+      hgt hexi hcontains hpool hallBase hfalse with
+    ⟨cref, c, baseLit, hget, hclause_false, hno_compl, hbase_mem,
+      hbase_var, hbase_true, hbase_false, hbase_no_path, hflipOrFalse⟩
+  rcases hflipOrFalse with hflip | hflipFalse
+  · rcases hflip with
+      ⟨flipLit, hflip_mem, hflip_false, hflip_true, hwit,
+        hexi_flip, hcontains_flip⟩
+    have hflip_var : flipLit.var ∈ vars.toList :=
+      hclosed flipLit.var hexi_flip hcontains_flip
+    by_cases hnoPath :
+        ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+          (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var))
+    · left
+      let skNext :=
+        patchDeleteWitnessAt s.formula flipLit.var σ skCand
+      have hflexNext :
+          FlexibleRepairPoolCandidate s vars on_ skBase skNext :=
+        flexibleRepairPoolCandidate_patch_step
+          (s := s) (vars := vars) (on_ := on_)
+          (patched := flipLit.var) (skBase := skBase)
+          (skCand := skCand) (σSeed := σ)
+          hexi hcontains hpool hflip_var hwit hnoPath
+      have hlt :
+          deleteWitnessFiberCountSet s.formula vars on_ skNext <
+            deleteWitnessFiberCountSet s.formula vars on_ skCand :=
+        deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+          s.formula vars flipLit.var on_ σ skCand hflip_var
+          (hexi flipLit.var hflip_var) (hcontains flipLit.var hflip_var)
+          hwit
+      exact ⟨skNext, hflexNext, hlt⟩
+    · right
+      left
+      have hpath :
+          DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+            (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var)) :=
+        Classical.byContradiction hnoPath
+      exact ⟨cref, c, baseLit, flipLit, hget, hclause_false, hno_compl,
+        hbase_mem, hbase_var, hbase_true, hbase_false, hbase_no_path,
+        hflip_mem, hflip_var, hflip_false, hflip_true, hwit, hpath⟩
+  · exact Or.inr (Or.inr hflipFalse)
+
+private def FlexibleRepairPathBranch
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand : SkolemAssignment) (σ : UnivAssignment) : Prop :=
+  ∃ cref c baseLit flipLit,
+    s.clauses.getClause cref = some c ∧
+    s.formula.clauseValue σ skCand c.lits = false ∧
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+    baseLit ∈ c.lits.toList ∧
+    baseLit.var ∈ vars.toList ∧
+    s.formula.litValue σ skBase baseLit = true ∧
+    s.formula.litValue σ skCand baseLit = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) baseLit ∧
+    flipLit ∈ c.lits.toList ∧
+    flipLit.var ∈ vars.toList ∧
+    s.formula.litValue σ skCand flipLit = false ∧
+    s.formula.litValue (flipUniv on_ σ) skCand flipLit = true ∧
+    DeleteDepWitness s.formula flipLit.var on_ skCand σ ∧
+    DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+      (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var))
+
+private def FlexibleRepairSameClauseFlipFailure
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand : SkolemAssignment) (σ : UnivAssignment) : Prop :=
+  ∃ cref c baseLit,
+    s.clauses.getClause cref = some c ∧
+    s.formula.clauseValue σ skCand c.lits = false ∧
+    s.formula.clauseValue (flipUniv on_ σ) skCand c.lits = false ∧
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+    baseLit ∈ c.lits.toList ∧
+    baseLit.var ∈ vars.toList ∧
+    s.formula.litValue σ skBase baseLit = true ∧
+    s.formula.litValue σ skCand baseLit = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) baseLit
+
+private def FlexibleRepairSameClauseTwoPolarityFailure
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand : SkolemAssignment) (σ : UnivAssignment) : Prop :=
+  ∃ cref c leftLit rightLit,
+    s.clauses.getClause cref = some c ∧
+    s.formula.clauseValue σ skCand c.lits = false ∧
+    s.formula.clauseValue (flipUniv on_ σ) skCand c.lits = false ∧
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+    leftLit ∈ c.lits.toList ∧
+    leftLit.var ∈ vars.toList ∧
+    s.formula.litValue σ skBase leftLit = true ∧
+    s.formula.litValue σ skCand leftLit = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) leftLit ∧
+    rightLit ∈ c.lits.toList ∧
+    rightLit.var ∈ vars.toList ∧
+    s.formula.litValue (flipUniv on_ σ) skBase rightLit = true ∧
+    s.formula.litValue (flipUniv on_ σ) skCand rightLit = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (σ on_)) rightLit
+
+private theorem litValue_mkLit_universal_sigma_true
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (huniv : f.isVarExistential on_ = false) :
+    f.litValue σ sk (mkLit on_ (σ on_)) = true := by
+  cases hσ : σ on_ <;>
+    simp [litValue_mkLit_true, litValue_mkLit_false, DQBF.varValue,
+      huniv, hσ]
+
+private theorem litValue_flipUniv_mkLit_universal_not_sigma_true
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (huniv : f.isVarExistential on_ = false) :
+    f.litValue (flipUniv on_ σ) sk (mkLit on_ (!(σ on_))) = true := by
+  simpa [flipUniv] using
+    (litValue_mkLit_universal_sigma_true
+      f on_ (flipUniv on_ σ) sk huniv)
+
+private theorem flexibleRepairSameClauseTwoPolarityFailure_frontierFacts
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hfailure :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ) :
+    ∃ cref c leftLit rightLit,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue σ skCand c.lits = false ∧
+      s.formula.clauseValue (flipUniv on_ σ) skCand c.lits = false ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      leftLit ∈ c.lits.toList ∧
+      leftLit.var ∈ vars.toList ∧
+      s.formula.litValue σ skBase leftLit = true ∧
+      s.formula.litValue σ skCand leftLit = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) leftLit ∧
+      rightLit ∈ c.lits.toList ∧
+      rightLit.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skBase rightLit = true ∧
+      s.formula.litValue (flipUniv on_ σ) skCand rightLit = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (σ on_)) rightLit ∧
+      leftLit.var ≠ on_ ∧
+      rightLit.var ≠ on_ ∧
+      rightLit ≠ leftLit.negate ∧
+      mkLit on_ (σ on_) ∉ c.lits.toList ∧
+      mkLit on_ (!(σ on_)) ∉ c.lits.toList := by
+  rcases hfailure with
+    ⟨cref, c, leftLit, rightLit, hget, hclause_false,
+      hclause_flip_false, hno_compl, hleft_mem, hleft_var,
+      hleft_true, hleft_false, hleft_no_path, hright_mem,
+      hright_var, hright_true, hright_false, hright_no_path⟩
+  have hleft_ne_on : leftLit.var ≠ on_ :=
+    Nat.ne_of_gt (hgt leftLit.var hleft_var)
+  have hright_ne_on : rightLit.var ≠ on_ :=
+    Nat.ne_of_gt (hgt rightLit.var hright_var)
+  have hright_ne_left_neg : rightLit ≠ leftLit.negate := by
+    intro hEq
+    exact (hno_compl leftLit hleft_mem) (by simpa [hEq] using hright_mem)
+  have hstart_sigma_not :
+      mkLit on_ (σ on_) ∉ c.lits.toList := by
+    intro hmem
+    have hfalse :
+        s.formula.litValue σ skCand (mkLit on_ (σ on_)) = false :=
+      clauseValue_false_implies_all_lits_false_early
+        s.formula σ skCand c.lits hclause_false
+        (mkLit on_ (σ on_)) hmem
+    have htrue :
+        s.formula.litValue σ skCand (mkLit on_ (σ on_)) = true :=
+      litValue_mkLit_universal_sigma_true
+        s.formula on_ σ skCand hon_univ
+    rw [htrue] at hfalse
+    cases hfalse
+  have hstart_flip_not :
+      mkLit on_ (!(σ on_)) ∉ c.lits.toList := by
+    intro hmem
+    have hfalse :
+        s.formula.litValue (flipUniv on_ σ) skCand
+          (mkLit on_ (!(σ on_))) = false :=
+      clauseValue_false_implies_all_lits_false_early
+        s.formula (flipUniv on_ σ) skCand c.lits
+        hclause_flip_false (mkLit on_ (!(σ on_))) hmem
+    have htrue :
+        s.formula.litValue (flipUniv on_ σ) skCand
+          (mkLit on_ (!(σ on_))) = true :=
+      litValue_flipUniv_mkLit_universal_not_sigma_true
+        s.formula on_ σ skCand hon_univ
+    rw [htrue] at hfalse
+    cases hfalse
+  exact ⟨cref, c, leftLit, rightLit, hget, hclause_false,
+    hclause_flip_false, hno_compl, hleft_mem, hleft_var,
+    hleft_true, hleft_false, hleft_no_path, hright_mem,
+    hright_var, hright_true, hright_false, hright_no_path,
+    hleft_ne_on, hright_ne_on, hright_ne_left_neg,
+    hstart_sigma_not, hstart_flip_not⟩
+
+private theorem flexibleRepairSameClauseTwoPolarityFailure_frontierValues
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hfailure :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ) :
+    ∃ cref c leftLit rightLit,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue σ skCand c.lits = false ∧
+      s.formula.clauseValue (flipUniv on_ σ) skCand c.lits = false ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      leftLit ∈ c.lits.toList ∧
+      leftLit.var ∈ vars.toList ∧
+      s.formula.litValue σ skBase leftLit = true ∧
+      s.formula.litValue σ skCand leftLit = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) leftLit ∧
+      rightLit ∈ c.lits.toList ∧
+      rightLit.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skBase rightLit = true ∧
+      s.formula.litValue (flipUniv on_ σ) skCand rightLit = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (σ on_)) rightLit ∧
+      leftLit.var ≠ on_ ∧
+      rightLit.var ≠ on_ ∧
+      rightLit ≠ leftLit.negate ∧
+      mkLit on_ (σ on_) ∉ c.lits.toList ∧
+      mkLit on_ (!(σ on_)) ∉ c.lits.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand leftLit = false ∧
+      s.formula.litValue σ skCand rightLit = false ∧
+      s.formula.varValue σ skCand leftLit.var ≠
+        s.formula.varValue σ skBase leftLit.var ∧
+      s.formula.varValue (flipUniv on_ σ) skCand rightLit.var ≠
+        s.formula.varValue (flipUniv on_ σ) skBase rightLit.var := by
+  rcases flexibleRepairSameClauseTwoPolarityFailure_frontierFacts
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ) hon_univ hgt hfailure with
+    ⟨cref, c, leftLit, rightLit, hget, hclause_false,
+      hclause_flip_false, hno_compl, hleft_mem, hleft_var,
+      hleft_true, hleft_false, hleft_no_path, hright_mem,
+      hright_var, hright_true, hright_false, hright_no_path,
+      hleft_ne_on, hright_ne_on, hright_ne_left_neg,
+      hstart_sigma_not, hstart_flip_not⟩
+  have hleft_flip_false :
+      s.formula.litValue (flipUniv on_ σ) skCand leftLit = false :=
+    clauseValue_false_implies_all_lits_false_early
+      s.formula (flipUniv on_ σ) skCand c.lits
+      hclause_flip_false leftLit hleft_mem
+  have hright_sigma_false :
+      s.formula.litValue σ skCand rightLit = false :=
+    clauseValue_false_implies_all_lits_false_early
+      s.formula σ skCand c.lits hclause_false rightLit hright_mem
+  have hleft_changed :
+      s.formula.varValue σ skCand leftLit.var ≠
+        s.formula.varValue σ skBase leftLit.var :=
+    litValue_true_false_implies_varValue_ne
+      s.formula σ skBase skCand leftLit hleft_true hleft_false
+  have hright_changed :
+      s.formula.varValue (flipUniv on_ σ) skCand rightLit.var ≠
+        s.formula.varValue (flipUniv on_ σ) skBase rightLit.var :=
+    litValue_true_false_implies_varValue_ne
+      s.formula (flipUniv on_ σ) skBase skCand rightLit
+      hright_true hright_false
+  exact ⟨cref, c, leftLit, rightLit, hget, hclause_false,
+    hclause_flip_false, hno_compl, hleft_mem, hleft_var,
+    hleft_true, hleft_false, hleft_no_path, hright_mem,
+    hright_var, hright_true, hright_false, hright_no_path,
+    hleft_ne_on, hright_ne_on, hright_ne_left_neg,
+    hstart_sigma_not, hstart_flip_not, hleft_flip_false,
+    hright_sigma_false, hleft_changed, hright_changed⟩
+
+private theorem flexibleRepairSameClauseTwoPolarityFailure_sameVar_eq
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hfailure :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ) :
+    ∃ cref c leftLit rightLit,
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ ∧
+      s.clauses.getClause cref = some c ∧
+      leftLit ∈ c.lits.toList ∧
+      rightLit ∈ c.lits.toList ∧
+      (leftLit.var = rightLit.var → rightLit = leftLit) := by
+  rcases flexibleRepairSameClauseTwoPolarityFailure_frontierFacts
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ) hon_univ hgt hfailure with
+    ⟨cref, c, leftLit, rightLit, hget, _hclause_false,
+      _hclause_flip_false, _hno_compl, hleft_mem, _hleft_var,
+      _hleft_true, _hleft_false, _hleft_no_path, hright_mem,
+      _hright_var, _hright_true, _hright_false, _hright_no_path,
+      _hleft_ne_on, _hright_ne_on, hright_ne_left_neg,
+      _hstart_sigma_not, _hstart_flip_not⟩
+  refine ⟨cref, c, leftLit, rightLit, hfailure, hget, hleft_mem,
+    hright_mem, ?_⟩
+  intro hvar
+  exact literal_eq_of_same_var_and_not_negate leftLit rightLit hvar
+    hright_ne_left_neg
+
+private theorem flexibleRepairSameClauseTwoPolarityFailure_baseLiteralEqs
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hfailure :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ) :
+    ∃ cref c leftLit rightLit,
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ ∧
+      s.clauses.getClause cref = some c ∧
+      leftLit ∈ c.lits.toList ∧
+      rightLit ∈ c.lits.toList ∧
+      leftLit =
+        mkLit leftLit.var
+          (s.formula.varValue σ skBase leftLit.var) ∧
+      leftLit.negate =
+        mkLit leftLit.var
+          (s.formula.varValue σ skCand leftLit.var) ∧
+      rightLit =
+        mkLit rightLit.var
+          (s.formula.varValue (flipUniv on_ σ) skBase rightLit.var) ∧
+      rightLit.negate =
+        mkLit rightLit.var
+          (s.formula.varValue (flipUniv on_ σ) skCand rightLit.var) := by
+  rcases hfailure with
+    ⟨cref, c, leftLit, rightLit, hget, hclause_false,
+      hclause_flip_false, hno_compl, hleft_mem, hleft_var,
+      hleft_true, hleft_false, hleft_no_path, hright_mem,
+      hright_var, hright_true, hright_false, hright_no_path⟩
+  have hleft_base_eq :
+      leftLit =
+        mkLit leftLit.var
+          (s.formula.varValue σ skBase leftLit.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula leftLit.var σ skBase leftLit rfl hleft_true
+  have hleft_cand_neg_eq :
+      leftLit.negate =
+        mkLit leftLit.var
+          (s.formula.varValue σ skCand leftLit.var) :=
+    litValue_false_negate_eq_mkLit_varValue
+      s.formula σ skCand leftLit hleft_false
+  have hright_base_eq :
+      rightLit =
+        mkLit rightLit.var
+          (s.formula.varValue (flipUniv on_ σ) skBase rightLit.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula rightLit.var (flipUniv on_ σ) skBase rightLit
+      rfl hright_true
+  have hright_cand_neg_eq :
+      rightLit.negate =
+        mkLit rightLit.var
+          (s.formula.varValue (flipUniv on_ σ) skCand rightLit.var) :=
+    litValue_false_negate_eq_mkLit_varValue
+      s.formula (flipUniv on_ σ) skCand rightLit hright_false
+  exact ⟨cref, c, leftLit, rightLit,
+    ⟨cref, c, leftLit, rightLit, hget, hclause_false,
+      hclause_flip_false, hno_compl, hleft_mem, hleft_var,
+      hleft_true, hleft_false, hleft_no_path, hright_mem,
+      hright_var, hright_true, hright_false, hright_no_path⟩,
+    hget, hleft_mem, hright_mem, hleft_base_eq, hleft_cand_neg_eq,
+    hright_base_eq, hright_cand_neg_eq⟩
+
+private theorem flexibleRepairSameClauseTwoPolarityFailure_sameVar_value_eqs
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hfailure :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ) :
+    ∃ cref c leftLit rightLit,
+      s.clauses.getClause cref = some c ∧
+      leftLit ∈ c.lits.toList ∧
+      rightLit ∈ c.lits.toList ∧
+      (leftLit.var = rightLit.var →
+        s.formula.varValue σ skBase leftLit.var =
+          s.formula.varValue (flipUniv on_ σ) skBase leftLit.var ∧
+        s.formula.varValue σ skCand leftLit.var =
+          s.formula.varValue (flipUniv on_ σ) skCand leftLit.var) := by
+  rcases hfailure with
+    ⟨cref, c, leftLit, rightLit, hget, _hclause_false,
+      _hclause_flip_false, hno_compl, hleft_mem, _hleft_var,
+      hleft_true, hleft_false, _hleft_no_path, hright_mem,
+      _hright_var, hright_true, hright_false, _hright_no_path⟩
+  have hright_ne_left_neg : rightLit ≠ leftLit.negate := by
+    intro hEq
+    exact (hno_compl leftLit hleft_mem) (by simpa [hEq] using hright_mem)
+  have hleft_base_eq :
+      leftLit =
+        mkLit leftLit.var
+          (s.formula.varValue σ skBase leftLit.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula leftLit.var σ skBase leftLit rfl hleft_true
+  have hleft_cand_neg_eq :
+      leftLit.negate =
+        mkLit leftLit.var
+          (s.formula.varValue σ skCand leftLit.var) :=
+    litValue_false_negate_eq_mkLit_varValue
+      s.formula σ skCand leftLit hleft_false
+  have hright_base_eq :
+      rightLit =
+        mkLit rightLit.var
+          (s.formula.varValue (flipUniv on_ σ) skBase rightLit.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula rightLit.var (flipUniv on_ σ) skBase rightLit
+      rfl hright_true
+  have hright_cand_neg_eq :
+      rightLit.negate =
+        mkLit rightLit.var
+          (s.formula.varValue (flipUniv on_ σ) skCand rightLit.var) :=
+    litValue_false_negate_eq_mkLit_varValue
+      s.formula (flipUniv on_ σ) skCand rightLit hright_false
+  refine ⟨cref, c, leftLit, rightLit, hget, hleft_mem, hright_mem, ?_⟩
+  intro hsameVar
+  have hright_eq_left :
+      rightLit = leftLit :=
+    literal_eq_of_same_var_and_not_negate leftLit rightLit hsameVar
+      hright_ne_left_neg
+  subst rightLit
+  have hbase_mk :
+      mkLit leftLit.var
+          (s.formula.varValue σ skBase leftLit.var) =
+        mkLit leftLit.var
+          (s.formula.varValue (flipUniv on_ σ) skBase leftLit.var) :=
+    hleft_base_eq.symm.trans hright_base_eq
+  have hcand_mk :
+      mkLit leftLit.var
+          (s.formula.varValue σ skCand leftLit.var) =
+        mkLit leftLit.var
+          (s.formula.varValue (flipUniv on_ σ) skCand leftLit.var) :=
+    hleft_cand_neg_eq.symm.trans hright_cand_neg_eq
+  exact ⟨mkLit_same_var_pos_eq hbase_mk,
+    mkLit_same_var_pos_eq hcand_mk⟩
+
+private theorem flexibleRepairSameClauseTwoPolarityFailure_sameVar_noWitness
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hfailure :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ) :
+    ∃ cref c leftLit rightLit,
+      s.clauses.getClause cref = some c ∧
+      leftLit ∈ c.lits.toList ∧
+      rightLit ∈ c.lits.toList ∧
+      (leftLit.var = rightLit.var →
+        ¬ DeleteDepWitness s.formula leftLit.var on_ skBase σ ∧
+        ¬ DeleteDepWitness s.formula leftLit.var on_ skCand σ) := by
+  rcases flexibleRepairSameClauseTwoPolarityFailure_sameVar_value_eqs
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ) hfailure with
+    ⟨cref, c, leftLit, rightLit, hget, hleft_mem, hright_mem,
+      hstable⟩
+  refine ⟨cref, c, leftLit, rightLit, hget, hleft_mem, hright_mem, ?_⟩
+  intro hsameVar
+  rcases hstable hsameVar with ⟨hbase, hcand⟩
+  constructor
+  · intro hwit
+    unfold DeleteDepWitness at hwit
+    exact hwit hbase
+  · intro hwit
+    unfold DeleteDepWitness at hwit
+    exact hwit hcand
+
+private theorem flexibleRepairSameClauseFlipFailure_to_twoPolarityFailure
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hfailure :
+      FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ) :
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ := by
+  rcases hfailure with
+    ⟨cref, c, leftLit, hget, hclause_false, hclause_flip_false,
+      hno_compl, hleft_mem, hleft_var, hleft_true, hleft_false,
+      hleft_no_path⟩
+  have hclause_flip_true_base :
+      s.formula.clauseValue (flipUniv on_ σ) skBase c.lits = true :=
+    clauseValue_of_matrixValue s.formula s.clauses (flipUniv on_ σ)
+      skBase cref c (hallBase (flipUniv on_ σ)) hget
+  rcases clauseValue_true_false_implies_exists_true_false_lit
+      s.formula (flipUniv on_ σ) skBase skCand c.lits
+      hclause_flip_true_base hclause_flip_false with
+    ⟨rightLit, hright_mem, hright_true, hright_false⟩
+  have hdiff :
+      s.formula.varValue (flipUniv on_ σ) skCand rightLit.var ≠
+        s.formula.varValue (flipUniv on_ σ) skBase rightLit.var :=
+    litValue_true_false_implies_varValue_ne
+      s.formula (flipUniv on_ σ) skBase skCand rightLit
+      hright_true hright_false
+  rcases hpool.2.2 rightLit.var (flipUniv on_ σ) hdiff with
+    ⟨hright_var, hright_no_path_base⟩
+  have hright_eq :
+      rightLit =
+        mkLit rightLit.var
+          (s.formula.varValue (flipUniv on_ σ) skBase rightLit.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula rightLit.var (flipUniv on_ σ) skBase rightLit
+      rfl hright_true
+  have hright_no_path :
+      ¬ DeletePurePath s on_ (mkLit on_ (σ on_)) rightLit := by
+    have hright_no_path_lit :
+        ¬ DeletePurePath s on_ (mkLit on_ (!((flipUniv on_ σ) on_)))
+          rightLit := by
+      rw [hright_eq]
+      exact hright_no_path_base
+    simpa [flipUniv] using hright_no_path_lit
+  exact ⟨cref, c, leftLit, rightLit, hget, hclause_false,
+    hclause_flip_false, hno_compl, hleft_mem, hleft_var, hleft_true,
+    hleft_false, hleft_no_path, hright_mem, hright_var, hright_true,
+    hright_false, hright_no_path⟩
+
+private theorem flexibleRepairPoolCandidate_false_matrix_step_or_pathBranch_or_flip_false
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    FlexibleRepairStrictStep s vars on_ skBase skCand ∨
+      FlexibleRepairPathBranch s vars on_ skBase skCand σ ∨
+      s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false := by
+  simpa [FlexibleRepairPathBranch] using
+    flexibleRepairPoolCandidate_false_matrix_step_or_path_or_flip_false
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) hclosed hgt hexi hcontains hpool hallBase hfalse
+
+private theorem flexibleRepairPoolCandidate_false_matrix_step_or_pathBranch_or_sameClauseFlipFailure
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    {σ : UnivAssignment}
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    FlexibleRepairStrictStep s vars on_ skBase skCand ∨
+      FlexibleRepairPathBranch s vars on_ skBase skCand σ ∨
+      FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ := by
+  classical
+  rcases flexibleRepairPoolCandidate_false_matrix_changed_lit_with_clause_false
+      hpool hallBase hfalse with
+    ⟨cref, c, baseLit, hget, hclause_false, hbase_mem, hbase_var,
+      hbase_true, hbase_false, hbase_no_path⟩
+  have hno_compl :
+      ∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList := by
+    intro l hl hneg
+    have htaut :
+        s.formula.clauseValue σ skCand c.lits = true :=
+      clauseValue_true_of_mem_lit_and_negate
+        s.formula σ skCand (lits := c.lits) (l := l) hl hneg
+    rw [hclause_false] at htaut
+    cases htaut
+  rcases false_clause_flip_witness_or_same_clause_flip_false
+      (s := s) (on_ := on_) (sk := skCand) (σ := σ)
+      (c := c) hclause_false with
+    hflip | hclause_flip_false
+  · rcases hflip with
+      ⟨flipLit, hflip_mem, hflip_false, hflip_true, hwit⟩
+    by_cases hexi_flip : s.formula.isVarExistential flipLit.var = true
+    · have hcontains_flip :
+          (s.formula.depset.getD flipLit.var #[]).contains on_ = true :=
+        litValue_false_true_flip_existential_contains
+          s.formula on_ σ skCand flipLit hexi_flip hflip_false hflip_true
+      have hflip_var : flipLit.var ∈ vars.toList :=
+        hclosed flipLit.var hexi_flip hcontains_flip
+      by_cases hnoPath :
+          ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+            (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var))
+      · left
+        let skNext :=
+          patchDeleteWitnessAt s.formula flipLit.var σ skCand
+        have hflexNext :
+            FlexibleRepairPoolCandidate s vars on_ skBase skNext :=
+          flexibleRepairPoolCandidate_patch_step
+            (s := s) (vars := vars) (on_ := on_)
+            (patched := flipLit.var) (skBase := skBase)
+            (skCand := skCand) (σSeed := σ)
+            hexi hcontains hpool hflip_var hwit hnoPath
+        have hlt :
+            deleteWitnessFiberCountSet s.formula vars on_ skNext <
+              deleteWitnessFiberCountSet s.formula vars on_ skCand :=
+          deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+            s.formula vars flipLit.var on_ σ skCand hflip_var
+            (hexi flipLit.var hflip_var) (hcontains flipLit.var hflip_var)
+            hwit
+        exact ⟨skNext, hflexNext, hlt⟩
+      · right
+        left
+        have hpath :
+            DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+              (mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var)) :=
+          Classical.byContradiction hnoPath
+        exact ⟨cref, c, baseLit, flipLit, hget, hclause_false, hno_compl,
+          hbase_mem, hbase_var, hbase_true, hbase_false, hbase_no_path,
+          hflip_mem, hflip_var, hflip_false, hflip_true, hwit, hpath⟩
+    · have huniv_flip :
+          s.formula.isVarExistential flipLit.var = false := by
+        cases hval : s.formula.isVarExistential flipLit.var <;> simp_all
+      have hvar_on : flipLit.var = on_ :=
+        litValue_false_true_flip_universal_eq_on
+          s.formula on_ σ skCand flipLit huniv_flip hflip_false hflip_true
+      have hstart_eq : flipLit = mkLit on_ (!(σ on_)) :=
+        universal_lit_false_eq_mkLit_not_sigma
+          s.formula on_ σ skCand flipLit huniv_flip hvar_on hflip_false
+      have hstart_mem : mkLit on_ (!(σ on_)) ∈ c.lits.toList := by
+        simpa [← hstart_eq] using hflip_mem
+      have hnoStartNeg :
+          (mkLit on_ (!(σ on_))).negate ∉ c.lits.toList := by
+        simpa [← hstart_eq] using hno_compl flipLit hflip_mem
+      have hbase_ne_start : baseLit ≠ mkLit on_ (!(σ on_)) := by
+        intro hEq
+        have hvar := congrArg Literal.var hEq
+        exact Nat.ne_of_gt (hgt baseLit.var hbase_var)
+          (by simpa [mkLit_var_early] using hvar)
+      have hpath_base :
+          DeletePurePath s on_ (mkLit on_ (!(σ on_))) baseLit :=
+        DeletePurePath.first hget hstart_mem hnoStartNeg hbase_mem
+          hbase_ne_start (hexi baseLit.var hbase_var)
+          (hcontains baseLit.var hbase_var)
+      exact False.elim (hbase_no_path hpath_base)
+  · right
+    right
+    exact ⟨cref, c, baseLit, hget, hclause_false, hclause_flip_false,
+      hno_compl, hbase_mem, hbase_var, hbase_true, hbase_false,
+      hbase_no_path⟩
 
 private theorem patchPoolCandidate_false_matrix_changed_lit_with_clause_false
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -19452,6 +20567,49 @@ private def PatchPoolBlockedPathBranch
     (s.formula.depset.getD lit.var #[]).contains on_ = true ∧
     DeletePurePath s on_ (mkLit on_ (!startPos)) lit.negate
 
+private theorem flexibleRepairPathBranch_to_blockedPathBranch
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hbranch : FlexibleRepairPathBranch s vars on_ skBase skCand σ) :
+    PatchPoolBlockedPathBranch s vars on_ (σ on_) skBase skCand := by
+  rcases hbranch with
+    ⟨cref, c, baseLit, flipLit, hget, hclause_false, _hno_compl,
+      hbase_mem, hbase_var, hbase_true, hbase_false, hbase_no_path,
+      hflip_mem, _hflip_var, hflip_false, _hflip_true, hwit, hpath⟩
+  have hbase_eq_flip : baseLit = flipLit :=
+    patchPoolFailure_path_branch_forces_base_eq_flip
+      (s := s) (vars := vars) (on_ := on_) (startPos := σ on_)
+      (skBase := skBase) (skCand := skCand) (σ := σ)
+      (cref := cref) (c := c) (baseLit := baseLit)
+      (flipLit := flipLit)
+      hon_univ hexi hcontains hget hclause_false hbase_mem hbase_var rfl
+      hbase_no_path hflip_mem hflip_false hpath
+  have hwit_base :
+      DeleteDepWitness s.formula baseLit.var on_ skCand σ := by
+    simpa [hbase_eq_flip] using hwit
+  have hflip_false_base :
+      s.formula.litValue σ skCand baseLit = false := by
+    simpa [hbase_eq_flip] using hflip_false
+  have hpath_flip_neg :
+      DeletePurePath s on_ (mkLit on_ (!(σ on_))) flipLit.negate := by
+    have hcand_eq :
+        flipLit.negate =
+          mkLit flipLit.var (s.formula.varValue σ skCand flipLit.var) :=
+      litValue_false_negate_eq_mkLit_varValue
+        s.formula σ skCand flipLit hflip_false
+    simpa [hcand_eq] using hpath
+  have hpath_base_neg :
+      DeletePurePath s on_ (mkLit on_ (!(σ on_))) baseLit.negate := by
+    simpa [hbase_eq_flip] using hpath_flip_neg
+  exact ⟨σ, cref, c, baseLit, hget, hclause_false, _hno_compl,
+    hbase_mem, hbase_var, rfl, hbase_true, hbase_false, hbase_no_path,
+    hwit_base, hexi baseLit.var hbase_var, hcontains baseLit.var hbase_var,
+    hpath_base_neg⟩
+
 private theorem noDeleteCrossPathsSet_opposite_path_to_negate_forces_start_nonpath
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var} {startPos : Bool} {lit : Literal}
@@ -19647,6 +20805,225 @@ private def DeleteDependencyClosedSet
     s.formula.isVarExistential of_ = true →
     (s.formula.depset.getD of_ #[]).contains on_ = true →
     of_ ∈ vars.toList
+
+private def NoExternalDependentTail
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ of_,
+    s.formula.isVarExistential of_ = true →
+    (s.formula.depset.getD of_ #[]).contains on_ = true →
+    of_ ∉ vars.toList →
+    False
+
+private theorem deleteDependencyClosedSet_of_noExternalDependentTail
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hnoExternal : NoExternalDependentTail s vars on_) :
+    DeleteDependencyClosedSet s vars on_ := by
+  classical
+  intro of_ hexi hcontains
+  by_cases hmem : of_ ∈ vars.toList
+  · exact hmem
+  · exact False.elim (hnoExternal of_ hexi hcontains hmem)
+
+private theorem noExternalDependentTail_of_deleteDependencyClosedSet
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hclosed : DeleteDependencyClosedSet s vars on_) :
+    NoExternalDependentTail s vars on_ := by
+  intro of_ hexi hcontains hnot
+  exact hnot (hclosed of_ hexi hcontains)
+
+private theorem noExternalDependentTail_iff_deleteDependencyClosedSet
+    {s : CheckState} {vars : Array Var} {on_ : Var} :
+    NoExternalDependentTail s vars on_ ↔
+      DeleteDependencyClosedSet s vars on_ := by
+  constructor
+  · exact deleteDependencyClosedSet_of_noExternalDependentTail
+  · exact noExternalDependentTail_of_deleteDependencyClosedSet
+
+private def DeleteDependencyNoCrossClosedSet
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ of_,
+    of_ ∈ s.formula.exivars.toList →
+    on_ < of_ →
+    NoDeleteCrossPaths s on_ of_ →
+    of_ ∈ vars.toList
+
+private def DeleteDependencyNoCrossDepClosedSet
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ of_,
+    of_ ∈ s.formula.exivars.toList →
+    on_ < of_ →
+    (s.formula.depset.getD of_ #[]).contains on_ = true →
+    NoDeleteCrossPaths s on_ of_ →
+    of_ ∈ vars.toList
+
+private def NoExternalNoCrossDependentTail
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ of_,
+    s.formula.isVarExistential of_ = true →
+    (s.formula.depset.getD of_ #[]).contains on_ = true →
+    NoDeleteCrossPaths s on_ of_ →
+    of_ ∉ vars.toList →
+    False
+
+private theorem noExternalNoCrossDependentTail_of_noCrossDepClosedSet
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hclosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x) :
+    NoExternalNoCrossDependentTail s vars on_ := by
+  intro of_ hexi hcontains hpaths hnot_mem
+  exact hnot_mem
+    (hclosed of_ (hexivars_complete of_ hexi)
+      (hdep_gt of_ hexi hcontains) hcontains hpaths)
+
+private theorem computeDeps_indepOf_noCrossClosedSet
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁) :
+    DeleteDependencyNoCrossClosedSet
+      s (s₁.indepOf.getD (on_ - 1) #[]) on_ := by
+  intro of_ hexivar hgt hpaths
+  exact computeDeps_member_of_exivars_gt_noDeleteCrossPaths
+    dqbf cs hfull hon hon_le hon_univ hrun hexivar hgt hpaths
+
+private theorem computeDeps_indepOf_filter_contains_noCrossDepClosedSet
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁) :
+    DeleteDependencyNoCrossDepClosedSet
+      s
+      ((s₁.indepOf.getD (on_ - 1) #[]).filter fun of_ =>
+        (s₁.formula.depset.getD of_ #[]).contains on_)
+      on_ := by
+  intro of_ hexivar hgt hcontains hpaths
+  have hsame := computeDeps_sameFC_spec on_ s s ⟨rfl, rfl⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hsame
+  rw [hrun] at hsame
+  rcases hsame with ⟨hformula, _hclauses⟩
+  have hmem :
+      of_ ∈ (s₁.indepOf.getD (on_ - 1) #[]).toList :=
+    computeDeps_member_of_exivars_gt_noDeleteCrossPaths
+      dqbf cs hfull hon hon_le hon_univ hrun hexivar hgt hpaths
+  apply Array.mem_toList_iff.mpr
+  apply Array.mem_filter.mpr
+  refine ⟨Array.mem_toList_iff.mp hmem, ?_⟩
+  simpa [hformula] using hcontains
+
+private theorem computeDeps_indepOf_filter_contains_noExternalNoCrossDependentTail
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x) :
+    NoExternalNoCrossDependentTail
+      s
+      ((s₁.indepOf.getD (on_ - 1) #[]).filter fun of_ =>
+        (s₁.formula.depset.getD of_ #[]).contains on_)
+      on_ := by
+  exact noExternalNoCrossDependentTail_of_noCrossDepClosedSet
+    (computeDeps_indepOf_filter_contains_noCrossDepClosedSet
+      dqbf cs hfull hon hon_le hon_univ hrun)
+    hexivars_complete hdep_gt
+
+private theorem noCrossClosedSet_not_mem_of_exivars_gt_imp_not_noDeleteCrossPaths
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    (hclosed : DeleteDependencyNoCrossClosedSet s vars on_)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hnot_mem : of_ ∉ vars.toList) :
+    ¬ NoDeleteCrossPaths s on_ of_ := by
+  intro hpaths
+  exact hnot_mem (hclosed of_ hexivar hgt hpaths)
+
+private theorem noCrossClosedSet_not_mem_of_exivars_gt_imp_reach_pair
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    (hclosed : DeleteDependencyNoCrossClosedSet s vars on_)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hnot_mem : of_ ∉ vars.toList) :
+    ∃ pos : Bool,
+      (getReachable s (mkLit on_ true)).getD (mkLit of_ pos).x false = true ∧
+      (getReachable s (mkLit on_ false)).getD (mkLit of_ (!pos)).x false = true := by
+  exact not_noDeleteCrossPaths_exists_reach_pair
+    (noCrossClosedSet_not_mem_of_exivars_gt_imp_not_noDeleteCrossPaths
+      hclosed hexivar hgt hnot_mem)
+
+private theorem noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_not_noDeleteCrossPaths
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    (hclosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hcontains : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hnot_mem : of_ ∉ vars.toList) :
+    ¬ NoDeleteCrossPaths s on_ of_ := by
+  intro hpaths
+  exact hnot_mem (hclosed of_ hexivar hgt hcontains hpaths)
+
+private theorem noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_reach_pair
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    (hclosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hcontains : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hnot_mem : of_ ∉ vars.toList) :
+    ∃ pos : Bool,
+      (getReachable s (mkLit on_ true)).getD (mkLit of_ pos).x false = true ∧
+      (getReachable s (mkLit on_ false)).getD (mkLit of_ (!pos)).x false = true := by
+  exact not_noDeleteCrossPaths_exists_reach_pair
+    (noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_not_noDeleteCrossPaths
+      hclosed hexivar hgt hcontains hnot_mem)
+
+private theorem computeDeps_filter_contains_not_mem_of_exivars_gt_contains_imp_reach_pair
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {of_ on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hcontains :
+      (s₁.formula.depset.getD of_ #[]).contains on_ = true)
+    (hnot_mem :
+      of_ ∉ ((s₁.indepOf.getD (on_ - 1) #[]).filter fun x =>
+        (s₁.formula.depset.getD x #[]).contains on_).toList) :
+    ∃ pos : Bool,
+      (getReachable s (mkLit on_ true)).getD (mkLit of_ pos).x false = true ∧
+      (getReachable s (mkLit on_ false)).getD (mkLit of_ (!pos)).x false = true := by
+  have hsame := computeDeps_sameFC_spec on_ s s ⟨rfl, rfl⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hsame
+  rw [hrun] at hsame
+  rcases hsame with ⟨hformula, _hclauses⟩
+  have hcontains_s :
+      (s.formula.depset.getD of_ #[]).contains on_ = true := by
+    simpa [hformula] using hcontains
+  exact noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_reach_pair
+    (computeDeps_indepOf_filter_contains_noCrossDepClosedSet
+      dqbf cs hfull hon hon_le hon_univ hrun)
+    hexivar hgt hcontains_s hnot_mem
 
 private theorem patchPoolBlockedClause_has_closed_changed_lit
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -20986,6 +22363,136 @@ private def PatchPoolSelfTailHead
       (s.formula.depset.getD changed.var #[]).contains on_ = true →
       changed = lit
 
+private def PatchPoolClosedChaseState
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  ∃ σ cref c lit cursor,
+    PatchPoolSelfTailHead
+      s vars on_ startPos skBase skCand σ cref c lit ∧
+    DeletePurePath s on_ (mkLit on_ (!startPos)) cursor ∧
+    cursor.var ∈ vars.toList ∧
+    s.formula.litValue (flipUniv on_ σ) skCand cursor = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ startPos) cursor.negate
+
+private def PatchPoolClosedChaseStateSized
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment)
+    (n : Nat) : Prop :=
+  ∃ σ cref c lit cursor,
+    PatchPoolSelfTailHead
+      s vars on_ startPos skBase skCand σ cref c lit ∧
+    DeletePurePathSized s on_ (mkLit on_ (!startPos)) n cursor ∧
+    cursor.var ∈ vars.toList ∧
+    s.formula.litValue (flipUniv on_ σ) skCand cursor = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ startPos) cursor.negate
+
+private theorem patchPoolClosedChaseStateSized_to_unsized
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment} {n : Nat}
+    (hst :
+      PatchPoolClosedChaseStateSized
+        s vars on_ startPos skBase skCand n) :
+    PatchPoolClosedChaseState
+      s vars on_ startPos skBase skCand := by
+  rcases hst with
+    ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+  exact ⟨σ, cref, c, lit, cursor, hhead,
+    deletePurePathSized_to_path hpath, hmem, hfalse, hnoOpp⟩
+
+private abbrev DeleteIndependenceDescentOutcome
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase : SkolemAssignment) : Prop :=
+  (∃ sk',
+    (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+    deleteWitnessFiberCountSet s.formula vars on_ sk' <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+  (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+    DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+    DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))
+
+private abbrev BlockedHeadContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    PatchPoolCandidate s vars on_ startPos skBase skStop →
+    s.clauses.getClause cref = some c →
+    s.formula.clauseValue σ skStop c.lits = false →
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) →
+    lit ∈ c.lits.toList →
+    lit.var ∈ vars.toList →
+    σ on_ = startPos →
+    s.formula.litValue σ skBase lit = true →
+    s.formula.litValue σ skStop lit = false →
+    DeleteDepWitness s.formula lit.var on_ skStop σ →
+    s.formula.litValue (flipUniv on_ σ) skStop lit = true →
+    lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) →
+    lit.negate = mkLit lit.var (s.formula.varValue σ skStop lit.var) →
+    DeletePurePath s on_ (mkLit on_ (!startPos))
+      (mkLit lit.var (s.formula.varValue σ skStop lit.var)) →
+    ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+      (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+    ¬ DeletePurePath s on_ (mkLit on_ startPos)
+      (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev RankedBlockedHeadContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {pathLen : Nat} {startPos : Bool} {skBase skStop : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    PatchPoolCandidate s vars on_ startPos skBase skStop →
+    s.clauses.getClause cref = some c →
+    s.formula.clauseValue σ skStop c.lits = false →
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) →
+    lit ∈ c.lits.toList →
+    lit.var ∈ vars.toList →
+    σ on_ = startPos →
+    s.formula.litValue σ skBase lit = true →
+    s.formula.litValue σ skStop lit = false →
+    DeleteDepWitness s.formula lit.var on_ skStop σ →
+    s.formula.litValue (flipUniv on_ σ) skStop lit = true →
+    lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) →
+    lit.negate = mkLit lit.var (s.formula.varValue σ skStop lit.var) →
+    DeletePurePathSized s on_ (mkLit on_ (!startPos)) pathLen
+      (mkLit lit.var (s.formula.varValue σ skStop lit.var)) →
+    ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+      (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+    ¬ DeletePurePath s on_ (mkLit on_ startPos)
+      (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private theorem blockedHeadContinuation_of_ranked
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hranked : RankedBlockedHeadContinuation s vars on_) :
+    BlockedHeadContinuation s vars on_ := by
+  intro startPos skBase skStop σ cref c lit hall hpool hget
+    hclause_false hno_compl hlit_mem hlit_var hon_eq hlit_true
+    hlit_false hwit hflip_true hbase_eq hstop_eq hpath hno_opposite
+    hno_start
+  rcases deletePurePath_to_exists_sized hpath with ⟨pathLen, hpathSized⟩
+  exact hranked hall hpool hget hclause_false hno_compl hlit_mem
+    hlit_var hon_eq hlit_true hlit_false hwit hflip_true hbase_eq
+    hstop_eq hpathSized hno_opposite hno_start
+
+private theorem patchPoolSelfTailHead_apply_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal}
+    (hblocked : BlockedHeadContinuation s vars on_)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hhead :
+      PatchPoolSelfTailHead s vars on_ startPos skBase skStop σ cref c lit) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases hhead with
+    ⟨hget, hclause_false, hno_compl, hlit_mem, hlit_var, hon_eq,
+      hlit_true, hlit_false, hwit, hflip_true, hbase_eq, hcand_eq,
+      hpath_cand, hno_opposite_base, hno_start_base, _hall_self⟩
+  exact hblocked hall hpool hget hclause_false hno_compl hlit_mem
+    hlit_var hon_eq hlit_true hlit_false hwit hflip_true hbase_eq
+    hcand_eq hpath_cand hno_opposite_base hno_start_base
+
 private def PatchPoolSelfStableTailResidual
     (s : CheckState) (vars : Array Var) (on_ : Var)
     (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
@@ -21064,12 +22571,126 @@ private def PatchPoolSelfFirstStartTailResidual
       s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
       other = mkLit on_ (!startPos)
 
+private theorem patchPoolSelfStableTailResidual_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hblocked : BlockedHeadContinuation s vars on_)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hstable :
+      PatchPoolSelfStableTailResidual s vars on_ startPos skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases hstable with ⟨σ, cref, c, lit, hhead, _htail⟩
+  exact patchPoolSelfTailHead_apply_blockedHeadContinuation
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop) (σ := σ) (cref := cref)
+    (c := c) (lit := lit) hblocked hall hpool hhead
+
+private theorem patchPoolSelfFirstStartTailResidual_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hblocked : BlockedHeadContinuation s vars on_)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hfirst :
+      PatchPoolSelfFirstStartTailResidual
+        s vars on_ startPos skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases hfirst with
+    ⟨σ, cref, c, lit, hhead, _tailCref, _tailClause, _other,
+      _htailGet, _hstartMem, _hnoStartNeg, _htargetMem, _htargetNe,
+      _hotherMem, _hotherNe, _hotherTrue, _hotherStart⟩
+  exact patchPoolSelfTailHead_apply_blockedHeadContinuation
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop) (σ := σ) (cref := cref)
+    (c := c) (lit := lit) hblocked hall hpool hhead
+
 private def PatchPoolSelfSameStartCursorTailResidual
     (s : CheckState) (vars : Array Var) (on_ : Var)
     (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
   ∃ σ cref c lit,
     PatchPoolSelfTailHead s vars on_ startPos skBase skCand σ cref c lit ∧
     SameStartComplementPathPairBlocked s vars on_ startPos
+
+private abbrev PatchPoolSelfSameStartExitLiteralTerminalCase
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  PatchPoolSelfSameStartCursorTailResidual
+    s vars on_ startPos skBase skCand
+
+private theorem patchPoolSelfSameStartCursorTailResidual_blocked
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hsame :
+      PatchPoolSelfSameStartCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    SameStartComplementPathPairBlocked s vars on_ startPos := by
+  rcases hsame with ⟨_σ, _cref, _c, _lit, _hhead, hblocked⟩
+  exact hblocked
+
+private theorem patchPoolSelfSameStartCursorTailResidual_head
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hsame :
+      PatchPoolSelfSameStartCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      SameStartComplementPathPairBlocked s vars on_ startPos := by
+  rcases hsame with ⟨σ, cref, c, lit, hhead, hblocked⟩
+  exact ⟨σ, cref, c, lit, hhead, hblocked⟩
+
+private theorem patchPoolSelfSameStartCursorTailResidual_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hblocked : BlockedHeadContinuation s vars on_)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hsame :
+      PatchPoolSelfSameStartCursorTailResidual
+        s vars on_ startPos skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases patchPoolSelfSameStartCursorTailResidual_head hsame with
+    ⟨σ, cref, c, lit, hhead, _hblockedPair⟩
+  exact patchPoolSelfTailHead_apply_blockedHeadContinuation
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop) (σ := σ) (cref := cref)
+    (c := c) (lit := lit) hblocked hall hpool hhead
+
+private theorem patchPoolSelfSameStartExitLiteralTerminalCase_blocked
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hcase :
+      PatchPoolSelfSameStartExitLiteralTerminalCase
+        s vars on_ startPos skBase skCand) :
+    SameStartComplementPathPairBlocked s vars on_ startPos :=
+  patchPoolSelfSameStartCursorTailResidual_blocked hcase
+
+private theorem patchPoolSelfSameStartExitLiteralTerminalCase_head
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hcase :
+      PatchPoolSelfSameStartExitLiteralTerminalCase
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      SameStartComplementPathPairBlocked s vars on_ startPos :=
+  patchPoolSelfSameStartCursorTailResidual_head hcase
+
+private theorem patchPoolSelfSameStartExitLiteralTerminalCase_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hblocked : BlockedHeadContinuation s vars on_)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpool : RepairPoolCandidate s vars on_ startPos skBase skStop)
+    (hcase :
+      PatchPoolSelfSameStartExitLiteralTerminalCase
+        s vars on_ startPos skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase :=
+  patchPoolSelfSameStartCursorTailResidual_blockedHeadContinuation
+    hblocked hall hpool hcase
 
 private theorem patchPoolSelfBlockedValueBranch_same_start_cursor
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -21138,6 +22759,30 @@ private def PatchPoolSelfConnectorBacktrackResidual
     s.formula.litValue (flipUniv on_ σ) skCand prev = false ∧
     ¬ DeletePurePath s on_ (mkLit on_ startPos) prev.negate
 
+private theorem patchPoolClosedChaseState_to_connectorBacktrackResidual
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hst :
+      PatchPoolClosedChaseState
+        s vars on_ startPos skBase skCand) :
+    PatchPoolSelfConnectorBacktrackResidual
+      s vars on_ startPos skBase skCand := by
+  rcases hst with
+    ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+  exact ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+
+private theorem patchPoolClosedChaseState_of_connectorBacktrackResidual
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hback :
+      PatchPoolSelfConnectorBacktrackResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolClosedChaseState
+      s vars on_ startPos skBase skCand := by
+  rcases hback with
+    ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+  exact ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+
 private theorem patchPoolSelfConnectorTailResidual_backtracks
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
@@ -21176,8 +22821,11 @@ private theorem patchPoolSelfConnectorTailResidual_backtracks
       hfull hon_le hon_univ hpaths
       (by simpa [literal_negate_var] using hprev_mem)
       (by simpa [literal_negate_negate_local] using hprevPath)
-  exact ⟨σ, cref, c, lit, prev, hhead, hprevPath, hprev_mem,
-    hprevFalse, hnoOpp⟩
+  exact patchPoolClosedChaseState_to_connectorBacktrackResidual
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skCand := skCand)
+    ⟨σ, cref, c, lit, prev, hhead, hprevPath, hprev_mem,
+      hprevFalse, hnoOpp⟩
 
 private def PatchPoolSelfBacktrackTailBranch
     (s : CheckState) (vars : Array Var) (on_ : Var)
@@ -21208,17 +22856,17 @@ private def PatchPoolSelfBacktrackTailBranch
         other ≠ cursor ∧
         s.formula.litValue (flipUniv on_ σ) skCand other = true))
 
-private theorem patchPoolSelfConnectorBacktrackResidual_to_tail_branch
+private theorem patchPoolClosedChaseState_to_backtrackTailBranch
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
     (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
     (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (hback :
-      PatchPoolSelfConnectorBacktrackResidual
+    (hst :
+      PatchPoolClosedChaseState
         s vars on_ startPos skBase skCand) :
     PatchPoolSelfBacktrackTailBranch
       s vars on_ startPos skBase skCand := by
-  rcases hback with
+  rcases hst with
     ⟨σ, cref, c, lit, cursor, hhead, hcursorPath, hcursorMem,
       hcursorFalse, hnoOpp⟩
   have hheadCopy := hhead
@@ -21245,6 +22893,21 @@ private theorem patchPoolSelfConnectorBacktrackResidual_to_tail_branch
       hcursorPath hclauses_true hcursorFalse
   exact ⟨σ, cref, c, lit, cursor, hheadCopy, hcursorPath,
     hcursorMem, hcursorFalse, hnoOpp, htail⟩
+
+private theorem patchPoolSelfConnectorBacktrackResidual_to_tail_branch
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hback :
+      PatchPoolSelfConnectorBacktrackResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolSelfBacktrackTailBranch
+      s vars on_ startPos skBase skCand := by
+  exact patchPoolClosedChaseState_to_backtrackTailBranch
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skCand := skCand) hpool hallBase
+    (patchPoolClosedChaseState_of_connectorBacktrackResidual hback)
 
 private def PatchPoolSelfConnectorBacktrackResidualSized
     (s : CheckState) (vars : Array Var) (on_ : Var)
@@ -21288,34 +22951,41 @@ private def PatchPoolSelfBacktrackTailBranchSized
         other ≠ cursor ∧
         s.formula.litValue (flipUniv on_ σ) skCand other = true))
 
-private theorem patchPoolSelfConnectorBacktrackResidual_to_exists_sized
+private theorem patchPoolClosedChaseStateSized_to_connectorBacktrackResidualSized
     {s : CheckState} {vars : Array Var} {on_ : Var}
-    {startPos : Bool} {skBase skCand : SkolemAssignment}
-    (hback :
-      PatchPoolSelfConnectorBacktrackResidual
-        s vars on_ startPos skBase skCand) :
-    ∃ n,
-      PatchPoolSelfConnectorBacktrackResidualSized
-        s vars on_ startPos skBase skCand n := by
-  rcases hback with
-    ⟨σ, cref, c, lit, cursor, hhead, hcursorPath, hcursorMem,
-      hcursorFalse, hnoOpp⟩
-  rcases deletePurePath_to_exists_sized hcursorPath with
-    ⟨n, hcursorSized⟩
-  exact ⟨n, σ, cref, c, lit, cursor, hhead, hcursorSized,
-    hcursorMem, hcursorFalse, hnoOpp⟩
+    {startPos : Bool} {skBase skCand : SkolemAssignment} {n : Nat}
+    (hst :
+      PatchPoolClosedChaseStateSized
+        s vars on_ startPos skBase skCand n) :
+    PatchPoolSelfConnectorBacktrackResidualSized
+      s vars on_ startPos skBase skCand n := by
+  rcases hst with
+    ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+  exact ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
 
-private theorem patchPoolSelfConnectorBacktrackResidualSized_to_tail_branch
+private theorem patchPoolClosedChaseStateSized_of_connectorBacktrackResidualSized
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment} {n : Nat}
+    (hback :
+      PatchPoolSelfConnectorBacktrackResidualSized
+        s vars on_ startPos skBase skCand n) :
+    PatchPoolClosedChaseStateSized
+      s vars on_ startPos skBase skCand n := by
+  rcases hback with
+    ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+  exact ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+
+private theorem patchPoolClosedChaseStateSized_to_backtrackTailBranchSized
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment} {n : Nat}
     (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
     (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (hback :
-      PatchPoolSelfConnectorBacktrackResidualSized
+    (hst :
+      PatchPoolClosedChaseStateSized
         s vars on_ startPos skBase skCand n) :
     PatchPoolSelfBacktrackTailBranchSized
       s vars on_ startPos skBase skCand n := by
-  rcases hback with
+  rcases hst with
     ⟨σ, cref, c, lit, cursor, hhead, hcursorSized, hcursorMem,
       hcursorFalse, hnoOpp⟩
   have hheadCopy := hhead
@@ -21359,6 +23029,104 @@ private theorem patchPoolSelfConnectorBacktrackResidualSized_to_tail_branch
     exact ⟨prev, tailCref, tailClause, m, hprevSized, hlt, htailGet,
       hprevMem, hnoStartNeg, hcursorMemClause, hcursorNe, other,
       hotherMem, hotherNe, hotherTrue⟩
+
+private theorem patchPoolSelfConnectorBacktrackResidual_to_exists_sized
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hback :
+      PatchPoolSelfConnectorBacktrackResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ n,
+      PatchPoolSelfConnectorBacktrackResidualSized
+        s vars on_ startPos skBase skCand n := by
+  rcases hback with
+    ⟨σ, cref, c, lit, cursor, hhead, hcursorPath, hcursorMem,
+      hcursorFalse, hnoOpp⟩
+  rcases deletePurePath_to_exists_sized hcursorPath with
+    ⟨n, hcursorSized⟩
+  exact ⟨n, σ, cref, c, lit, cursor, hhead, hcursorSized,
+    hcursorMem, hcursorFalse, hnoOpp⟩
+
+private theorem patchPoolSelfConnectorBacktrackResidualSized_to_tail_branch
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment} {n : Nat}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hback :
+      PatchPoolSelfConnectorBacktrackResidualSized
+        s vars on_ startPos skBase skCand n) :
+    PatchPoolSelfBacktrackTailBranchSized
+      s vars on_ startPos skBase skCand n := by
+  exact patchPoolClosedChaseStateSized_to_backtrackTailBranchSized
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skCand := skCand) (n := n) hpool hallBase
+    (patchPoolClosedChaseStateSized_of_connectorBacktrackResidualSized hback)
+
+private theorem patchPoolClosedChaseStateSized_of_tailHead_target
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal}
+    {n : Nat}
+    (hhead :
+      PatchPoolSelfTailHead s vars on_ startPos skBase skCand σ cref c lit)
+    (hsized :
+      DeletePurePathSized s on_ (mkLit on_ (!startPos)) n
+        (mkLit lit.var (s.formula.varValue σ skCand lit.var))) :
+    PatchPoolClosedChaseStateSized
+      s vars on_ startPos skBase skCand n := by
+  rcases hhead with
+    ⟨hget, hclause_false, hno_compl, hlit_mem, hlit_var, hon_eq,
+      hlit_true, hlit_false, hwit, hflip_true, hbase_eq, hcand_eq,
+      hpath_cand, hno_opposite_base, hno_start_base, hall_self⟩
+  let target := mkLit lit.var (s.formula.varValue σ skCand lit.var)
+  have hhead' :
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit :=
+    ⟨hget, hclause_false, hno_compl, hlit_mem, hlit_var, hon_eq,
+      hlit_true, hlit_false, hwit, hflip_true, hbase_eq, hcand_eq,
+      hpath_cand, hno_opposite_base, hno_start_base, hall_self⟩
+  have htarget_var : target.var ∈ vars.toList := by
+    simpa [target, mkLit_var_early] using hlit_var
+  have htarget_false :
+      s.formula.litValue (flipUniv on_ σ) skCand target = false := by
+    rw [show target = mkLit lit.var
+        (s.formula.varValue σ skCand lit.var) from rfl]
+    rw [← hcand_eq, litValue_negate_early, hflip_true]
+    rfl
+  have hnoOppTarget :
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate := by
+    intro hpath
+    apply hno_start_base
+    have htarget_eq : target = lit.negate := by
+      simpa [target] using hcand_eq.symm
+    have htarget_neg_eq :
+        target.negate =
+          mkLit lit.var (s.formula.varValue σ skBase lit.var) := by
+      calc
+        target.negate = lit := by
+          rw [htarget_eq, literal_negate_negate_local]
+        _ = mkLit lit.var (s.formula.varValue σ skBase lit.var) := hbase_eq
+    rwa [htarget_neg_eq] at hpath
+  exact ⟨σ, cref, c, lit, target, hhead', by simpa [target] using hsized,
+    htarget_var, htarget_false, hnoOppTarget⟩
+
+private theorem patchPoolSelfTailHead_to_connectorBacktrackResidualSized
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal}
+    {n : Nat}
+    (hhead :
+      PatchPoolSelfTailHead s vars on_ startPos skBase skCand σ cref c lit)
+    (hsized :
+      DeletePurePathSized s on_ (mkLit on_ (!startPos)) n
+        (mkLit lit.var (s.formula.varValue σ skCand lit.var))) :
+    PatchPoolSelfConnectorBacktrackResidualSized
+      s vars on_ startPos skBase skCand n := by
+  exact patchPoolClosedChaseStateSized_to_connectorBacktrackResidualSized
+    (patchPoolClosedChaseStateSized_of_tailHead_target
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (σ := σ) (cref := cref)
+      (c := c) (lit := lit) (n := n) hhead hsized)
 
 private def PatchPoolSelfBacktrackClassifiedTailBranch
     (s : CheckState) (vars : Array Var) (on_ : Var)
@@ -21573,6 +23341,122 @@ private def PatchPoolSelfBacktrackConnectorTailResidual
       other ≠ cursor ∧
       s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
       other = prev.negate
+
+private abbrev SameStartPairDescentHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase : SkolemAssignment},
+    (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+    SameStartComplementPathPairBlocked s vars on_ startPos →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev PooledSameStartPairDescentHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+    (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+    PatchPoolCandidate s vars on_ startPos skBase skStop →
+    SameStartComplementPathPairBlocked s vars on_ startPos →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev StableDescentHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+    (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+    PatchPoolCandidate s vars on_ startPos skBase skStop →
+    PatchPoolSelfStableTailResidual s vars on_ startPos skBase skStop →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev FirstStartDescentHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+    (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+    PatchPoolCandidate s vars on_ startPos skBase skStop →
+    PatchPoolSelfFirstStartTailResidual
+      s vars on_ startPos skBase skStop →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev BacktrackStableDescentHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+    (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+    PatchPoolCandidate s vars on_ startPos skBase skStop →
+    PatchPoolSelfBacktrackStableTailResidual
+      s vars on_ startPos skBase skStop →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev BacktrackFirstStartDescentHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+    (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+    PatchPoolCandidate s vars on_ startPos skBase skStop →
+    PatchPoolSelfBacktrackFirstStartTailResidual
+      s vars on_ startPos skBase skStop →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev BacktrackTerminalDescentHandlers
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  SameStartPairDescentHandler s vars on_ ∧
+    BacktrackStableDescentHandler s vars on_ ∧
+    BacktrackFirstStartDescentHandler s vars on_
+
+private abbrev TerminalDescentHandlers
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  SameStartPairDescentHandler s vars on_ ∧
+    StableDescentHandler s vars on_ ∧
+    FirstStartDescentHandler s vars on_ ∧
+    BacktrackStableDescentHandler s vars on_ ∧
+    BacktrackFirstStartDescentHandler s vars on_
+
+private abbrev PooledBacktrackTerminalDescentHandlers
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  PooledSameStartPairDescentHandler s vars on_ ∧
+    BacktrackStableDescentHandler s vars on_ ∧
+    BacktrackFirstStartDescentHandler s vars on_
+
+private abbrev PooledTerminalDescentHandlers
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  PooledSameStartPairDescentHandler s vars on_ ∧
+    StableDescentHandler s vars on_ ∧
+    FirstStartDescentHandler s vars on_ ∧
+    BacktrackStableDescentHandler s vars on_ ∧
+    BacktrackFirstStartDescentHandler s vars on_
+
+private theorem patchPoolSelfBacktrackStableTailResidual_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hblocked : BlockedHeadContinuation s vars on_)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hstable :
+      PatchPoolSelfBacktrackStableTailResidual
+        s vars on_ startPos skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases hstable with
+    ⟨σ, cref, c, lit, _cursor, hhead, _hcursorPath, _hcursorMem,
+      _hcursorFalse, _hnoOpp, _htail⟩
+  exact patchPoolSelfTailHead_apply_blockedHeadContinuation
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop) (σ := σ) (cref := cref)
+    (c := c) (lit := lit) hblocked hall hpool hhead
+
+private theorem patchPoolSelfBacktrackFirstStartTailResidual_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hblocked : BlockedHeadContinuation s vars on_)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hfirst :
+      PatchPoolSelfBacktrackFirstStartTailResidual
+        s vars on_ startPos skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases hfirst with
+    ⟨σ, cref, c, lit, _cursor, hhead, _hcursorPath, _hcursorMem,
+      _hcursorFalse, _hnoOpp, _tailCref, _tailClause, _other,
+      _htailGet, _hstartMem, _hnoStartNeg, _hcursorMemClause,
+      _hcursorNe, _hotherMem, _hotherNe, _hotherTrue, _hotherStart⟩
+  exact patchPoolSelfTailHead_apply_blockedHeadContinuation
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop) (σ := σ) (cref := cref)
+    (c := c) (lit := lit) hblocked hall hpool hhead
 
 private theorem patchPoolSelfBacktrackStableStartOrConnectorTailBranch_split
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -22385,6 +24269,58 @@ private theorem patchPoolSelfBacktrackTailBranchSized_to_terminal_or_smaller
             · exact Or.inr (Or.inr (Or.inr (Or.inl hfirstStart)))
             · exact Or.inr (Or.inl hsameStart)
 
+private theorem patchPoolSelfTailHead_sized_to_terminal_or_smaller_closed
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal}
+    {n : Nat}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hhead :
+      PatchPoolSelfTailHead s vars on_ startPos skBase skCand σ cref c lit)
+    (hsized :
+      DeletePurePathSized s on_ (mkLit on_ (!startPos)) n
+        (mkLit lit.var (s.formula.varValue σ skCand lit.var))) :
+    PatchPoolStrictStep s vars on_ startPos skBase skCand ∨
+      SameStartComplementPathPair s vars on_ startPos ∨
+      PatchPoolSelfBacktrackStableTailResidual
+        s vars on_ startPos skBase skCand ∨
+      PatchPoolSelfBacktrackFirstStartTailResidual
+        s vars on_ startPos skBase skCand ∨
+      ∃ m,
+        m < n ∧
+        PatchPoolSelfConnectorBacktrackResidualSized
+          s vars on_ startPos skBase skCand m := by
+  have hback :
+      PatchPoolSelfConnectorBacktrackResidualSized
+        s vars on_ startPos skBase skCand n :=
+    patchPoolSelfTailHead_to_connectorBacktrackResidualSized
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (σ := σ) (cref := cref)
+      (c := c) (lit := lit) (n := n) hhead hsized
+  have htail :
+      PatchPoolSelfBacktrackTailBranchSized
+        s vars on_ startPos skBase skCand n :=
+    patchPoolSelfConnectorBacktrackResidualSized_to_tail_branch
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skCand) (n := n)
+      hpool hallBase hback
+  exact patchPoolSelfBacktrackTailBranchSized_to_terminal_or_smaller
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+    (on_ := on_) (startPos := startPos) (skBase := skBase)
+    (skCand := skCand) (n := n)
+    hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains hpool htail
+
 private theorem patchPoolSelfConnectorBacktrackResidual_to_terminal
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
@@ -22534,59 +24470,34 @@ private theorem patchPoolSelfStableStartOrConnectorTailBranch_split_terminal
           · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl hbackStable))))
           · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr hbackFirst))))
 
--- Cursor residuals are the named terminal cases of the paper's failed-patch
--- chase after strict patch steps and connector backtracking have been consumed.
--- `Stable` means the tail clause has a helper literal true under both the
--- current assignment and the flipped one. `FirstStart` means the tail closes
--- through the initial universal literal. `SameStartCursor` preserves the failed
--- clause head together with a same-start complementary pair, avoiding the
--- earlier mistake of treating that pair as a context-free contradiction.
-private def PatchPoolSelfStableCursorTailResidual
+-- The paper-facing term for the current path position is the reached
+-- pure-path endpoint/exit literal. Older local names used "cursor" for the
+-- same object. The stable/first-start terminal cases below are definitionally
+-- the same as the backtrack terminal cases; the aliases keep the closed-set
+-- frontier readable without creating extra semantic cases.
+private abbrev PatchPoolSelfStableCursorTailResidual
     (s : CheckState) (vars : Array Var) (on_ : Var)
     (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
-  ∃ σ cref c lit target,
-    PatchPoolSelfTailHead s vars on_ startPos skBase skCand σ cref c lit ∧
-    DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
-    target.var ∈ vars.toList ∧
-    ((∃ tailCref tailClause other,
-      s.clauses.getClause tailCref = some tailClause ∧
-      mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
-      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
-      target ∈ tailClause.lits.toList ∧
-      target ≠ mkLit on_ (!startPos) ∧
-      other ∈ tailClause.lits.toList ∧
-      other ≠ target ∧
-      s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
-      s.formula.litValue σ skCand other = true) ∨
-    (∃ prev tailCref tailClause other,
-      DeletePurePath s on_ (mkLit on_ (!startPos)) prev ∧
-      s.clauses.getClause tailCref = some tailClause ∧
-      prev.negate ∈ tailClause.lits.toList ∧
-      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
-      target ∈ tailClause.lits.toList ∧
-      target ≠ prev.negate ∧
-      other ∈ tailClause.lits.toList ∧
-      other ≠ target ∧
-      s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
-      s.formula.litValue σ skCand other = true))
+  PatchPoolSelfBacktrackStableTailResidual
+    s vars on_ startPos skBase skCand
 
-private def PatchPoolSelfFirstStartCursorTailResidual
+private abbrev PatchPoolSelfFirstStartCursorTailResidual
     (s : CheckState) (vars : Array Var) (on_ : Var)
     (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
-  ∃ σ cref c lit target,
-    PatchPoolSelfTailHead s vars on_ startPos skBase skCand σ cref c lit ∧
-    DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
-    target.var ∈ vars.toList ∧
-    ∃ tailCref tailClause other,
-      s.clauses.getClause tailCref = some tailClause ∧
-      mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
-      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
-      target ∈ tailClause.lits.toList ∧
-      target ≠ mkLit on_ (!startPos) ∧
-      other ∈ tailClause.lits.toList ∧
-      other ≠ target ∧
-      s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
-      other = mkLit on_ (!startPos)
+  PatchPoolSelfBacktrackFirstStartTailResidual
+    s vars on_ startPos skBase skCand
+
+private abbrev PatchPoolSelfStableExitLiteralTerminalCase
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  PatchPoolSelfStableCursorTailResidual
+    s vars on_ startPos skBase skCand
+
+private abbrev PatchPoolSelfFirstStartExitLiteralTerminalCase
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (startPos : Bool) (skBase skCand : SkolemAssignment) : Prop :=
+  PatchPoolSelfFirstStartCursorTailResidual
+    s vars on_ startPos skBase skCand
 
 private theorem patchPoolSelfStableTailResidual_to_cursor
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -22610,7 +24521,28 @@ private theorem patchPoolSelfStableTailResidual_to_cursor
       hpath_cand, hno_opposite_base, hno_start_base, hall_self⟩
   have htarget_var : target.var ∈ vars.toList := by
     simpa [target, mkLit_var_early] using hlit_var
-  refine ⟨σ, cref, c, lit, target, hhead', hpath_cand, htarget_var, ?_⟩
+  have htarget_false :
+      s.formula.litValue (flipUniv on_ σ) skCand target = false := by
+    rw [show target = mkLit lit.var
+        (s.formula.varValue σ skCand lit.var) from rfl]
+    rw [← hcand_eq, litValue_negate_early, hflip_true]
+    rfl
+  have hnoOppTarget :
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate := by
+    intro hpath
+    apply hno_start_base
+    have htarget_eq : target = lit.negate := by
+      simpa [target] using hcand_eq.symm
+    have htarget_neg_eq :
+        target.negate =
+          mkLit lit.var (s.formula.varValue σ skBase lit.var) := by
+      calc
+        target.negate = lit := by
+          rw [htarget_eq, literal_negate_negate_local]
+        _ = mkLit lit.var (s.formula.varValue σ skBase lit.var) := hbase_eq
+    rwa [htarget_neg_eq] at hpath
+  refine ⟨σ, cref, c, lit, target, hhead', hpath_cand, htarget_var,
+    htarget_false, hnoOppTarget, ?_⟩
   rcases htail with hfirst | hstep
   · left
     rcases hfirst with
@@ -22637,10 +24569,17 @@ private theorem patchPoolSelfBacktrackStableTailResidual_to_cursor
         s vars on_ startPos skBase skCand) :
     PatchPoolSelfStableCursorTailResidual
         s vars on_ startPos skBase skCand := by
-  rcases hstable with
-    ⟨σ, cref, c, lit, cursor, hhead, hcursorPath, hcursorMem,
-      _hcursorFalse, _hnoOpp, htail⟩
-  exact ⟨σ, cref, c, lit, cursor, hhead, hcursorPath, hcursorMem, htail⟩
+  simpa using hstable
+
+private theorem patchPoolSelfStableCursorTailResidual_to_backtrack
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hstable :
+      PatchPoolSelfStableCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolSelfBacktrackStableTailResidual
+        s vars on_ startPos skBase skCand := by
+  simpa using hstable
 
 private theorem patchPoolSelfFirstStartTailResidual_to_cursor
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -22667,7 +24606,28 @@ private theorem patchPoolSelfFirstStartTailResidual_to_cursor
       hpath_cand, hno_opposite_base, hno_start_base, hall_self⟩
   have htarget_var : target.var ∈ vars.toList := by
     simpa [target, mkLit_var_early] using hlit_var
+  have htarget_false :
+      s.formula.litValue (flipUniv on_ σ) skCand target = false := by
+    rw [show target = mkLit lit.var
+        (s.formula.varValue σ skCand lit.var) from rfl]
+    rw [← hcand_eq, litValue_negate_early, hflip_true]
+    rfl
+  have hnoOppTarget :
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate := by
+    intro hpath
+    apply hno_start_base
+    have htarget_eq : target = lit.negate := by
+      simpa [target] using hcand_eq.symm
+    have htarget_neg_eq :
+        target.negate =
+          mkLit lit.var (s.formula.varValue σ skBase lit.var) := by
+      calc
+        target.negate = lit := by
+          rw [htarget_eq, literal_negate_negate_local]
+        _ = mkLit lit.var (s.formula.varValue σ skBase lit.var) := hbase_eq
+    rwa [htarget_neg_eq] at hpath
   exact ⟨σ, cref, c, lit, target, hhead', hpath_cand, htarget_var,
+    htarget_false, hnoOppTarget,
     tailCref, tailClause, other, htailGet, hstartMem, hnoStartNeg,
     htargetMem, htargetNe, hotherMem, hotherNe, hotherFlipTrue,
     hotherStart⟩
@@ -22680,15 +24640,1272 @@ private theorem patchPoolSelfBacktrackFirstStartTailResidual_to_cursor
         s vars on_ startPos skBase skCand) :
     PatchPoolSelfFirstStartCursorTailResidual
         s vars on_ startPos skBase skCand := by
-  rcases hfirst with
-    ⟨σ, cref, c, lit, cursor, hhead, hcursorPath, hcursorMem,
-      _hcursorFalse, _hnoOpp, tailCref, tailClause, other, htailGet,
-      hstartMem, hnoStartNeg, hcursorMemClause, hcursorNe,
-      hotherMem, hotherNe, hotherFlipTrue, hotherStart⟩
-  exact ⟨σ, cref, c, lit, cursor, hhead, hcursorPath, hcursorMem,
-    tailCref, tailClause, other, htailGet, hstartMem, hnoStartNeg,
-    hcursorMemClause, hcursorNe, hotherMem, hotherNe, hotherFlipTrue,
-    hotherStart⟩
+  simpa using hfirst
+
+private theorem patchPoolSelfFirstStartCursorTailResidual_to_backtrack
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfirst :
+      PatchPoolSelfFirstStartCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolSelfBacktrackFirstStartTailResidual
+        s vars on_ startPos skBase skCand := by
+  simpa using hfirst
+
+private abbrev SameStartExitLiteralContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+    (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+    RepairPoolCandidate s vars on_ startPos skBase skStop →
+    PatchPoolSelfSameStartExitLiteralTerminalCase
+      s vars on_ startPos skBase skStop →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev StableExitLiteralContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+    (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+    RepairPoolCandidate s vars on_ startPos skBase skStop →
+    PatchPoolSelfStableExitLiteralTerminalCase
+      s vars on_ startPos skBase skStop →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev FirstStartExitLiteralContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+    (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+    RepairPoolCandidate s vars on_ startPos skBase skStop →
+    PatchPoolSelfFirstStartExitLiteralTerminalCase
+      s vars on_ startPos skBase skStop →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev PooledTerminalContinuations
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  PooledSameStartPairDescentHandler s vars on_ ∧
+    StableExitLiteralContinuation s vars on_ ∧
+    FirstStartExitLiteralContinuation s vars on_
+
+private abbrev PooledExitLiteralTerminalContinuations
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  SameStartExitLiteralContinuation s vars on_ ∧
+    StableExitLiteralContinuation s vars on_ ∧
+    FirstStartExitLiteralContinuation s vars on_
+
+private abbrev StableCursorDescentHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  StableExitLiteralContinuation s vars on_
+
+private abbrev FirstStartCursorDescentHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  FirstStartExitLiteralContinuation s vars on_
+
+private abbrev PooledCursorTerminalDescentHandlers
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  PooledTerminalContinuations s vars on_
+
+private theorem backtrackStableDescentHandler_of_stableExitLiteralContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hcontinue : StableExitLiteralContinuation s vars on_) :
+    BacktrackStableDescentHandler s vars on_ := by
+  intro startPos skBase skStop hall hpool hstable
+  exact hcontinue hall hpool
+    (patchPoolSelfBacktrackStableTailResidual_to_cursor hstable)
+
+private theorem backtrackFirstStartDescentHandler_of_firstStartExitLiteralContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hcontinue : FirstStartExitLiteralContinuation s vars on_) :
+    BacktrackFirstStartDescentHandler s vars on_ := by
+  intro startPos skBase skStop hall hpool hfirst
+  exact hcontinue hall hpool
+    (patchPoolSelfBacktrackFirstStartTailResidual_to_cursor hfirst)
+
+private theorem backtrackStableDescentHandler_of_stableCursorDescentHandler
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hcontinue : StableCursorDescentHandler s vars on_) :
+    BacktrackStableDescentHandler s vars on_ :=
+  backtrackStableDescentHandler_of_stableExitLiteralContinuation hcontinue
+
+private theorem backtrackFirstStartDescentHandler_of_firstStartCursorDescentHandler
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hcontinue : FirstStartCursorDescentHandler s vars on_) :
+    BacktrackFirstStartDescentHandler s vars on_ :=
+  backtrackFirstStartDescentHandler_of_firstStartExitLiteralContinuation
+    hcontinue
+
+private theorem sameStartExitLiteralContinuation_of_pooledSameStartPairDescentHandler
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hpair : PooledSameStartPairDescentHandler s vars on_) :
+    SameStartExitLiteralContinuation s vars on_ := by
+  intro startPos skBase skStop hall hpool hcase
+  exact hpair hall hpool
+    (patchPoolSelfSameStartExitLiteralTerminalCase_blocked hcase)
+
+private theorem sameStartExitLiteralContinuation_of_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hblocked : BlockedHeadContinuation s vars on_) :
+    SameStartExitLiteralContinuation s vars on_ := by
+  intro startPos skBase skStop hall hpool hcase
+  exact patchPoolSelfSameStartExitLiteralTerminalCase_blockedHeadContinuation
+    hblocked hall hpool hcase
+
+private theorem stableExitLiteralContinuation_of_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hblocked : BlockedHeadContinuation s vars on_) :
+    StableExitLiteralContinuation s vars on_ := by
+  intro startPos skBase skStop hall hpool hstable
+  exact patchPoolSelfBacktrackStableTailResidual_blockedHeadContinuation
+    hblocked hall hpool hstable
+
+private theorem firstStartExitLiteralContinuation_of_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hblocked : BlockedHeadContinuation s vars on_) :
+    FirstStartExitLiteralContinuation s vars on_ := by
+  intro startPos skBase skStop hall hpool hfirst
+  exact patchPoolSelfBacktrackFirstStartTailResidual_blockedHeadContinuation
+    hblocked hall hpool hfirst
+
+private theorem pooledExitLiteralTerminalContinuations_of_pooledTerminalContinuations
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandlers : PooledTerminalContinuations s vars on_) :
+    PooledExitLiteralTerminalContinuations s vars on_ := by
+  rcases hhandlers with ⟨hpair, hstable, hfirstStart⟩
+  exact
+    ⟨sameStartExitLiteralContinuation_of_pooledSameStartPairDescentHandler
+        hpair,
+      hstable,
+      hfirstStart⟩
+
+private theorem pooledExitLiteralTerminalContinuations_of_blockedHeadContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hblocked : BlockedHeadContinuation s vars on_) :
+    PooledExitLiteralTerminalContinuations s vars on_ :=
+  ⟨sameStartExitLiteralContinuation_of_blockedHeadContinuation hblocked,
+    stableExitLiteralContinuation_of_blockedHeadContinuation hblocked,
+    firstStartExitLiteralContinuation_of_blockedHeadContinuation hblocked⟩
+
+private theorem pooledBacktrackTerminalDescentHandlers_of_pooledTerminalContinuations
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandlers : PooledTerminalContinuations s vars on_) :
+    PooledBacktrackTerminalDescentHandlers s vars on_ := by
+  rcases hhandlers with ⟨hpair, hstable, hfirstStart⟩
+  exact
+    ⟨hpair,
+      backtrackStableDescentHandler_of_stableExitLiteralContinuation hstable,
+      backtrackFirstStartDescentHandler_of_firstStartExitLiteralContinuation
+        hfirstStart⟩
+
+private theorem pooledBacktrackTerminalDescentHandlers_of_pooledCursorTerminalDescentHandlers
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandlers : PooledCursorTerminalDescentHandlers s vars on_) :
+    PooledBacktrackTerminalDescentHandlers s vars on_ :=
+  pooledBacktrackTerminalDescentHandlers_of_pooledTerminalContinuations
+    hhandlers
+
+private theorem stableDescentHandler_of_backtrackStableDescentHandler
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hbackStable : BacktrackStableDescentHandler s vars on_) :
+    StableDescentHandler s vars on_ := by
+  intro startPos skBase skStop hall hpool hstable
+  exact hbackStable hall hpool
+    (patchPoolSelfStableTailResidual_to_cursor hstable)
+
+private theorem firstStartDescentHandler_of_backtrackFirstStartDescentHandler
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hbackFirstStart : BacktrackFirstStartDescentHandler s vars on_) :
+    FirstStartDescentHandler s vars on_ := by
+  intro startPos skBase skStop hall hpool hfirst
+  exact hbackFirstStart hall hpool
+    (patchPoolSelfFirstStartTailResidual_to_cursor hfirst)
+
+private theorem pooledSameStartPairDescentHandler_of_sameStartPairDescentHandler
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hpair : SameStartPairDescentHandler s vars on_) :
+    PooledSameStartPairDescentHandler s vars on_ := by
+  intro startPos skBase skStop hall _hpool hblocked
+  exact hpair hall hblocked
+
+private theorem terminalDescentHandlers_of_backtrackTerminalDescentHandlers
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandlers : BacktrackTerminalDescentHandlers s vars on_) :
+    TerminalDescentHandlers s vars on_ := by
+  rcases hhandlers with ⟨hpair, hbackStable, hbackFirstStart⟩
+  exact
+    ⟨hpair,
+      stableDescentHandler_of_backtrackStableDescentHandler hbackStable,
+      firstStartDescentHandler_of_backtrackFirstStartDescentHandler
+        hbackFirstStart,
+      hbackStable,
+      hbackFirstStart⟩
+
+private theorem backtrackTerminalDescentHandlers_of_terminalDescentHandlers
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandlers : TerminalDescentHandlers s vars on_) :
+    BacktrackTerminalDescentHandlers s vars on_ := by
+  rcases hhandlers with
+    ⟨hpair, _hstable, _hfirstStart, hbackStable, hbackFirstStart⟩
+  exact ⟨hpair, hbackStable, hbackFirstStart⟩
+
+private theorem pooledTerminalDescentHandlers_of_pooledBacktrackTerminalDescentHandlers
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandlers : PooledBacktrackTerminalDescentHandlers s vars on_) :
+    PooledTerminalDescentHandlers s vars on_ := by
+  rcases hhandlers with ⟨hpair, hbackStable, hbackFirstStart⟩
+  exact
+    ⟨hpair,
+      stableDescentHandler_of_backtrackStableDescentHandler hbackStable,
+      firstStartDescentHandler_of_backtrackFirstStartDescentHandler
+        hbackFirstStart,
+      hbackStable,
+      hbackFirstStart⟩
+
+private theorem pooledTerminalDescentHandlers_of_pooledTerminalContinuations
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandlers : PooledTerminalContinuations s vars on_) :
+    PooledTerminalDescentHandlers s vars on_ :=
+  pooledTerminalDescentHandlers_of_pooledBacktrackTerminalDescentHandlers
+    (pooledBacktrackTerminalDescentHandlers_of_pooledTerminalContinuations
+      hhandlers)
+
+private theorem pooledTerminalDescentHandlers_of_pooledCursorTerminalDescentHandlers
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandlers : PooledCursorTerminalDescentHandlers s vars on_) :
+    PooledTerminalDescentHandlers s vars on_ :=
+  pooledTerminalDescentHandlers_of_pooledTerminalContinuations hhandlers
+
+private theorem pooledTerminalDescentHandlers_of_terminalDescentHandlers
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandlers : TerminalDescentHandlers s vars on_) :
+    PooledTerminalDescentHandlers s vars on_ := by
+  rcases hhandlers with
+    ⟨hpair, hstable, hfirstStart, hbackStable, hbackFirstStart⟩
+  exact
+    ⟨pooledSameStartPairDescentHandler_of_sameStartPairDescentHandler hpair,
+      hstable, hfirstStart, hbackStable, hbackFirstStart⟩
+
+private theorem pooledBacktrackTerminalDescentHandlers_of_backtrackTerminalDescentHandlers
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandlers : BacktrackTerminalDescentHandlers s vars on_) :
+    PooledBacktrackTerminalDescentHandlers s vars on_ := by
+  rcases hhandlers with ⟨hpair, hbackStable, hbackFirstStart⟩
+  exact
+    ⟨pooledSameStartPairDescentHandler_of_sameStartPairDescentHandler hpair,
+      hbackStable, hbackFirstStart⟩
+
+private theorem patchPoolSelfStableCursorTailResidual_target_props
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfStableCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate := by
+  rcases hres with
+    ⟨σ, cref, c, lit, target, hhead, hpath, hmem, hfalse,
+      hnoOpp, _htail⟩
+  exact ⟨σ, cref, c, lit, target, hhead, hpath, hmem, hfalse,
+    hnoOpp⟩
+
+private theorem patchPoolSelfStableCursorTailResidual_tail_cases
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfStableCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate ∧
+      ((∃ tailCref tailClause other,
+        s.clauses.getClause tailCref = some tailClause ∧
+        mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
+        (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+        target ∈ tailClause.lits.toList ∧
+        target ≠ mkLit on_ (!startPos) ∧
+        other ∈ tailClause.lits.toList ∧
+        other ≠ target ∧
+        s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+        s.formula.litValue σ skCand other = true) ∨
+      (∃ prev tailCref tailClause other,
+        DeletePurePath s on_ (mkLit on_ (!startPos)) prev ∧
+        s.clauses.getClause tailCref = some tailClause ∧
+        prev.negate ∈ tailClause.lits.toList ∧
+        (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+        target ∈ tailClause.lits.toList ∧
+        target ≠ prev.negate ∧
+        other ∈ tailClause.lits.toList ∧
+        other ≠ target ∧
+        s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+        s.formula.litValue σ skCand other = true)) := by
+  rcases hres with
+    ⟨σ, cref, c, lit, target, hhead, hpath, hmem, hfalse,
+      hnoOpp, htail⟩
+  exact ⟨σ, cref, c, lit, target, hhead, hpath, hmem, hfalse,
+    hnoOpp, htail⟩
+
+private theorem patchPoolSelfFirstStartCursorTailResidual_target_props
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfFirstStartCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate := by
+  rcases hres with
+    ⟨σ, cref, c, lit, target, hhead, hpath, hmem, hfalse,
+      hnoOpp, _htail⟩
+  exact ⟨σ, cref, c, lit, target, hhead, hpath, hmem, hfalse,
+    hnoOpp⟩
+
+private theorem patchPoolSelfFirstStartCursorTailResidual_tail
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfFirstStartCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target tailCref tailClause other,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate ∧
+      s.clauses.getClause tailCref = some tailClause ∧
+      mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+      target ∈ tailClause.lits.toList ∧
+      target ≠ mkLit on_ (!startPos) ∧
+      other ∈ tailClause.lits.toList ∧
+      other ≠ target ∧
+      s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+      other = mkLit on_ (!startPos) := by
+  rcases hres with
+    ⟨σ, cref, c, lit, target, hhead, hpath, hmem, hfalse,
+      hnoOpp, tailCref, tailClause, other, htailGet, hstartMem,
+      hnoStartNeg, htargetMem, htargetNe, hotherMem, hotherNe,
+      hotherFlipTrue, hotherStart⟩
+  exact ⟨σ, cref, c, lit, target, tailCref, tailClause, other,
+    hhead, hpath, hmem, hfalse, hnoOpp, htailGet, hstartMem,
+    hnoStartNeg, htargetMem, htargetNe, hotherMem, hotherNe,
+    hotherFlipTrue, hotherStart⟩
+
+private theorem flexibleRepairStrictStep_of_flip_witness_no_start_path
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    {σ : UnivAssignment} {lit : Literal}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skStop)
+    (hlit_var : lit.var ∈ vars.toList)
+    (hon_eq : σ on_ = startPos)
+    (hwit : DeleteDepWitness s.formula lit.var on_ skStop σ)
+    (hflip_true : s.formula.litValue (flipUniv on_ σ) skStop lit = true)
+    (hbase_eq : lit = mkLit lit.var (s.formula.varValue σ skBase lit.var))
+    (hno_start_base :
+      ¬ DeletePurePath s on_ (mkLit on_ startPos)
+        (mkLit lit.var (s.formula.varValue σ skBase lit.var))) :
+    FlexibleRepairStrictStep s vars on_ skBase skStop := by
+  let σFlip := flipUniv on_ σ
+  let skNext := patchDeleteWitnessAt s.formula lit.var σFlip skStop
+  have hwitFlip :
+      DeleteDepWitness s.formula lit.var on_ skStop σFlip := by
+    exact (deleteDepWitness_flipUniv_iff
+      s.formula lit.var on_ skStop σ).2 hwit
+  have hflip_lit_eq :
+      lit =
+        mkLit lit.var (s.formula.varValue σFlip skStop lit.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula lit.var σFlip skStop lit rfl hflip_true
+  have hstart_eq :
+      mkLit on_ (!(σFlip on_)) = mkLit on_ startPos := by
+    simp [σFlip, flipUniv, hon_eq]
+  have hend_eq :
+      mkLit lit.var (s.formula.varValue σFlip skStop lit.var) =
+        mkLit lit.var (s.formula.varValue σ skBase lit.var) := by
+    calc
+      mkLit lit.var (s.formula.varValue σFlip skStop lit.var) = lit :=
+        hflip_lit_eq.symm
+      _ = mkLit lit.var (s.formula.varValue σ skBase lit.var) :=
+        hbase_eq
+  have hnoPathSeed :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σFlip on_)))
+        (mkLit lit.var (s.formula.varValue σFlip skStop lit.var)) := by
+    simpa [hstart_eq, hend_eq] using hno_start_base
+  have hflexNext :
+      FlexibleRepairPoolCandidate s vars on_ skBase skNext :=
+    flexibleRepairPoolCandidate_patch_step
+      (s := s) (vars := vars) (on_ := on_) (patched := lit.var)
+      (skBase := skBase) (skCand := skStop) (σSeed := σFlip)
+      hexi hcontains hpool hlit_var hwitFlip hnoPathSeed
+  have hlt :
+      deleteWitnessFiberCountSet s.formula vars on_ skNext <
+        deleteWitnessFiberCountSet s.formula vars on_ skStop :=
+    deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+      s.formula vars lit.var on_ σFlip skStop hlit_var
+      (hexi lit.var hlit_var) (hcontains lit.var hlit_var) hwitFlip
+  exact ⟨skNext, hflexNext, hlt⟩
+
+private theorem patchPoolSelfTailHead_flexible_flip_step
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hhead :
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skStop σ cref c lit) :
+    FlexibleRepairStrictStep s vars on_ skBase skStop := by
+  classical
+  rcases hhead with
+    ⟨_hget, _hclause_false, _hno_compl, _hlit_mem, hlit_var,
+      hon_eq, _hlit_true, _hlit_false, hwit, hflip_true,
+      hbase_eq, _hcand_eq, _hpath_cand, _hno_opposite_base,
+      hno_start_base, _hall_self⟩
+  have hflexBase :
+      FlexibleRepairPoolCandidate s vars on_ skBase skStop :=
+    flexibleRepairPoolCandidate_of_patchPoolCandidate hpool
+  exact flexibleRepairStrictStep_of_flip_witness_no_start_path
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop) (σ := σ) (lit := lit)
+    hexi hcontains hflexBase hlit_var hon_eq hwit hflip_true hbase_eq
+    hno_start_base
+
+private theorem flexibleRepairPathBranch_strictStep
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hbranch : FlexibleRepairPathBranch s vars on_ skBase skCand σ) :
+    FlexibleRepairStrictStep s vars on_ skBase skCand := by
+  let startPos := σ on_
+  have hblocked :
+      PatchPoolBlockedPathBranch s vars on_ startPos skBase skCand :=
+    flexibleRepairPathBranch_to_blockedPathBranch
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ)
+      hon_univ hexi hcontains hbranch
+  rcases patchPoolBlockedPathBranch_value_path_certificate
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skCand)
+      hfull hon_le hon_univ hpaths hblocked with
+    ⟨σPath, _cref, _c, lit, _hget, _hclause_false, _hno_compl,
+      _hlit_mem, hlit_var, hon_eq, _hlit_true, _hlit_false, hwit,
+      hflip_true, hbase_eq, _hcand_eq, _hpath_cand, _hno_opposite_base,
+      hno_start_base⟩
+  exact flexibleRepairStrictStep_of_flip_witness_no_start_path
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skCand) (σ := σPath) (lit := lit)
+    hexi hcontains hpool hlit_var hon_eq hwit hflip_true hbase_eq
+    hno_start_base
+
+private theorem patchPoolSelfFirstStartCursorTailResidual_flexible_step
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hfirst :
+      PatchPoolSelfFirstStartCursorTailResidual
+        s vars on_ startPos skBase skStop) :
+    FlexibleRepairStrictStep s vars on_ skBase skStop := by
+  rcases patchPoolSelfFirstStartCursorTailResidual_tail hfirst with
+    ⟨σ, cref, c, lit, _target, _tailCref, _tailClause, _other,
+      hhead, _hpath, _htargetMem, _htargetFalse, _hnoOpp,
+      _htailGet, _hstartMem, _hnoStartNeg, _htargetMemClause,
+      _htargetNe, _hotherMem, _hotherNe, _hotherFlipTrue,
+      _hotherStart⟩
+  exact patchPoolSelfTailHead_flexible_flip_step
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop) (σ := σ) (cref := cref)
+    (c := c) (lit := lit) hexi hcontains hpool hhead
+
+private theorem patchPoolSelfStableCursorTailResidual_flexible_step
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hstable :
+      PatchPoolSelfStableCursorTailResidual
+        s vars on_ startPos skBase skStop) :
+    FlexibleRepairStrictStep s vars on_ skBase skStop := by
+  rcases patchPoolSelfStableCursorTailResidual_target_props hstable with
+    ⟨σ, cref, c, lit, _target, hhead, _hpath, _htargetMem,
+      _htargetFalse, _hnoOpp⟩
+  exact patchPoolSelfTailHead_flexible_flip_step
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop) (σ := σ) (cref := cref)
+    (c := c) (lit := lit) hexi hcontains hpool hhead
+
+private theorem patchPoolSelfSameStartCursorTailResidual_flexible_step
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hsame :
+      PatchPoolSelfSameStartCursorTailResidual
+        s vars on_ startPos skBase skStop) :
+    FlexibleRepairStrictStep s vars on_ skBase skStop := by
+  rcases patchPoolSelfSameStartCursorTailResidual_head hsame with
+    ⟨σ, cref, c, lit, hhead, _hblocked⟩
+  exact patchPoolSelfTailHead_flexible_flip_step
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop) (σ := σ) (cref := cref)
+    (c := c) (lit := lit) hexi hcontains hpool hhead
+
+private abbrev PooledCursorTerminalFlexibleSteps
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+    (∀ x ∈ vars.toList, s.formula.isVarExistential x = true) →
+    (∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true) →
+    PatchPoolCandidate s vars on_ startPos skBase skStop →
+    (PatchPoolSelfSameStartCursorTailResidual
+        s vars on_ startPos skBase skStop ∨
+      PatchPoolSelfStableCursorTailResidual
+        s vars on_ startPos skBase skStop ∨
+      PatchPoolSelfFirstStartCursorTailResidual
+        s vars on_ startPos skBase skStop) →
+    FlexibleRepairStrictStep s vars on_ skBase skStop
+
+private theorem pooledCursorTerminalFlexibleSteps
+    {s : CheckState} {vars : Array Var} {on_ : Var} :
+    PooledCursorTerminalFlexibleSteps s vars on_ := by
+  intro startPos skBase skStop hexi hcontains hpool hcase
+  rcases hcase with hsame | hrest
+  · exact patchPoolSelfSameStartCursorTailResidual_flexible_step
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop)
+      hexi hcontains hpool hsame
+  · rcases hrest with hstable | hfirst
+    · exact patchPoolSelfStableCursorTailResidual_flexible_step
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (skBase := skBase) (skStop := skStop)
+        hexi hcontains hpool hstable
+    · exact patchPoolSelfFirstStartCursorTailResidual_flexible_step
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (skBase := skBase) (skStop := skStop)
+        hexi hcontains hpool hfirst
+
+private theorem patchPoolSelfStableTailResidual_flexible_step
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hstable :
+      PatchPoolSelfStableTailResidual
+        s vars on_ startPos skBase skStop) :
+    FlexibleRepairStrictStep s vars on_ skBase skStop :=
+  patchPoolSelfStableCursorTailResidual_flexible_step
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop)
+    hexi hcontains hpool (patchPoolSelfStableTailResidual_to_cursor hstable)
+
+private theorem patchPoolSelfFirstStartTailResidual_flexible_step
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hfirst :
+      PatchPoolSelfFirstStartTailResidual
+        s vars on_ startPos skBase skStop) :
+    FlexibleRepairStrictStep s vars on_ skBase skStop :=
+  patchPoolSelfFirstStartCursorTailResidual_flexible_step
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop)
+    hexi hcontains hpool (patchPoolSelfFirstStartTailResidual_to_cursor hfirst)
+
+private theorem patchPoolSelfBacktrackStableTailResidual_flexible_step
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hstable :
+      PatchPoolSelfBacktrackStableTailResidual
+        s vars on_ startPos skBase skStop) :
+    FlexibleRepairStrictStep s vars on_ skBase skStop :=
+  patchPoolSelfStableCursorTailResidual_flexible_step
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop)
+    hexi hcontains hpool
+    (patchPoolSelfBacktrackStableTailResidual_to_cursor hstable)
+
+private theorem patchPoolSelfBacktrackFirstStartTailResidual_flexible_step
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop)
+    (hfirst :
+      PatchPoolSelfBacktrackFirstStartTailResidual
+        s vars on_ startPos skBase skStop) :
+    FlexibleRepairStrictStep s vars on_ skBase skStop :=
+  patchPoolSelfFirstStartCursorTailResidual_flexible_step
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skStop := skStop)
+    hexi hcontains hpool
+    (patchPoolSelfBacktrackFirstStartTailResidual_to_cursor hfirst)
+
+private abbrev FlexibleRepairPoolContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment},
+    (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+    FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private theorem flexibleRepairStrictStep_apply_poolContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    (hstrict :
+      FlexibleRepairStrictStep s vars on_ skBase skCand) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases hstrict with ⟨skNext, hpoolNext, _hltNext⟩
+  exact hcontinue hall hpoolNext
+
+private theorem sameStartExitLiteralContinuation_of_flexibleRepairPoolContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_) :
+    SameStartExitLiteralContinuation s vars on_ := by
+  intro startPos skBase skStop hall hpool hcase
+  exact flexibleRepairStrictStep_apply_poolContinuation
+    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+    (skCand := skStop) hcontinue hall
+    (patchPoolSelfSameStartCursorTailResidual_flexible_step
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop) hexi hcontains hpool hcase)
+
+private theorem stableExitLiteralContinuation_of_flexibleRepairPoolContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_) :
+    StableExitLiteralContinuation s vars on_ := by
+  intro startPos skBase skStop hall hpool hcase
+  exact flexibleRepairStrictStep_apply_poolContinuation
+    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+    (skCand := skStop) hcontinue hall
+    (patchPoolSelfStableCursorTailResidual_flexible_step
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop) hexi hcontains hpool hcase)
+
+private theorem firstStartExitLiteralContinuation_of_flexibleRepairPoolContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_) :
+    FirstStartExitLiteralContinuation s vars on_ := by
+  intro startPos skBase skStop hall hpool hcase
+  exact flexibleRepairStrictStep_apply_poolContinuation
+    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+    (skCand := skStop) hcontinue hall
+    (patchPoolSelfFirstStartCursorTailResidual_flexible_step
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop) hexi hcontains hpool hcase)
+
+private theorem stableCursorDescentHandler_of_flexibleRepairPoolContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_) :
+    StableCursorDescentHandler s vars on_ :=
+  stableExitLiteralContinuation_of_flexibleRepairPoolContinuation
+    hexi hcontains hcontinue
+
+private theorem firstStartCursorDescentHandler_of_flexibleRepairPoolContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_) :
+    FirstStartCursorDescentHandler s vars on_ :=
+  firstStartExitLiteralContinuation_of_flexibleRepairPoolContinuation
+    hexi hcontains hcontinue
+
+private theorem pooledExitLiteralTerminalContinuations_of_flexibleRepairPoolContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_) :
+    PooledExitLiteralTerminalContinuations s vars on_ :=
+  ⟨sameStartExitLiteralContinuation_of_flexibleRepairPoolContinuation
+      hexi hcontains hcontinue,
+    stableExitLiteralContinuation_of_flexibleRepairPoolContinuation
+      hexi hcontains hcontinue,
+    firstStartExitLiteralContinuation_of_flexibleRepairPoolContinuation
+      hexi hcontains hcontinue⟩
+
+private theorem flexibleRepairPoolContinuation_of_falseMatrix_frontier
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hstrict :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairStrictStep s vars on_ skBase skCand →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hpath :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairPathBranch s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hflip :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    FlexibleRepairPoolContinuation s vars on_ := by
+  classical
+  intro skBase skCand hall hpool
+  by_cases hfail :
+      ∃ σ, s.clauses.matrixValue s.formula σ skCand = false
+  · rcases hfail with ⟨σ, hfalse⟩
+    rcases flexibleRepairPoolCandidate_false_matrix_step_or_pathBranch_or_flip_false
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand)
+        hclosed hgt hexi hcontains hpool hall hfalse with
+      hstep | hrest
+    · exact hstrict hall hpool hfalse hstep
+    · rcases hrest with hpathBranch | hflipFalse
+      · exact hpath hall hpool hfalse hpathBranch
+      · exact hflip hall hpool hfalse hflipFalse
+  · left
+    refine ⟨skCand, ?_, hpool.1⟩
+    intro σ
+    cases hval : s.clauses.matrixValue s.formula σ skCand with
+    | false => exact False.elim (hfail ⟨σ, hval⟩)
+    | true => rfl
+
+private theorem flexibleRepairPoolContinuation_of_path_flip_frontier
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpath :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairPathBranch s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hflip :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    FlexibleRepairPoolContinuation s vars on_ := by
+  classical
+  intro skBase skCand hall hpool
+  let P : Nat → Prop := fun n =>
+    ∀ skCur,
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      FlexibleRepairPoolCandidate s vars on_ skBase skCur →
+      DeleteIndependenceDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur hcount hpoolCur
+      by_cases hfail :
+          ∃ σ, s.clauses.matrixValue s.formula σ skCur = false
+      · rcases hfail with ⟨σ, hfalse⟩
+        rcases flexibleRepairPoolCandidate_false_matrix_step_or_pathBranch_or_flip_false
+            (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+            (skCand := skCur)
+            hclosed hgt hexi hcontains hpoolCur hall hfalse with
+          hstep | hrest
+        · rcases hstep with ⟨skNext, hpoolNext, hltNext⟩
+          have hlt_n :
+              deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+            simpa [hcount] using hltNext
+          exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+            hlt_n skNext rfl hpoolNext
+        · rcases hrest with hpathBranch | hflipFalse
+          · exact hpath hall hpoolCur hfalse hpathBranch
+          · exact hflip hall hpoolCur hfalse hflipFalse
+      · left
+        refine ⟨skCur, ?_, ?_⟩
+        · intro σ
+          cases hval : s.clauses.matrixValue s.formula σ skCur with
+          | false => exact False.elim (hfail ⟨σ, hval⟩)
+          | true => rfl
+        · exact hpoolCur.1)
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    skCand rfl hpool
+
+private theorem flexibleRepairPoolContinuation_of_flip_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hflip :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    FlexibleRepairPoolContinuation s vars on_ := by
+  classical
+  intro skBase skCand hall hpool
+  let P : Nat → Prop := fun n =>
+    ∀ skCur,
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      FlexibleRepairPoolCandidate s vars on_ skBase skCur →
+      DeleteIndependenceDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur hcount hpoolCur
+      by_cases hfail :
+          ∃ σ, s.clauses.matrixValue s.formula σ skCur = false
+      · rcases hfail with ⟨σ, hfalse⟩
+        rcases flexibleRepairPoolCandidate_false_matrix_step_or_pathBranch_or_flip_false
+            (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+            (skCand := skCur)
+            hclosed hgt hexi hcontains hpoolCur hall hfalse with
+          hstep | hrest
+        · rcases hstep with ⟨skNext, hpoolNext, hltNext⟩
+          have hlt_n :
+              deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+            simpa [hcount] using hltNext
+          exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+            hlt_n skNext rfl hpoolNext
+        · rcases hrest with hpathBranch | hflipFalse
+          · rcases flexibleRepairPathBranch_strictStep
+                (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                (on_ := on_) (skBase := skBase) (skCand := skCur)
+                (σ := σ)
+                hfull hon_le hon_univ hexi hcontains hpaths hpoolCur
+                hpathBranch with
+              ⟨skNext, hpoolNext, hltNext⟩
+            have hlt_n :
+                deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+              simpa [hcount] using hltNext
+            exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+              hlt_n skNext rfl hpoolNext
+          · exact hflip hall hpoolCur hfalse hflipFalse
+      · left
+        refine ⟨skCur, ?_, ?_⟩
+        · intro σ
+          cases hval : s.clauses.matrixValue s.formula σ skCur with
+          | false => exact False.elim (hfail ⟨σ, hval⟩)
+          | true => rfl
+        · exact hpoolCur.1)
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    skCand rfl hpool
+
+private theorem flexibleRepairPoolContinuation_of_same_clause_flip_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hsameClause :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    FlexibleRepairPoolContinuation s vars on_ := by
+  classical
+  intro skBase skCand hall hpool
+  let P : Nat → Prop := fun n =>
+    ∀ skCur,
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      FlexibleRepairPoolCandidate s vars on_ skBase skCur →
+      DeleteIndependenceDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur hcount hpoolCur
+      by_cases hfail :
+          ∃ σ, s.clauses.matrixValue s.formula σ skCur = false
+      · rcases hfail with ⟨σ, hfalse⟩
+        rcases flexibleRepairPoolCandidate_false_matrix_step_or_pathBranch_or_sameClauseFlipFailure
+            (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+            (skCand := skCur)
+            hclosed hgt hexi hcontains hpoolCur hall hfalse with
+          hstep | hrest
+        · rcases hstep with ⟨skNext, hpoolNext, hltNext⟩
+          have hlt_n :
+              deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+            simpa [hcount] using hltNext
+          exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+            hlt_n skNext rfl hpoolNext
+        · rcases hrest with hpathBranch | hsameClauseFailure
+          · rcases flexibleRepairPathBranch_strictStep
+                (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                (on_ := on_) (skBase := skBase) (skCand := skCur)
+                (σ := σ)
+                hfull hon_le hon_univ hexi hcontains hpaths hpoolCur
+                hpathBranch with
+              ⟨skNext, hpoolNext, hltNext⟩
+            have hlt_n :
+                deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+              simpa [hcount] using hltNext
+            exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+              hlt_n skNext rfl hpoolNext
+          · exact hsameClause hall hpoolCur hfalse hsameClauseFailure
+      · left
+        refine ⟨skCur, ?_, ?_⟩
+        · intro σ
+          cases hval : s.clauses.matrixValue s.formula σ skCur with
+          | false => exact False.elim (hfail ⟨σ, hval⟩)
+          | true => rfl
+        · exact hpoolCur.1)
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    skCand rfl hpool
+
+private theorem flexibleRepairPoolContinuation_of_two_polarity_clause_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (htwoPolarity :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseTwoPolarityFailure
+          s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    FlexibleRepairPoolContinuation s vars on_ := by
+  exact flexibleRepairPoolContinuation_of_same_clause_flip_frontier
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+    (on_ := on_) hfull hon_le hon_univ hclosed hgt hexi hcontains
+    hpaths
+    (by
+      intro skBase skCand σ hall hpool hfalse hfailure
+      exact htwoPolarity hall hpool hfalse
+        (flexibleRepairSameClauseFlipFailure_to_twoPolarityFailure
+          (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+          (skCand := skCand) (σ := σ) hpool hall hfailure))
+
+private theorem patchPoolSelfStableExitLiteralTerminalCase_target_props
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hcase :
+      PatchPoolSelfStableExitLiteralTerminalCase
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate :=
+  patchPoolSelfStableCursorTailResidual_target_props hcase
+
+private theorem patchPoolSelfStableExitLiteralTerminalCase_tail_cases
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hcase :
+      PatchPoolSelfStableExitLiteralTerminalCase
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate ∧
+      ((∃ tailCref tailClause other,
+        s.clauses.getClause tailCref = some tailClause ∧
+        mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
+        (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+        target ∈ tailClause.lits.toList ∧
+        target ≠ mkLit on_ (!startPos) ∧
+        other ∈ tailClause.lits.toList ∧
+        other ≠ target ∧
+        s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+        s.formula.litValue σ skCand other = true) ∨
+      (∃ prev tailCref tailClause other,
+        DeletePurePath s on_ (mkLit on_ (!startPos)) prev ∧
+        s.clauses.getClause tailCref = some tailClause ∧
+        prev.negate ∈ tailClause.lits.toList ∧
+        (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+        target ∈ tailClause.lits.toList ∧
+        target ≠ prev.negate ∧
+        other ∈ tailClause.lits.toList ∧
+        other ≠ target ∧
+        s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+        s.formula.litValue σ skCand other = true)) :=
+  patchPoolSelfStableCursorTailResidual_tail_cases hcase
+
+private theorem patchPoolSelfFirstStartExitLiteralTerminalCase_target_props
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hcase :
+      PatchPoolSelfFirstStartExitLiteralTerminalCase
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate :=
+  patchPoolSelfFirstStartCursorTailResidual_target_props hcase
+
+private theorem patchPoolSelfFirstStartExitLiteralTerminalCase_tail
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hcase :
+      PatchPoolSelfFirstStartExitLiteralTerminalCase
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target tailCref tailClause other,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate ∧
+      s.clauses.getClause tailCref = some tailClause ∧
+      mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+      target ∈ tailClause.lits.toList ∧
+      target ≠ mkLit on_ (!startPos) ∧
+      other ∈ tailClause.lits.toList ∧
+      other ≠ target ∧
+      s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+      other = mkLit on_ (!startPos) :=
+  patchPoolSelfFirstStartCursorTailResidual_tail hcase
+
+private theorem patchPoolSelfBacktrackStableTailResidual_target_props
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfBacktrackStableTailResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate :=
+  patchPoolSelfStableCursorTailResidual_target_props
+    (patchPoolSelfBacktrackStableTailResidual_to_cursor hres)
+
+private theorem patchPoolSelfBacktrackStableTailResidual_tail_cases
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfBacktrackStableTailResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate ∧
+      ((∃ tailCref tailClause other,
+        s.clauses.getClause tailCref = some tailClause ∧
+        mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
+        (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+        target ∈ tailClause.lits.toList ∧
+        target ≠ mkLit on_ (!startPos) ∧
+        other ∈ tailClause.lits.toList ∧
+        other ≠ target ∧
+        s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+        s.formula.litValue σ skCand other = true) ∨
+      (∃ prev tailCref tailClause other,
+        DeletePurePath s on_ (mkLit on_ (!startPos)) prev ∧
+        s.clauses.getClause tailCref = some tailClause ∧
+        prev.negate ∈ tailClause.lits.toList ∧
+        (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+        target ∈ tailClause.lits.toList ∧
+        target ≠ prev.negate ∧
+        other ∈ tailClause.lits.toList ∧
+        other ≠ target ∧
+        s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+        s.formula.litValue σ skCand other = true)) :=
+  patchPoolSelfStableCursorTailResidual_tail_cases
+    (patchPoolSelfBacktrackStableTailResidual_to_cursor hres)
+
+private theorem patchPoolSelfBacktrackFirstStartTailResidual_target_props
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfBacktrackFirstStartTailResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate :=
+  patchPoolSelfFirstStartCursorTailResidual_target_props
+    (patchPoolSelfBacktrackFirstStartTailResidual_to_cursor hres)
+
+private theorem patchPoolSelfBacktrackFirstStartTailResidual_tail
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfBacktrackFirstStartTailResidual
+        s vars on_ startPos skBase skCand) :
+    ∃ σ cref c lit target tailCref tailClause other,
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit ∧
+      DeletePurePath s on_ (mkLit on_ (!startPos)) target ∧
+      target.var ∈ vars.toList ∧
+      s.formula.litValue (flipUniv on_ σ) skCand target = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) target.negate ∧
+      s.clauses.getClause tailCref = some tailClause ∧
+      mkLit on_ (!startPos) ∈ tailClause.lits.toList ∧
+      (mkLit on_ (!startPos)).negate ∉ tailClause.lits.toList ∧
+      target ∈ tailClause.lits.toList ∧
+      target ≠ mkLit on_ (!startPos) ∧
+      other ∈ tailClause.lits.toList ∧
+      other ≠ target ∧
+      s.formula.litValue (flipUniv on_ σ) skCand other = true ∧
+      other = mkLit on_ (!startPos) :=
+  patchPoolSelfFirstStartCursorTailResidual_tail
+    (patchPoolSelfBacktrackFirstStartTailResidual_to_cursor hres)
+
+private theorem patchPoolSelfStableCursorTailResidual_to_closedChaseState
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfStableCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolClosedChaseState s vars on_ startPos skBase skCand := by
+  rcases hres with
+    ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp,
+      _htail⟩
+  exact ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+
+private theorem patchPoolSelfFirstStartCursorTailResidual_to_closedChaseState
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfFirstStartCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolClosedChaseState s vars on_ startPos skBase skCand := by
+  rcases hres with
+    ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp,
+      _tailCref, _tailClause, _other, _htailGet, _hstartMem,
+      _hnoStartNeg, _hcursorMemClause, _hcursorNe, _hotherMem,
+      _hotherNe, _hotherTrue, _hotherStart⟩
+  exact ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+
+private theorem patchPoolSelfStableTailResidual_to_closedChaseState
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfStableTailResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolClosedChaseState s vars on_ startPos skBase skCand :=
+  patchPoolSelfStableCursorTailResidual_to_closedChaseState
+    (patchPoolSelfStableTailResidual_to_cursor hres)
+
+private theorem patchPoolSelfFirstStartTailResidual_to_closedChaseState
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfFirstStartTailResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolClosedChaseState s vars on_ startPos skBase skCand :=
+  patchPoolSelfFirstStartCursorTailResidual_to_closedChaseState
+    (patchPoolSelfFirstStartTailResidual_to_cursor hres)
+
+private theorem patchPoolSelfBacktrackStableTailResidual_to_closedChaseState
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfBacktrackStableTailResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolClosedChaseState s vars on_ startPos skBase skCand :=
+  patchPoolSelfStableCursorTailResidual_to_closedChaseState
+    (patchPoolSelfBacktrackStableTailResidual_to_cursor hres)
+
+private theorem patchPoolSelfBacktrackFirstStartTailResidual_to_closedChaseState
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfBacktrackFirstStartTailResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolClosedChaseState s vars on_ startPos skBase skCand :=
+  patchPoolSelfFirstStartCursorTailResidual_to_closedChaseState
+    (patchPoolSelfBacktrackFirstStartTailResidual_to_cursor hres)
 
 private theorem patchPoolSelfClassifiedTailBranch_to_strict_outcome
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -23010,6 +26227,18 @@ private theorem deletePurePath_target_mem_of_closed
   hclosed target.var
     (deletePurePath_target_isVarExistential hpath)
     (deletePurePath_target_dependsOn hpath)
+
+private theorem deletePurePath_target_mem_of_noExternalDependentTail
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {start target : Literal}
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hpath : DeletePurePath s on_ start target) :
+    target.var ∈ vars.toList :=
+  deletePurePath_target_mem_of_closed
+    (s := s) (vars := vars) (on_ := on_) (start := start)
+    (target := target)
+    (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+    hpath
 
 private theorem patchPoolFailureBranch_blocked_or_step_or_external
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -23664,6 +26893,260 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
     skCand rfl hpool
 
+private theorem patchPoolSelfConnectorBacktrackResidualSized_to_descentOutcome_closed
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment} {n : Nat}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hback :
+      PatchPoolSelfConnectorBacktrackResidualSized
+        s vars on_ startPos skBase skCand n) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  classical
+  let P : Nat → Prop := fun n =>
+    PatchPoolSelfConnectorBacktrackResidualSized
+        s vars on_ startPos skBase skCand n →
+      DeleteIndependenceDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih hcur
+      let finishStrict :
+          PatchPoolStrictStep s vars on_ startPos skBase skCand →
+          DeleteIndependenceDescentOutcome s vars on_ skBase := by
+        intro hstrict
+        rcases hstrict with ⟨skNext, hpoolNext, _hltNext⟩
+        rcases patchPoolCandidate_iterate_descent_or_terminal_tail_residual_closed
+            (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+            (on_ := on_) (startPos := startPos) (skBase := skBase)
+            (skCand := skNext)
+            hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+            hpoolNext hallBase with
+          hgood | hresidual
+        · exact Or.inl hgood
+        · rcases hresidual with hblockedPair | htail
+          · exact hpair hallBase hblockedPair
+          · rcases htail with ⟨skStop, hpoolStop, hcases⟩
+            rcases hcases with hstable | hrest
+            · exact hbackStable hallBase hpoolStop
+                (patchPoolSelfStableTailResidual_to_cursor hstable)
+            · rcases hrest with hfirst | hrest
+              · exact hbackFirstStart hallBase hpoolStop
+                  (patchPoolSelfFirstStartTailResidual_to_cursor hfirst)
+              · rcases hrest with hbackStableResidual | hbackFirstResidual
+                · exact hbackStable hallBase hpoolStop hbackStableResidual
+                · exact hbackFirstStart hallBase hpoolStop hbackFirstResidual
+      have htail :
+          PatchPoolSelfBacktrackTailBranchSized
+            s vars on_ startPos skBase skCand n :=
+        patchPoolSelfConnectorBacktrackResidualSized_to_tail_branch
+          (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+          (skBase := skBase) (skCand := skCand) (n := n)
+          hpool hallBase hcur
+      rcases patchPoolSelfBacktrackTailBranchSized_to_terminal_or_smaller
+          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+          (on_ := on_) (startPos := startPos) (skBase := skBase)
+          (skCand := skCand) (n := n)
+          hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+          hpool htail with
+        hstrict | hrest
+      · exact finishStrict hstrict
+      · rcases hrest with hsameStart | hrest
+        · exact hpair hallBase
+            (sameStartComplementPathPair_forces_opposite_nonpaths
+              (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+              (on_ := on_) (startPos := startPos)
+              hfull hon_le hon_univ hpaths hsameStart)
+        · rcases hrest with hbackStableResidual | hrest
+          · exact hbackStable hallBase hpool hbackStableResidual
+          · rcases hrest with hbackFirstResidual | hsmall
+            · exact hbackFirstStart hallBase hpool hbackFirstResidual
+            · rcases hsmall with ⟨m, hlt, hsmallResidual⟩
+              exact ih m hlt hsmallResidual)
+  exact hP n hback
+
+private theorem patchPoolClosedChaseStateSized_to_descentOutcome_closed
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment} {n : Nat}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hst :
+      PatchPoolClosedChaseStateSized
+        s vars on_ startPos skBase skCand n) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  exact patchPoolSelfConnectorBacktrackResidualSized_to_descentOutcome_closed
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+    (startPos := startPos) (skBase := skBase) (skCand := skCand) (n := n)
+    hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains hpool hallBase
+    hpair hbackStable hbackFirstStart
+    (patchPoolClosedChaseStateSized_to_connectorBacktrackResidualSized hst)
+
+private theorem rankedBlockedHeadContinuation_of_backtrack_terminal_handlers_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    RankedBlockedHeadContinuation s vars on_ := by
+  intro pathLen startPos skBase skStop σ cref c lit hall hpool hget
+    hclause_false hno_compl hlit_mem hlit_var hon_eq hlit_true
+    hlit_false hwit hflip_true hbase_eq hcand_eq hpathSized
+    hno_opposite_base hno_start_base
+  let finishStrict :
+      PatchPoolStrictStep s vars on_ startPos skBase skStop →
+      DeleteIndependenceDescentOutcome s vars on_ skBase := by
+    intro hstrict
+    rcases hstrict with ⟨skNext, hpoolNext, _hltNext⟩
+    rcases patchPoolCandidate_iterate_descent_or_terminal_tail_residual_closed
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+        (on_ := on_) (startPos := startPos) (skBase := skBase)
+        (skCand := skNext)
+        hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+        hpoolNext hall with
+      hgood | hresidual
+    · exact Or.inl hgood
+    · rcases hresidual with hblockedPair | htail
+      · exact hpair hall hblockedPair
+      · rcases htail with ⟨skStop', hpoolStop, hcases⟩
+        rcases hcases with hstable | hrest
+        · exact hbackStable hall hpoolStop
+            (patchPoolSelfStableTailResidual_to_cursor hstable)
+        · rcases hrest with hfirst | hrest
+          · exact hbackFirstStart hall hpoolStop
+              (patchPoolSelfFirstStartTailResidual_to_cursor hfirst)
+          · rcases hrest with hbackStableResidual | hbackFirstResidual
+            · exact hbackStable hall hpoolStop hbackStableResidual
+            · exact hbackFirstStart hall hpoolStop hbackFirstResidual
+  rcases patchPoolBlockedValue_nonself_changed_strict_step_or_all_self
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skStop) (σ := σ)
+      (cref := cref) (c := c) (lit := lit)
+      hon_univ hexi hcontains hpool hget hclause_false hlit_mem
+      hlit_var hon_eq hbase_eq hno_opposite_base with
+    hstrict | hall_self
+  · exact finishStrict hstrict
+  · have hhead :
+        PatchPoolSelfTailHead s vars on_ startPos skBase skStop σ cref c lit :=
+      ⟨hget, hclause_false, hno_compl, hlit_mem, hlit_var, hon_eq,
+        hlit_true, hlit_false, hwit, hflip_true, hbase_eq, hcand_eq,
+        deletePurePathSized_to_path hpathSized, hno_opposite_base,
+        hno_start_base, hall_self⟩
+    have hstate :
+        PatchPoolClosedChaseStateSized
+          s vars on_ startPos skBase skStop pathLen :=
+      patchPoolClosedChaseStateSized_of_tailHead_target
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (skBase := skBase) (skCand := skStop) (σ := σ) (cref := cref)
+        (c := c) (lit := lit) (n := pathLen) hhead hpathSized
+    exact patchPoolClosedChaseStateSized_to_descentOutcome_closed
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      (startPos := startPos) (skBase := skBase) (skCand := skStop)
+      (n := pathLen)
+      hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+      hpool hall hpair hbackStable hbackFirstStart hstate
+
+private theorem rankedBlockedHeadContinuation_of_backtrackTerminalHandlers_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hhandlers : BacktrackTerminalDescentHandlers s vars on_) :
+    RankedBlockedHeadContinuation s vars on_ := by
+  rcases hhandlers with ⟨hpair, hbackStable, hbackFirstStart⟩
+  exact rankedBlockedHeadContinuation_of_backtrack_terminal_handlers_closed
+    dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+    hpair hbackStable hbackFirstStart
+
 private theorem deleteWitness_descent_step_or_initial_pool_failure
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ of_ : Var}
@@ -23874,6 +27357,129 @@ private theorem deleteWitness_descent_step_or_initial_blocked_or_external
           ⟨σSeed on_, patchDeleteWitnessAt s.formula of_ σSeed sk,
             σ, flipVar, hpool, hnotMem, hwit, hexi_flip,
             hcontains_flip, hnoPath⟩)
+
+private theorem deleteWitness_descent_step_or_initial_external_diagnostic
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    (∃ startPos skStop,
+      PatchPoolCandidate s vars on_ startPos sk skStop ∧
+      PatchPoolBlockedPathBranch s vars on_ startPos sk skStop) ∨
+    (∃ startPos skStop σ flipVar,
+      PatchPoolCandidate s vars on_ startPos sk skStop ∧
+      flipVar ∉ vars.toList ∧
+      DeleteDepWitness s.formula flipVar on_ skStop σ ∧
+      s.formula.isVarExistential flipVar = true ∧
+      (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit flipVar (s.formula.varValue σ skStop flipVar)) ∧
+      (flipVar ∉ s.formula.exivars.toList ∨
+        ¬ on_ < flipVar ∨
+        ∃ pos : Bool,
+          (getReachable s (mkLit on_ true)).getD
+              (mkLit flipVar pos).x false = true ∧
+          (getReachable s (mkLit on_ false)).getD
+              (mkLit flipVar (!pos)).x false = true)) := by
+  classical
+  rcases deleteWitness_descent_step_or_initial_blocked_or_external
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hresidual
+  · exact Or.inl hgood
+  · rcases hresidual with hblocked | hexternal
+    · exact Or.inr (Or.inl hblocked)
+    · rcases hexternal with
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
+          hexiFlip, hcontainsFlip, hnoPath⟩
+      refine Or.inr (Or.inr
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
+          hexiFlip, hcontainsFlip, hnoPath, ?_⟩)
+      by_cases hexivar : flipVar ∈ s.formula.exivars.toList
+      · by_cases hgtFlip : on_ < flipVar
+        · exact Or.inr (Or.inr
+            (noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_reach_pair
+              hnoCrossClosed hexivar hgtFlip hcontainsFlip hnotMem))
+        · exact Or.inr (Or.inl hgtFlip)
+      · exact Or.inl hexivar
+
+private theorem deleteWitness_descent_step_or_initial_external_reach_pair
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    (∃ startPos skStop,
+      PatchPoolCandidate s vars on_ startPos sk skStop ∧
+      PatchPoolBlockedPathBranch s vars on_ startPos sk skStop) ∨
+    (∃ startPos skStop σ flipVar,
+      PatchPoolCandidate s vars on_ startPos sk skStop ∧
+      flipVar ∉ vars.toList ∧
+      DeleteDepWitness s.formula flipVar on_ skStop σ ∧
+      s.formula.isVarExistential flipVar = true ∧
+      (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit flipVar (s.formula.varValue σ skStop flipVar)) ∧
+      ∃ pos : Bool,
+        (getReachable s (mkLit on_ true)).getD
+            (mkLit flipVar pos).x false = true ∧
+        (getReachable s (mkLit on_ false)).getD
+            (mkLit flipVar (!pos)).x false = true) := by
+  classical
+  rcases deleteWitness_descent_step_or_initial_external_diagnostic
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hnoCrossClosed hall hof hwit with
+    hgood | hresidual
+  · exact Or.inl hgood
+  · rcases hresidual with hblocked | hexternal
+    · exact Or.inr (Or.inl hblocked)
+    · rcases hexternal with
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
+          hexiFlip, hcontainsFlip, hnoPath, hdiag⟩
+      refine Or.inr (Or.inr
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
+          hexiFlip, hcontainsFlip, hnoPath, ?_⟩)
+      rcases hdiag with hnotExivar | hrest
+      · exact False.elim (hnotExivar (hexivars_complete flipVar hexiFlip))
+      · rcases hrest with hnotGt | hreach
+        · exact False.elim (hnotGt (hdep_gt flipVar hexiFlip hcontainsFlip))
+        · exact hreach
 
 private theorem deleteWitness_descent_step_or_initial_blocked_of_closed
     (dqbf : DQBF) (cs : ClauseStore)
@@ -24200,6 +27806,83 @@ private theorem deleteIndependenceSetBridge_of_deleteWitness_descent_step
         exact ih (deleteWitnessFiberCountSet s.formula vars on_ sk') hlt_n
           sk' rfl hall')
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ sk) sk rfl hall
+
+private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hblocked :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolBlockedPathBranch s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hexternal :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
+        {σ : UnivAssignment} {flipVar : Var},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        flipVar ∉ vars.toList →
+        DeleteDepWitness s.formula flipVar on_ skStop σ →
+        s.formula.isVarExistential flipVar = true →
+        (s.formula.depset.getD flipVar #[]).contains on_ = true →
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit flipVar (s.formula.varValue σ skStop flipVar)) →
+        (∃ pos : Bool,
+          (getReachable s (mkLit on_ true)).getD
+              (mkLit flipVar pos).x false = true ∧
+          (getReachable s (mkLit on_ false)).getD
+              (mkLit flipVar (!pos)).x false = true) →
+        (∃ sk',
+          (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_deleteWitness_descent_step hexi
+  intro of_ sk σ₀ hall hof hwit
+  rcases deleteWitness_descent_step_or_initial_external_reach_pair
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (of_ := of_) (sk := sk) (σ₀ := σ₀)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
+      hexivars_complete hdep_gt hall hof hwit with
+    hgood | hresidual
+  · exact hgood
+  · rcases hresidual with hblockedCase | hexternalCase
+    · rcases hblockedCase with ⟨startPos, skStop, hpool, hbranch⟩
+      exact deleteWitness_descent_step_of_good_or_forbidden_paths
+        dqbf cs hfull hon_le hon_univ hpaths
+        (hblocked hall hpool hbranch)
+    · rcases hexternalCase with
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
+          hexiFlip, hcontainsFlip, hnoPath, hreach⟩
+      exact deleteWitness_descent_step_of_good_or_forbidden_paths
+        dqbf cs hfull hon_le hon_univ hpaths
+        (hexternal hall hpool hnotMem hwitFlip hexiFlip hcontainsFlip
+          hnoPath hreach)
 
 private theorem deleteIndependenceSetBridge_of_origin_cursor_residual_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
@@ -25010,6 +28693,448 @@ private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_st
     · exact hstableCursor hall hpool hstable
     · exact hfirstCursor hall hpool hfirst
 
+private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_with_exitLiteralContinuations_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hcontinuations : PooledExitLiteralTerminalContinuations s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  rcases hcontinuations with ⟨hsameStart, hstable, hfirstStart⟩
+  exact
+    deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_start_continuation_closed
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      hsameStart hstable hfirstStart
+
+private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_start_via_backtrack_continuation_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hsameStartCursor :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfSameStartCursorTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply
+    deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_start_continuation_closed
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+  · exact hsameStartCursor
+  · intro startPos skBase skStop hall hpool hstable
+    exact hbackStable hall hpool
+      (patchPoolSelfStableCursorTailResidual_to_backtrack hstable)
+  · intro startPos skBase skStop hall hpool hfirst
+    exact hbackFirstStart hall hpool
+      (patchPoolSelfFirstStartCursorTailResidual_to_backtrack hfirst)
+
+private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_via_blocked_and_backtrack_continuation_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply
+    deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_start_via_backtrack_continuation_closed
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+  · intro startPos skBase skStop hall _hpool hsame
+    exact hpair hall
+      (patchPoolSelfSameStartCursorTailResidual_blocked hsame)
+  · exact hbackStable
+  · exact hbackFirstStart
+
+private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_via_blocked_value_and_backtrack_continuation_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hblocked :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
+        {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        s.clauses.getClause cref = some c →
+        s.formula.clauseValue σ skStop c.lits = false →
+        (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) →
+        lit ∈ c.lits.toList →
+        lit.var ∈ vars.toList →
+        σ on_ = startPos →
+        s.formula.litValue σ skBase lit = true →
+        s.formula.litValue σ skStop lit = false →
+        DeleteDepWitness s.formula lit.var on_ skStop σ →
+        s.formula.litValue (flipUniv on_ σ) skStop lit = true →
+        lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) →
+        lit.negate = mkLit lit.var (s.formula.varValue σ skStop lit.var) →
+        DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit lit.var (s.formula.varValue σ skStop lit.var)) →
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+        ¬ DeletePurePath s on_ (mkLit on_ startPos)
+          (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+        (∃ sk',
+          (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply
+    deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_start_via_backtrack_continuation_closed
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+  · intro startPos skBase skStop hall hpool hsame
+    exact patchPoolSelfSameStartCursorTailResidual_blockedHeadContinuation
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop) hblocked hall hpool hsame
+  · exact hbackStable
+  · exact hbackFirstStart
+
+-- Closed-set frontier in the strengthened cursor language: the remaining core
+-- continuations are the blocked head, stable cursor, and first-start cursor.
+-- This matches the paper-style chase shape more directly than the backtrack
+-- aliases and makes the live semantic obligations explicit.
+private theorem deleteIndependenceSetBridge_of_cursor_tail_residual_via_blocked_value_continuation_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hblocked :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
+        {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        s.clauses.getClause cref = some c →
+        s.formula.clauseValue σ skStop c.lits = false →
+        (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) →
+        lit ∈ c.lits.toList →
+        lit.var ∈ vars.toList →
+        σ on_ = startPos →
+        s.formula.litValue σ skBase lit = true →
+        s.formula.litValue σ skStop lit = false →
+        DeleteDepWitness s.formula lit.var on_ skStop σ →
+        s.formula.litValue (flipUniv on_ σ) skStop lit = true →
+        lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) →
+        lit.negate = mkLit lit.var (s.formula.varValue σ skStop lit.var) →
+        DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit lit.var (s.formula.varValue σ skStop lit.var)) →
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+        ¬ DeletePurePath s on_ (mkLit on_ startPos)
+          (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+        (∃ sk',
+          (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hstableCursor :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfStableCursorTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hfirstCursor :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfFirstStartCursorTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply
+    deleteIndependenceSetBridge_of_cursor_tail_residual_with_same_start_continuation_closed
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+  · intro startPos skBase skStop hall hpool hsame
+    exact patchPoolSelfSameStartCursorTailResidual_blockedHeadContinuation
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop) hblocked hall hpool hsame
+  · exact hstableCursor
+  · exact hfirstCursor
+
+-- Closed-set terminal frontier with explicit subgoals. This expands the
+-- blocked-value continuation into the actual terminal chase branches:
+-- strict descent, blocked same-start pair, stable tail, first-start tail,
+-- backtrack-stable tail, and backtrack-first-start tail.
+-- Closed active-set theorem skeleton: the core proof under
+-- `DeleteDependencyClosedSet` is now reduced to the three cursor
+-- continuations above. The outer theorem without `hclosed` remains a later
+-- wrapper layer.
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_frontier_backtrack
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hblocked :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
+        {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        s.clauses.getClause cref = some c →
+        s.formula.clauseValue σ skStop c.lits = false →
+        (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) →
+        lit ∈ c.lits.toList →
+        lit.var ∈ vars.toList →
+        σ on_ = startPos →
+        s.formula.litValue σ skBase lit = true →
+        s.formula.litValue σ skStop lit = false →
+        DeleteDepWitness s.formula lit.var on_ skStop σ →
+        s.formula.litValue (flipUniv on_ σ) skStop lit = true →
+        lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) →
+        lit.negate = mkLit lit.var (s.formula.varValue σ skStop lit.var) →
+        DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit lit.var (s.formula.varValue σ skStop lit.var)) →
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+        ¬ DeletePurePath s on_ (mkLit on_ startPos)
+          (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+        (∃ sk',
+          (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hstableCursor :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfStableCursorTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hfirstCursor :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfFirstStartCursorTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_cursor_tail_residual_via_blocked_value_continuation_closed
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      hblocked hstableCursor hfirstCursor
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hblocked :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
+        {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        s.clauses.getClause cref = some c →
+        s.formula.clauseValue σ skStop c.lits = false →
+        (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) →
+        lit ∈ c.lits.toList →
+        lit.var ∈ vars.toList →
+        σ on_ = startPos →
+        s.formula.litValue σ skBase lit = true →
+        s.formula.litValue σ skStop lit = false →
+        DeleteDepWitness s.formula lit.var on_ skStop σ →
+        s.formula.litValue (flipUniv on_ σ) skStop lit = true →
+        lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) →
+        lit.negate = mkLit lit.var (s.formula.varValue σ skStop lit.var) →
+        DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit lit.var (s.formula.varValue σ skStop lit.var)) →
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+        ¬ DeletePurePath s on_ (mkLit on_ startPos)
+          (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+        (∃ sk',
+          (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply
+    deleteIndependenceSetBridge_of_cursor_tail_residual_via_blocked_value_continuation_closed
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      hblocked
+  · intro startPos skBase skStop hall hpool hstable
+    exact patchPoolSelfBacktrackStableTailResidual_blockedHeadContinuation
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop) hblocked hall hpool hstable
+  · intro startPos skBase skStop hall hpool hfirst
+    exact patchPoolSelfBacktrackFirstStartTailResidual_blockedHeadContinuation
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop) hblocked hall hpool hfirst
+
 private theorem deleteIndependenceSetBridge_of_blocked_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -25104,6 +29229,930 @@ private theorem deleteIndependenceSetBridge_of_blocked_value_continuation_closed
   exact hblocked hall hpool hget hclause_false hno_compl hlit_mem
     hlit_var hon_eq hlit_true hlit_false hwit hflip_true hbase_eq
     hcand_eq hpath_cand hno_opposite_base hno_start_base
+
+private theorem blockedValue_continuation_of_terminal_handlers_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hstable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfStableTailResidual s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hfirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
+      {σ : UnivAssignment} {cref : CRef} {c : Clause} {lit : Literal},
+      (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+      PatchPoolCandidate s vars on_ startPos skBase skStop →
+      s.clauses.getClause cref = some c →
+      s.formula.clauseValue σ skStop c.lits = false →
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) →
+      lit ∈ c.lits.toList →
+      lit.var ∈ vars.toList →
+      σ on_ = startPos →
+      s.formula.litValue σ skBase lit = true →
+      s.formula.litValue σ skStop lit = false →
+      DeleteDepWitness s.formula lit.var on_ skStop σ →
+      s.formula.litValue (flipUniv on_ σ) skStop lit = true →
+      lit = mkLit lit.var (s.formula.varValue σ skBase lit.var) →
+      lit.negate = mkLit lit.var (s.formula.varValue σ skStop lit.var) →
+      DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skStop lit.var)) →
+      ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+        (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+      ¬ DeletePurePath s on_ (mkLit on_ startPos)
+        (mkLit lit.var (s.formula.varValue σ skBase lit.var)) →
+      (∃ sk',
+        (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+        deleteWitnessFiberCountSet s.formula vars on_ sk' <
+          deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+      (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+        DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+        DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))) := by
+  intro startPos skBase skStop σ cref c lit hall hpool hget hclause_false
+    hno_compl hlit_mem hlit_var hon_eq hlit_true hlit_false hwit
+    hflip_true hbase_eq hcand_eq hpath_cand hno_opposite_base hno_start_base
+  let finishStrict :
+      PatchPoolStrictStep s vars on_ startPos skBase skStop →
+      (∃ sk',
+        (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+        deleteWitnessFiberCountSet s.formula vars on_ sk' <
+          deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+      (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+        DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+        DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))) := by
+    intro hstrict
+    rcases hstrict with ⟨skNext, hpoolNext, _hltNext⟩
+    rcases patchPoolCandidate_iterate_descent_or_terminal_tail_residual_closed
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+        (on_ := on_) (startPos := startPos) (skBase := skBase)
+        (skCand := skNext)
+        hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+        hpoolNext hall with
+      hgood | hresidual
+    · exact Or.inl hgood
+    · rcases hresidual with hblockedPair | htail
+      · exact hpair hall hblockedPair
+      · rcases htail with ⟨skStop', hpoolStop, hcases⟩
+        rcases hcases with hstableResidual | hrest
+        · exact hstable hall hpoolStop hstableResidual
+        · rcases hrest with hfirstResidual | hrest
+          · exact hfirstStart hall hpoolStop hfirstResidual
+          · rcases hrest with hbackStableResidual | hbackFirstResidual
+            · exact hbackStable hall hpoolStop hbackStableResidual
+            · exact hbackFirstStart hall hpoolStop hbackFirstResidual
+  rcases patchPoolBlockedValue_nonself_changed_strict_step_or_all_self
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skStop) (σ := σ)
+      (cref := cref) (c := c) (lit := lit)
+      hon_univ hexi hcontains hpool hget hclause_false hlit_mem
+      hlit_var hon_eq hbase_eq hno_opposite_base with
+    hstrict | hall_self
+  · exact finishStrict hstrict
+  · have hself :
+        PatchPoolSelfBlockedValueBranch
+          s vars on_ startPos skBase skStop := by
+      exact ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+        hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+        hbase_eq, hcand_eq, hpath_cand, hno_opposite_base,
+        hno_start_base, hall_self⟩
+    rcases patchPoolSelfBlockedValueBranch_to_strict_tail_outcome
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (skBase := skBase) (skCand := skStop)
+        hclosed hgt hexi hcontains hpool hall hself with
+      hstrict | htail
+    · exact finishStrict hstrict
+    · rcases htail with hsameStart | hbranch
+      · exact hpair hall
+          (sameStartComplementPathPair_forces_opposite_nonpaths
+            (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+            (on_ := on_) (startPos := startPos)
+            hfull hon_le hon_univ hpaths hsameStart)
+      · rcases patchPoolSelfStableStartOrConnectorTailBranch_split_terminal
+          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+          (on_ := on_) (startPos := startPos) (skBase := skBase)
+          (skCand := skStop)
+          hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+          hpool hall hbranch with
+          hstableResidual | hrest
+        · exact hstable hall hpool hstableResidual
+        · rcases hrest with hstart | hrest
+          · rcases patchPoolSelfStartTailResidual_first_or_same_start_pair
+              (s := s) (vars := vars) (on_ := on_)
+              (startPos := startPos) (skBase := skBase)
+              (skCand := skStop)
+              hclosed hgt hstart with
+              hfirst | hsameStart
+            · exact hfirstStart hall hpool hfirst
+            · exact hpair hall
+                (sameStartComplementPathPair_forces_opposite_nonpaths
+                  (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                  (on_ := on_) (startPos := startPos)
+                  hfull hon_le hon_univ hpaths hsameStart)
+          · rcases hrest with hstrict' | hrest
+            · exact finishStrict hstrict'
+            · rcases hrest with hsameStart | hrest
+              · exact hpair hall
+                  (sameStartComplementPathPair_forces_opposite_nonpaths
+                    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                    (on_ := on_) (startPos := startPos)
+                    hfull hon_le hon_univ hpaths hsameStart)
+              · rcases hrest with hbackStableResidual | hbackFirstResidual
+                · exact hbackStable hall hpool hbackStableResidual
+                · exact hbackFirstStart hall hpool hbackFirstResidual
+
+private theorem blockedHeadContinuation_of_pooled_terminal_handlers_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hhandlers : PooledTerminalDescentHandlers s vars on_) :
+    BlockedHeadContinuation s vars on_ := by
+  rcases hhandlers with
+    ⟨hpair, hstable, hfirstStart, hbackStable, hbackFirstStart⟩
+  intro startPos skBase skStop σ cref c lit hall hpool hget
+    hclause_false hno_compl hlit_mem hlit_var hon_eq hlit_true
+    hlit_false hwit hflip_true hbase_eq hcand_eq hpath_cand
+    hno_opposite_base hno_start_base
+  let finishStrict :
+      PatchPoolStrictStep s vars on_ startPos skBase skStop →
+      DeleteIndependenceDescentOutcome s vars on_ skBase := by
+    intro hstrict
+    rcases hstrict with ⟨skNext, hpoolNext, _hltNext⟩
+    rcases patchPoolCandidate_iterate_descent_or_terminal_tail_residual_closed
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+        (on_ := on_) (startPos := startPos) (skBase := skBase)
+        (skCand := skNext)
+        hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+        hpoolNext hall with
+      hgood | hresidual
+    · exact Or.inl hgood
+    · rcases hresidual with hblockedPair | htail
+      · exact hpair hall hpoolNext hblockedPair
+      · rcases htail with ⟨_skStop', hpoolStop, hcases⟩
+        rcases hcases with hstableResidual | hrest
+        · exact hstable hall hpoolStop hstableResidual
+        · rcases hrest with hfirstResidual | hrest
+          · exact hfirstStart hall hpoolStop hfirstResidual
+          · rcases hrest with hbackStableResidual | hbackFirstResidual
+            · exact hbackStable hall hpoolStop hbackStableResidual
+            · exact hbackFirstStart hall hpoolStop hbackFirstResidual
+  rcases patchPoolBlockedValue_nonself_changed_strict_step_or_all_self
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skCand := skStop) (σ := σ)
+      (cref := cref) (c := c) (lit := lit)
+      hon_univ hexi hcontains hpool hget hclause_false hlit_mem
+      hlit_var hon_eq hbase_eq hno_opposite_base with
+    hstrict | hall_self
+  · exact finishStrict hstrict
+  · have hself :
+        PatchPoolSelfBlockedValueBranch
+          s vars on_ startPos skBase skStop := by
+      exact ⟨σ, cref, c, lit, hget, hclause_false, hno_compl, hlit_mem,
+        hlit_var, hon_eq, hlit_true, hlit_false, hwit, hflip_true,
+        hbase_eq, hcand_eq, hpath_cand, hno_opposite_base,
+        hno_start_base, hall_self⟩
+    rcases patchPoolSelfBlockedValueBranch_to_strict_tail_outcome
+        (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+        (skBase := skBase) (skCand := skStop)
+        hclosed hgt hexi hcontains hpool hall hself with
+      hstrict | htail
+    · exact finishStrict hstrict
+    · rcases htail with hsameStart | hbranch
+      · exact hpair hall hpool
+          (sameStartComplementPathPair_forces_opposite_nonpaths
+            (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+            (on_ := on_) (startPos := startPos)
+            hfull hon_le hon_univ hpaths hsameStart)
+      · rcases patchPoolSelfStableStartOrConnectorTailBranch_split_terminal
+          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+          (on_ := on_) (startPos := startPos) (skBase := skBase)
+          (skCand := skStop)
+          hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+          hpool hall hbranch with
+          hstableResidual | hrest
+        · exact hstable hall hpool hstableResidual
+        · rcases hrest with hstart | hrest
+          · rcases patchPoolSelfStartTailResidual_first_or_same_start_pair
+              (s := s) (vars := vars) (on_ := on_)
+              (startPos := startPos) (skBase := skBase)
+              (skCand := skStop)
+              hclosed hgt hstart with
+              hfirst | hsameStart
+            · exact hfirstStart hall hpool hfirst
+            · exact hpair hall hpool
+                (sameStartComplementPathPair_forces_opposite_nonpaths
+                  (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                  (on_ := on_) (startPos := startPos)
+                  hfull hon_le hon_univ hpaths hsameStart)
+          · rcases hrest with hstrict' | hrest
+            · exact finishStrict hstrict'
+            · rcases hrest with hsameStart | hrest
+              · exact hpair hall hpool
+                  (sameStartComplementPathPair_forces_opposite_nonpaths
+                    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                    (on_ := on_) (startPos := startPos)
+                    hfull hon_le hon_univ hpaths hsameStart)
+              · rcases hrest with hbackStableResidual | hbackFirstResidual
+                · exact hbackStable hall hpool hbackStableResidual
+                · exact hbackFirstStart hall hpool hbackFirstResidual
+
+-- Closed-set terminal frontier with explicit subgoals. This expands the
+-- blocked-value continuation into the actual terminal chase branches:
+-- blocked same-start pair, stable tail, first-start tail,
+-- backtrack-stable tail, and backtrack-first-start tail.
+-- Strict descent is already handled internally by
+-- `deleteIndependenceSetBridge_of_terminal_tail_residual_continuation_closed`.
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_terminal_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hstable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfStableTailResidual s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hfirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+  exact blockedValue_continuation_of_terminal_handlers_closed
+    dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+    hpair hstable hfirstStart hbackStable hbackFirstStart
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_terminalHandlers
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hhandlers : TerminalDescentHandlers s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  rcases hhandlers with
+    ⟨hpair, hstable, hfirstStart, hbackStable, hbackFirstStart⟩
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_terminal_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      hpair hstable hfirstStart hbackStable hbackFirstStart
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledTerminalHandlers
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hhandlers : PooledTerminalDescentHandlers s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (blockedHeadContinuation_of_pooled_terminal_handlers_closed
+        dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+        hhandlers)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledBacktrackTerminalHandlers
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hhandlers : PooledBacktrackTerminalDescentHandlers s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledTerminalHandlers
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (pooledTerminalDescentHandlers_of_pooledBacktrackTerminalDescentHandlers
+        hhandlers)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledTerminalContinuations
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hcontinuations : PooledTerminalContinuations s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledBacktrackTerminalHandlers
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (pooledBacktrackTerminalDescentHandlers_of_pooledTerminalContinuations
+        hcontinuations)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_exitLiteralTerminalContinuations
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hcontinuations : PooledExitLiteralTerminalContinuations s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_cursor_tail_residual_with_exitLiteralContinuations_closed
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      hcontinuations
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_flexibleRepairPoolContinuation
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_exitLiteralTerminalContinuations
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (pooledExitLiteralTerminalContinuations_of_flexibleRepairPoolContinuation
+        hexi hcontains hcontinue)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_path_flip_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hpath :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairPathBranch s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hflip :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_flexibleRepairPoolContinuation
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (flexibleRepairPoolContinuation_of_path_flip_frontier
+        hclosed hgt hexi hcontains hpath hflip)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_flip_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hflip :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_flexibleRepairPoolContinuation
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (flexibleRepairPoolContinuation_of_flip_frontier
+        (dqbf := dqbf) (cs := cs) hfull hon_le hon_univ hclosed hgt
+        hexi hcontains hpaths hflip)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_same_clause_flip_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hsameClause :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_flexibleRepairPoolContinuation
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (flexibleRepairPoolContinuation_of_same_clause_flip_frontier
+        (dqbf := dqbf) (cs := cs) hfull hon_le hon_univ hclosed hgt
+        hexi hcontains hpaths hsameClause)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_two_polarity_clause_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (htwoPolarity :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseTwoPolarityFailure
+          s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_flexibleRepairPoolContinuation
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (flexibleRepairPoolContinuation_of_two_polarity_clause_frontier
+        (dqbf := dqbf) (cs := cs) hfull hon_le hon_univ hclosed hgt
+        hexi hcontains hpaths htwoPolarity)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledCursorTerminalHandlers
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hhandlers : PooledCursorTerminalDescentHandlers s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledTerminalContinuations
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      hhandlers
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_terminal_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hstable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfStableTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hfirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_terminal_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hpair hstable hfirstStart hbackStable hbackFirstStart
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_terminalHandlers
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hhandlers : TerminalDescentHandlers s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledTerminalHandlers
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      (pooledTerminalDescentHandlers_of_terminalDescentHandlers hhandlers)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_pooledTerminalHandlers
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hhandlers : PooledTerminalDescentHandlers s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledTerminalHandlers
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hhandlers
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_pooledBacktrackTerminalHandlers
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hhandlers : PooledBacktrackTerminalDescentHandlers s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_pooledTerminalHandlers
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hnoExternal
+      (pooledTerminalDescentHandlers_of_pooledBacktrackTerminalDescentHandlers
+        hhandlers)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_pooledTerminalContinuations
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hcontinuations : PooledTerminalContinuations s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_pooledBacktrackTerminalHandlers
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hnoExternal
+      (pooledBacktrackTerminalDescentHandlers_of_pooledTerminalContinuations
+        hcontinuations)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_exitLiteralTerminalContinuations
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hcontinuations : PooledExitLiteralTerminalContinuations s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_exitLiteralTerminalContinuations
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hcontinuations
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_pooledCursorTerminalHandlers
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hhandlers : PooledCursorTerminalDescentHandlers s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_pooledTerminalContinuations
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hnoExternal
+      hhandlers
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_path_flip_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hpath :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairPathBranch s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hflip :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_path_flip_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hpath hflip
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_flip_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hflip :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_flip_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hflip
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_same_clause_flip_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hsameClause :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_same_clause_flip_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hsameClause
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_two_polarity_clause_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (htwoPolarity :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseTwoPolarityFailure
+          s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_two_polarity_clause_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      htwoPolarity
 
 /-- Conditional descent skeleton under the deliberately too-strong assumption
     that every local patch preserves the matrix. Keep this out of the trusted
@@ -25272,6 +30321,164 @@ private theorem deleteIndependenceSetBridge_of_path_or_tail_continuation
       dqbf cs hfull hon_le hon_univ hpaths
       (hcontinue hall hof hwit hget hmem hon_eq hseed hflip hflip_sigma
         hno_compl hothers hpathOrTail)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hblocked : BlockedHeadContinuation s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hblocked
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_ranked
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hranked : RankedBlockedHeadContinuation s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (blockedHeadContinuation_of_ranked hranked)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_ranked
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hranked : RankedBlockedHeadContinuation s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_ranked
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hranked
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_backtrack_terminal_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_ranked
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (rankedBlockedHeadContinuation_of_backtrack_terminal_handlers_closed
+        dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+        hpair hbackStable hbackFirstStart)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_backtrackTerminalHandlers
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hhandlers : BacktrackTerminalDescentHandlers s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledBacktrackTerminalHandlers
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (pooledBacktrackTerminalDescentHandlers_of_backtrackTerminalDescentHandlers
+        hhandlers)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_backtrack_terminal_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  let hhandlers : BacktrackTerminalDescentHandlers s vars on_ :=
+    ⟨hpair, hbackStable, hbackFirstStart⟩
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_pooledBacktrackTerminalHandlers
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hnoExternal
+      (pooledBacktrackTerminalDescentHandlers_of_backtrackTerminalDescentHandlers
+        hhandlers)
 
 private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_nonempty
     (dqbf : DQBF) (cs : ClauseStore)
