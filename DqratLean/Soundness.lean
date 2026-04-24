@@ -20259,6 +20259,73 @@ private theorem flexibleRepairSameClauseTwoPolarityFailure_distinctVars_of_fiber
   exact (fullDepArgs_flipUniv_ne_of_contains
     s.formula leftLit.var on_ σ (hcontains leftLit.var hleft_var)) hfull_eq
 
+private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_witness_frontier
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hfailure :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ) :
+    ∃ cref c leftLit rightLit,
+      s.clauses.getClause cref = some c ∧
+      leftLit ∈ c.lits.toList ∧
+      rightLit ∈ c.lits.toList ∧
+      leftLit.var ∈ vars.toList ∧
+      rightLit.var ∈ vars.toList ∧
+      leftLit.var ≠ rightLit.var ∧
+      DeleteDepWitness s.formula leftLit.var on_ skBase σ ∧
+      ¬ DeleteDepWitness s.formula leftLit.var on_ skCand σ ∧
+      DeleteDepWitness s.formula rightLit.var on_ skBase (flipUniv on_ σ) ∧
+      ¬ DeleteDepWitness s.formula rightLit.var on_ skCand (flipUniv on_ σ) := by
+  rcases htracked with ⟨_hpool, hfoot, hlive⟩
+  rcases flexibleRepairSameClauseTwoPolarityFailure_frontierValues
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ) hon_univ hgt hfailure with
+    ⟨cref, c, leftLit, rightLit, hget, _hclause_false,
+      _hclause_flip_false, _hno_compl, hleft_mem, hleft_var,
+      _hleft_true, _hleft_false, _hleft_no_path, hright_mem,
+      hright_var, _hright_true, _hright_false, _hright_no_path,
+      _hleft_ne_on, _hright_ne_on, _hright_ne_left_neg,
+      _hstart_sigma_not, _hstart_flip_not, _hleft_flip_false,
+      _hright_sigma_false, hleft_changed, hright_changed⟩
+  rcases hfoot leftLit.var σ hleft_changed with
+    ⟨_hleft_mem, hleft_base_wit, hleft_fiber⟩
+  rcases hfoot rightLit.var (flipUniv on_ σ) hright_changed with
+    ⟨_hright_mem, hright_base_wit, _hright_fiber⟩
+  have hdistinct : leftLit.var ≠ rightLit.var := by
+    intro hsameVar
+    have hright_changed_left :
+        s.formula.varValue (flipUniv on_ σ) skCand leftLit.var ≠
+          s.formula.varValue (flipUniv on_ σ) skBase leftLit.var := by
+      simpa [hsameVar] using hright_changed
+    have hfull_eq :
+        fullDepArgs s.formula leftLit.var (flipUniv on_ σ) =
+          fullDepArgs s.formula leftLit.var σ :=
+      hleft_fiber (flipUniv on_ σ)
+        (deleteDepArgs_flipUniv s.formula leftLit.var on_ σ)
+        hright_changed_left
+    exact (fullDepArgs_flipUniv_ne_of_contains
+      s.formula leftLit.var on_ σ (hcontains leftLit.var hleft_var))
+      hfull_eq
+  have hleft_not_live :
+      ¬ DeleteDepWitness s.formula leftLit.var on_ skCand σ := by
+    intro hwit
+    exact hleft_changed (hlive leftLit.var σ σ hleft_var hwit rfl)
+  have hright_not_live :
+      ¬ DeleteDepWitness s.formula rightLit.var on_ skCand
+        (flipUniv on_ σ) := by
+    intro hwit
+    exact hright_changed
+      (hlive rightLit.var (flipUniv on_ σ) (flipUniv on_ σ)
+        hright_var hwit rfl)
+  exact ⟨cref, c, leftLit, rightLit, hget, hleft_mem, hright_mem,
+    hleft_var, hright_var, hdistinct, hleft_base_wit, hleft_not_live,
+    hright_base_wit, hright_not_live⟩
+
 private theorem flexibleRepairSameClauseFlipFailure_to_twoPolarityFailure
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
