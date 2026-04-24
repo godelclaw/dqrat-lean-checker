@@ -31314,6 +31314,29 @@ private abbrev ExternalPatchFailureContinuation
       DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
       DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))
 
+private theorem externalPatchFailureContinuation_of_flexibleReach
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s vars on_) :
+    ExternalPatchFailureContinuation s vars on_ := by
+  intro startPos skBase skStop σ τ flipVar hall hpool hnotMem hon_eq
+    hvalEq hwitStop hwitBase hexiFlip hcontainsFlip hnoPathStop
+    hnoPathBase hreach hprogress hfalse
+  have hflex :
+      FlexibleRepairPoolCandidate s vars on_ skBase skStop :=
+    flexibleRepairPoolCandidate_of_patchPoolCandidate hpool
+  have hnoPathStop' :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+        (mkLit flipVar (s.formula.varValue σ skStop flipVar)) := by
+    simpa [hon_eq] using hnoPathStop
+  have hnoPathBase' :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+        (mkLit flipVar (s.formula.varValue σ skBase flipVar)) := by
+    simpa [hon_eq] using hnoPathBase
+  exact hexternal hall hflex hnotMem hvalEq hwitStop hwitBase
+    hexiFlip hcontainsFlip hnoPathStop' hnoPathBase' hreach hprogress
+    hfalse
+
 private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier_with_base_tail_external_patch
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -33836,6 +33859,50 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clea
       dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hnoExternal
       (pooledCursorTerminalDescentHandlers_of_flexibleRepairPoolContinuation
         hexi hcontains hcontinue)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_external_reach_patch_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hsameClause :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  let hcontinue : FlexibleRepairPoolContinuation s vars on_ :=
+    flexibleRepairPoolContinuation_of_external_reach_patch_frontier
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
+      hexivars_complete hdep_gt hsameClause hexternal
+  exact
+    deleteIndependenceSetBridge_of_initial_external_reach_frontier_with_base_tail_external_patch
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hexi hgt hcontains hpaths hnoCrossClosed
+      hexivars_complete hdep_gt
+      (patchPoolBlockedPathBranch_apply_flexibleRepairPoolContinuation
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+        hfull hon_le hon_univ hexi hcontains hpaths hcontinue)
+      (externalPatchFailureContinuation_of_flexibleReach hexternal)
 
 private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_external_patch_frontier
     (dqbf : DQBF) (cs : ClauseStore)
