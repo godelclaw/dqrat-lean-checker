@@ -27671,6 +27671,67 @@ private abbrev FlexibleRepairTrackedProperSubsetFalseRestart
     s.clauses.matrixValue s.formula σ skCand = false →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private theorem deleteIndependenceDescentOutcome_of_model_properSubset
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hallCand : ∀ τ, s.clauses.matrixValue s.formula τ skCand = true)
+    (hproper :
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase :=
+  Or.inl ⟨skCand, hallCand,
+    deleteWitnessFiberCountSet_lt_of_properSubset hproper⟩
+
+private theorem flexibleRepairTrackedStrictStep_apply_trackedProperSubsetFalseRestart
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hrestart :
+      FlexibleRepairTrackedProperSubsetFalseRestart s vars on_)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hstrict :
+      FlexibleRepairTrackedStrictStep s vars on_ skBase skCand) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  classical
+  rcases hstrict with ⟨skNext, htrackedNext, _hltNext⟩
+  by_cases hfail :
+      ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+  · rcases hfail with ⟨τ, hfalse⟩
+    exact hrestart hallBase htrackedNext
+      (flexibleRepairPoolTracked_false_matrix_current_properSubset
+        htrackedNext hallBase hfalse)
+      hfalse
+  · exact Or.inl ⟨skNext,
+      (by
+        intro τ
+        cases hval : s.clauses.matrixValue s.formula τ skNext with
+        | false => exact False.elim (hfail ⟨τ, hval⟩)
+        | true => rfl),
+      htrackedNext.1.1⟩
+
+private theorem flexibleRepairPathBranch_apply_trackedProperSubsetFalseRestart
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hrestart :
+      FlexibleRepairTrackedProperSubsetFalseRestart s vars on_)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hbranch : FlexibleRepairPathBranch s vars on_ skBase skCand σ) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase :=
+  flexibleRepairTrackedStrictStep_apply_trackedProperSubsetFalseRestart
+    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+    (skCand := skCand) hrestart hallBase
+    (flexibleRepairPathBranch_trackedStrictStep
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (skBase := skBase) (skCand := skCand) (σ := σ)
+      hfull hon_le hon_univ hexi hcontains hpaths htracked hbranch)
+
 private theorem flexibleRepairSameClauseTwoPatchProperSubsetResidualHandler_of_doubleProperSubset
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hhandler :
