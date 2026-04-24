@@ -20326,6 +20326,138 @@ private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_witness_front
     hleft_var, hright_var, hdistinct, hleft_base_wit, hleft_not_live,
     hright_base_wit, hright_not_live⟩
 
+private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_residual
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hfailure :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ) :
+    (∃ sk',
+      (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+    ∃ cref c leftLit rightLit τ,
+      s.clauses.getClause cref = some c ∧
+      leftLit ∈ c.lits.toList ∧
+      rightLit ∈ c.lits.toList ∧
+      leftLit.var ∈ vars.toList ∧
+      rightLit.var ∈ vars.toList ∧
+      leftLit.var ≠ rightLit.var ∧
+      DeleteDepWitness s.formula leftLit.var on_ skBase σ ∧
+      ¬ DeleteDepWitness s.formula leftLit.var on_ skCand σ ∧
+      DeleteDepWitness s.formula rightLit.var on_ skBase (flipUniv on_ σ) ∧
+      ¬ DeleteDepWitness s.formula rightLit.var on_ skCand
+        (flipUniv on_ σ) ∧
+      let sk₁ :=
+        patchDeleteWitnessAt s.formula leftLit.var σ skBase
+      let sk₂ :=
+        patchDeleteWitnessAt s.formula rightLit.var (flipUniv on_ σ) sk₁
+      s.clauses.matrixValue s.formula τ sk₂ = false ∧
+        ((PatchChangedFiber s.formula s.clauses leftLit.var on_ σ τ
+              skBase ∧
+            ¬ DeleteDepWitness s.formula leftLit.var on_ sk₂ τ) ∨
+          (PatchChangedFiber s.formula s.clauses rightLit.var on_
+              (flipUniv on_ σ) τ sk₁ ∧
+            ¬ DeleteDepWitness s.formula rightLit.var on_ sk₂ τ)) := by
+  rcases flexibleRepairSameClauseTwoPolarityFailure_tracked_witness_frontier
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ)
+      hon_univ hgt hcontains htracked hfailure with
+    ⟨cref, c, leftLit, rightLit, hget, hleft_mem, hright_mem,
+      hleft_var, hright_var, hdistinct, hleft_base_wit,
+      hleft_not_live, hright_base_wit, hright_not_live⟩
+  rcases deleteWitness_descent_step_or_second_distinct_patch_failure
+      (s := s) (vars := vars) (on_ := on_) (of_ := leftLit.var)
+      (nextOf := rightLit.var) (sk := skBase) (σ₀ := σ)
+      (σ := flipUniv on_ σ)
+      hleft_var (Ne.symm hdistinct) (hexi leftLit.var hleft_var)
+      (hcontains leftLit.var hleft_var) hleft_base_wit
+      (hexi rightLit.var hright_var)
+      (hcontains rightLit.var hright_var) hright_base_wit with
+    hgood | hfail
+  · exact Or.inl hgood
+  · right
+    rcases hfail with ⟨τ, hfalse⟩
+    let sk₁ := patchDeleteWitnessAt s.formula leftLit.var σ skBase
+    let sk₂ :=
+      patchDeleteWitnessAt s.formula rightLit.var (flipUniv on_ σ) sk₁
+    have hchanged :
+        TwoPatchChangedLit s.formula s.clauses leftLit.var
+          rightLit.var σ (flipUniv on_ σ) τ skBase :=
+      matrixValue_two_patch_false_implies_changed_lit_in_patched_vars
+        s.formula s.clauses leftLit.var rightLit.var σ
+        (flipUniv on_ σ) τ skBase hallBase hfalse
+    have hcases :
+        PatchChangedLit s.formula s.clauses leftLit.var σ τ skBase ∨
+          PatchChangedLit s.formula s.clauses rightLit.var
+            (flipUniv on_ σ) τ sk₁ :=
+      twoPatchChangedLit_cases
+        s.formula s.clauses (Ne.symm hdistinct) hchanged
+    have hremoved :
+        (PatchChangedFiber s.formula s.clauses leftLit.var on_ σ τ
+            skBase ∧
+          ¬ DeleteDepWitness s.formula leftLit.var on_ sk₂ τ) ∨
+        (PatchChangedFiber s.formula s.clauses rightLit.var on_
+            (flipUniv on_ σ) τ sk₁ ∧
+          ¬ DeleteDepWitness s.formula rightLit.var on_ sk₂ τ) := by
+      rcases hcases with hfirst | hsecond
+      · left
+        have hfiber :
+            PatchChangedFiber s.formula s.clauses leftLit.var on_ σ τ
+              skBase :=
+          patchChangedLit_implies_fiber
+            s.formula s.clauses (hexi leftLit.var hleft_var)
+            (hcontains leftLit.var hleft_var) hfirst
+        have hno_first :
+            ¬ DeleteDepWitness s.formula leftLit.var on_
+              (patchDeleteWitnessAt s.formula leftLit.var σ skBase) τ :=
+          patchChangedFiber_removed_by_patch
+            s.formula s.clauses (hexi leftLit.var hleft_var)
+            (hcontains leftLit.var hleft_var) hleft_base_wit hfiber
+        refine ⟨hfiber, ?_⟩
+        intro hdouble
+        have hfirst_wit :
+            DeleteDepWitness s.formula leftLit.var on_
+              (patchDeleteWitnessAt s.formula leftLit.var σ skBase) τ :=
+          (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+            s.formula rightLit.var leftLit.var on_ (flipUniv on_ σ) τ
+            (patchDeleteWitnessAt s.formula leftLit.var σ skBase)
+            hdistinct).1 (by simpa [sk₂, sk₁] using hdouble)
+        exact hno_first hfirst_wit
+      · right
+        have hright_wit₁ :
+            DeleteDepWitness s.formula rightLit.var on_ sk₁
+              (flipUniv on_ σ) :=
+          (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+            s.formula leftLit.var rightLit.var on_ σ (flipUniv on_ σ)
+            skBase (Ne.symm hdistinct)).2 hright_base_wit
+        have hfiber :
+            PatchChangedFiber s.formula s.clauses rightLit.var on_
+              (flipUniv on_ σ) τ sk₁ :=
+          patchChangedLit_implies_fiber
+            s.formula s.clauses (hexi rightLit.var hright_var)
+            (hcontains rightLit.var hright_var) hsecond
+        have hno_second :
+            ¬ DeleteDepWitness s.formula rightLit.var on_
+              (patchDeleteWitnessAt s.formula rightLit.var
+                (flipUniv on_ σ) sk₁) τ :=
+          patchChangedFiber_removed_by_patch
+            s.formula s.clauses (hexi rightLit.var hright_var)
+            (hcontains rightLit.var hright_var) hright_wit₁ hfiber
+        refine ⟨hfiber, ?_⟩
+        simpa [sk₂] using hno_second
+    exact ⟨cref, c, leftLit, rightLit, τ, hget, hleft_mem,
+      hright_mem, hleft_var, hright_var, hdistinct, hleft_base_wit,
+      hleft_not_live, hright_base_wit, hright_not_live, by
+        simpa [sk₂, sk₁] using hfalse, hremoved⟩
+
 private theorem flexibleRepairSameClauseFlipFailure_to_twoPolarityFailure
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
