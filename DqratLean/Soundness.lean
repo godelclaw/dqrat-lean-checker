@@ -2445,6 +2445,190 @@ private theorem deleteWitnessFiberSetProperSubset_subset
     DeleteWitnessFiberSetSubset f vars on_ skNew skOld :=
   h.1
 
+private theorem deleteWitnessFiberPred_imp_of_list_subset
+    (f : DQBF) (of_ on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld) :
+    ∀ args,
+      deleteWitnessFiberPred f of_ on_ skNew args = true →
+        deleteWitnessFiberPred f of_ on_ skOld args = true := by
+  intro args hnew
+  have hfiberNew :
+      DeleteWitnessFiber f of_ on_ skNew args :=
+    (deleteWitnessFiberPred_eq_true_iff f of_ on_ skNew args).1 hnew
+  rcases hfiberNew with ⟨σ, hargs, hwit⟩
+  have hbase :
+      args ∈ allBoolArrays
+        ((f.depset.getD of_ #[]).filter (· ≠ on_)).size := by
+    rw [← hargs]
+    simpa [deleteDepArgs_size f of_ on_ σ] using
+      mem_allBoolArrays_of_size (deleteDepArgs f of_ on_ σ)
+  have hmemNew :
+      args ∈ deleteWitnessFiberList f of_ on_ skNew :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skNew args).2
+      ⟨hbase, ⟨σ, hargs, hwit⟩⟩
+  have hmemOld :
+      args ∈ deleteWitnessFiberList f of_ on_ skOld :=
+    hsubset args hmemNew
+  exact (deleteWitnessFiberPred_eq_true_iff f of_ on_ skOld args).2
+    ((mem_deleteWitnessFiberList_iff f of_ on_ skOld args).1 hmemOld).2
+
+private theorem deleteWitnessFiberCountVar_le_of_list_subset
+    (f : DQBF) (of_ on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld) :
+    deleteWitnessFiberCountVar f of_ on_ skNew ≤
+      deleteWitnessFiberCountVar f of_ on_ skOld := by
+  let base := allBoolArrays ((f.depset.getD of_ #[]).filter (· ≠ on_)).size
+  let pNew := deleteWitnessFiberPred f of_ on_ skNew
+  let pOld := deleteWitnessFiberPred f of_ on_ skOld
+  have himp : ∀ args, pNew args = true → pOld args = true :=
+    deleteWitnessFiberPred_imp_of_list_subset f of_ on_ skNew skOld hsubset
+  unfold deleteWitnessFiberCountVar deleteWitnessFiberList
+  change (base.filter pNew).length ≤ (base.filter pOld).length
+  rw [list_filter_eq_filter_filter_of_imp pNew pOld base himp]
+  exact List.length_filter_le pNew (base.filter pOld)
+
+private theorem deleteWitnessFiberCountVar_lt_of_list_subset_missing
+    (f : DQBF) (of_ on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld)
+    (hmissing : ∃ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skOld ∧
+        args ∉ deleteWitnessFiberList f of_ on_ skNew) :
+    deleteWitnessFiberCountVar f of_ on_ skNew <
+      deleteWitnessFiberCountVar f of_ on_ skOld := by
+  rcases hmissing with ⟨targetArgs, hold, hnew⟩
+  let base := allBoolArrays ((f.depset.getD of_ #[]).filter (· ≠ on_)).size
+  let pNew := deleteWitnessFiberPred f of_ on_ skNew
+  let pOld := deleteWitnessFiberPred f of_ on_ skOld
+  have htargetOld : targetArgs ∈ base.filter pOld := by
+    simpa [deleteWitnessFiberList, base, pOld] using hold
+  have htargetNewFalse : pNew targetArgs = false := by
+    have hbase :
+        targetArgs ∈ allBoolArrays
+          ((f.depset.getD of_ #[]).filter (· ≠ on_)).size :=
+      ((mem_deleteWitnessFiberList_iff f of_ on_ skOld targetArgs).1 hold).1
+    unfold pNew deleteWitnessFiberPred
+    by_cases hfiber :
+        DeleteWitnessFiber f of_ on_ skNew targetArgs
+    · have hmemNew :
+          targetArgs ∈ deleteWitnessFiberList f of_ on_ skNew :=
+        (mem_deleteWitnessFiberList_iff f of_ on_ skNew targetArgs).2
+          ⟨hbase, hfiber⟩
+      exact False.elim (hnew hmemNew)
+    · simp [hfiber]
+  have himp : ∀ args, pNew args = true → pOld args = true :=
+    deleteWitnessFiberPred_imp_of_list_subset f of_ on_ skNew skOld hsubset
+  unfold deleteWitnessFiberCountVar deleteWitnessFiberList
+  change (base.filter pNew).length < (base.filter pOld).length
+  rw [list_filter_eq_filter_filter_of_imp pNew pOld base himp]
+  exact list_length_filter_lt_length_of_mem_false
+    pNew htargetOld htargetNewFalse
+
+private theorem deleteWitnessFiberCountSetList_le_of_subset
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ of_, of_ ∈ vars → ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld) :
+    deleteWitnessFiberCountSetList f vars on_ skNew ≤
+      deleteWitnessFiberCountSetList f vars on_ skOld := by
+  revert hsubset
+  induction vars with
+  | nil =>
+      intro _hsubset
+      simp [deleteWitnessFiberCountSetList]
+  | cons head rest ih =>
+      intro hsubset
+      have hhead :
+          deleteWitnessFiberCountVar f head on_ skNew ≤
+            deleteWitnessFiberCountVar f head on_ skOld := by
+        exact deleteWitnessFiberCountVar_le_of_list_subset
+          f head on_ skNew skOld
+          (fun args hmem =>
+            hsubset head (by simp) args hmem)
+      have htail :
+          deleteWitnessFiberCountSetList f rest on_ skNew ≤
+            deleteWitnessFiberCountSetList f rest on_ skOld := by
+        exact ih
+          (fun of_ hof args hmem =>
+            hsubset of_ (List.mem_cons_of_mem head hof) args hmem)
+      simpa [deleteWitnessFiberCountSetList] using
+        Nat.add_le_add hhead htail
+
+private theorem deleteWitnessFiberCountSetList_lt_of_subset_missing
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ of_, of_ ∈ vars → ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld)
+    (hmissing : ∃ of_, of_ ∈ vars ∧ ∃ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skOld ∧
+        args ∉ deleteWitnessFiberList f of_ on_ skNew) :
+    deleteWitnessFiberCountSetList f vars on_ skNew <
+      deleteWitnessFiberCountSetList f vars on_ skOld := by
+  revert hsubset hmissing
+  induction vars with
+  | nil =>
+      intro _hsubset hmissing
+      rcases hmissing with ⟨of_, hof, _args, _hold, _hnew⟩
+      cases hof
+  | cons head rest ih =>
+      intro hsubset hmissing
+      rcases hmissing with ⟨of_, hof, args, hold, hnew⟩
+      simp [deleteWitnessFiberCountSetList]
+      cases hof with
+      | head =>
+        have hhead :
+            deleteWitnessFiberCountVar f head on_ skNew <
+              deleteWitnessFiberCountVar f head on_ skOld := by
+          exact deleteWitnessFiberCountVar_lt_of_list_subset_missing
+            f head on_ skNew skOld
+            (fun args hmem =>
+              hsubset head (by simp) args hmem)
+            ⟨args, hold, hnew⟩
+        have htail :
+            deleteWitnessFiberCountSetList f rest on_ skNew ≤
+              deleteWitnessFiberCountSetList f rest on_ skOld := by
+          exact deleteWitnessFiberCountSetList_le_of_subset
+            f rest on_ skNew skOld
+            (fun of_ hof args hmem =>
+              hsubset of_ (List.mem_cons_of_mem head hof) args hmem)
+        exact Nat.add_lt_add_of_lt_of_le hhead htail
+      | tail _ hof_tail =>
+        have hhead :
+            deleteWitnessFiberCountVar f head on_ skNew ≤
+              deleteWitnessFiberCountVar f head on_ skOld := by
+          exact deleteWitnessFiberCountVar_le_of_list_subset
+            f head on_ skNew skOld
+            (fun args hmem =>
+              hsubset head (by simp) args hmem)
+        have htail :
+            deleteWitnessFiberCountSetList f rest on_ skNew <
+              deleteWitnessFiberCountSetList f rest on_ skOld := by
+          exact ih
+            (fun of_ hof args hmem =>
+              hsubset of_ (List.mem_cons_of_mem head hof) args hmem)
+            ⟨of_, hof_tail, args, hold, hnew⟩
+        exact Nat.add_lt_add_of_le_of_lt hhead htail
+
+private theorem deleteWitnessFiberCountSet_lt_of_properSubset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skNew skOld : SkolemAssignment}
+    (hproper : DeleteWitnessFiberSetProperSubset f vars on_ skNew skOld) :
+    deleteWitnessFiberCountSet f vars on_ skNew <
+      deleteWitnessFiberCountSet f vars on_ skOld := by
+  simpa [deleteWitnessFiberCountSet] using
+    deleteWitnessFiberCountSetList_lt_of_subset_missing
+      f vars.toList on_ skNew skOld hproper.1 hproper.2
+
 private theorem deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
     (f : DQBF) (vars : Array Var) (patched on_ : Var)
     (σ₀ : UnivAssignment) (sk : SkolemAssignment)
