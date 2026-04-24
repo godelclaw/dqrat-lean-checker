@@ -2407,6 +2407,114 @@ private theorem deleteWitnessFiberList_patchDeleteWitnessAt_proper_subset_self
       exact not_deleteWitnessFiber_patchDeleteWitnessAt_target_self
         f of_ on_ σ₀ sk hexi hcontains hwit hfiber
 
+private def DeleteWitnessFiberSetSubset
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (skNew skOld : SkolemAssignment) : Prop :=
+  ∀ of_, of_ ∈ vars.toList → ∀ args,
+    args ∈ deleteWitnessFiberList f of_ on_ skNew →
+      args ∈ deleteWitnessFiberList f of_ on_ skOld
+
+private def DeleteWitnessFiberSetProperSubset
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (skNew skOld : SkolemAssignment) : Prop :=
+  DeleteWitnessFiberSetSubset f vars on_ skNew skOld ∧
+    ∃ of_, of_ ∈ vars.toList ∧ ∃ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skOld ∧
+        args ∉ deleteWitnessFiberList f of_ on_ skNew
+
+private theorem deleteWitnessFiberSetSubset_refl
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (sk : SkolemAssignment) :
+    DeleteWitnessFiberSetSubset f vars on_ sk sk := by
+  intro _ _ _ hmem
+  exact hmem
+
+private theorem deleteWitnessFiberSetSubset_trans
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (skA skB skC : SkolemAssignment)
+    (hAB : DeleteWitnessFiberSetSubset f vars on_ skA skB)
+    (hBC : DeleteWitnessFiberSetSubset f vars on_ skB skC) :
+    DeleteWitnessFiberSetSubset f vars on_ skA skC := by
+  intro of_ hof args hmem
+  exact hBC of_ hof args (hAB of_ hof args hmem)
+
+private theorem deleteWitnessFiberSetProperSubset_subset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skNew skOld : SkolemAssignment}
+    (h : DeleteWitnessFiberSetProperSubset f vars on_ skNew skOld) :
+    DeleteWitnessFiberSetSubset f vars on_ skNew skOld :=
+  h.1
+
+private theorem deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
+    (f : DQBF) (vars : Array Var) (patched on_ : Var)
+    (σ₀ : UnivAssignment) (sk : SkolemAssignment)
+    (hmem : patched ∈ vars.toList)
+    (hexi : f.isVarExistential patched = true)
+    (hcontains : (f.depset.getD patched #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f patched on_ sk σ₀) :
+    DeleteWitnessFiberSetProperSubset f vars on_
+      (patchDeleteWitnessAt f patched σ₀ sk) sk := by
+  constructor
+  · intro of_ _hof args hnew
+    by_cases hEq : of_ = patched
+    · subst of_
+      exact
+        (deleteWitnessFiberList_patchDeleteWitnessAt_proper_subset_self
+          f patched on_ σ₀ sk hexi hcontains hwit).1 args hnew
+    · simpa [deleteWitnessFiberList_patchDeleteWitnessAt_eq_of_ne
+        f patched of_ on_ σ₀ sk hEq] using hnew
+  · rcases
+      (deleteWitnessFiberList_patchDeleteWitnessAt_proper_subset_self
+        f patched on_ σ₀ sk hexi hcontains hwit).2 with
+      ⟨args, hold, hnew⟩
+    exact ⟨patched, hmem, args, hold, hnew⟩
+
+private theorem deleteWitnessFiberSetProperSubset_second_distinct_patch
+    (f : DQBF) (vars : Array Var) (left right on_ : Var)
+    (σLeft σRight : UnivAssignment) (sk : SkolemAssignment)
+    (hleft_mem : left ∈ vars.toList)
+    (hright_mem : right ∈ vars.toList)
+    (hneq : left ≠ right)
+    (hexi_left : f.isVarExistential left = true)
+    (hcontains_left : (f.depset.getD left #[]).contains on_ = true)
+    (hwit_left : DeleteDepWitness f left on_ sk σLeft)
+    (hexi_right : f.isVarExistential right = true)
+    (hcontains_right : (f.depset.getD right #[]).contains on_ = true)
+    (hwit_right : DeleteDepWitness f right on_ sk σRight) :
+    let sk₁ := patchDeleteWitnessAt f left σLeft sk
+    DeleteWitnessFiberSetProperSubset f vars on_
+      (patchDeleteWitnessAt f right σRight sk₁) sk := by
+  intro sk₁
+  have hleftProper :
+      DeleteWitnessFiberSetProperSubset f vars on_ sk₁ sk := by
+    exact deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
+      f vars left on_ σLeft sk hleft_mem hexi_left hcontains_left hwit_left
+  have hwit_right₁ :
+      DeleteDepWitness f right on_ sk₁ σRight := by
+    dsimp [sk₁]
+    exact (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+      f left right on_ σLeft σRight sk (Ne.symm hneq)).2 hwit_right
+  have hrightProper :
+      DeleteWitnessFiberSetProperSubset f vars on_
+        (patchDeleteWitnessAt f right σRight sk₁) sk₁ := by
+    exact deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
+      f vars right on_ σRight sk₁ hright_mem hexi_right hcontains_right
+      hwit_right₁
+  constructor
+  · exact deleteWitnessFiberSetSubset_trans f vars on_
+      (patchDeleteWitnessAt f right σRight sk₁) sk₁ sk
+      hrightProper.1 hleftProper.1
+  · rcases
+      (deleteWitnessFiberList_patchDeleteWitnessAt_proper_subset_self
+        f left on_ σLeft sk hexi_left hcontains_left hwit_left).2 with
+      ⟨args, hold, hnew⟩
+    refine ⟨left, hleft_mem, args, hold, ?_⟩
+    intro hmem
+    have hmem₁ : args ∈ deleteWitnessFiberList f left on_ sk₁ := by
+      simpa [deleteWitnessFiberList_patchDeleteWitnessAt_eq_of_ne
+        f right left on_ σRight sk₁ hneq] using hmem
+    exact hnew hmem₁
+
 private theorem deleteWitnessFiberCountVar_patchDeleteWitnessAt_eq_of_ne
     (f : DQBF) (patched of_ on_ : Var) (σ₀ : UnivAssignment)
     (sk : SkolemAssignment)
@@ -18987,6 +19095,24 @@ private theorem flexibleRepairPoolCandidate_of_patchPoolCandidate
   rcases hpool.2.2 of_ σ hdiff with ⟨hof, hon_eq, hnoPath⟩
   refine ⟨hof, ?_⟩
   simpa [hon_eq] using hnoPath
+
+private theorem patchPoolCandidate_fiberSetSubset
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand) :
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skBase := by
+  intro of_ hof args hmem
+  rw [mem_deleteWitnessFiberList_iff] at hmem ⊢
+  exact ⟨hmem.1, hpool.2.1 of_ hof args hmem.2⟩
+
+private theorem flexibleRepairPoolCandidate_fiberSetSubset
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand) :
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skBase := by
+  intro of_ hof args hmem
+  rw [mem_deleteWitnessFiberList_iff] at hmem ⊢
+  exact ⟨hmem.1, hpool.2.1 of_ hof args hmem.2⟩
 
 private theorem varValue_patchDeleteWitnessAt_ne_implies_active_fullDepArgs
     (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
