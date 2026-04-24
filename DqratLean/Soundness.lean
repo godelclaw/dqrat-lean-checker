@@ -29280,6 +29280,7 @@ private theorem patchPoolFailureBranch_blocked_or_step_or_external
           (patchDeleteWitnessAt s.formula flipVar σ skCand)) ∨
       (∃ σ flipVar,
         flipVar ∉ vars.toList ∧
+        σ on_ = startPos ∧
         DeleteDepWitness s.formula flipVar on_ skCand σ ∧
         s.formula.isVarExistential flipVar = true ∧
         (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
@@ -29321,7 +29322,7 @@ private theorem patchPoolFailureBranch_blocked_or_step_or_external
     · right
       right
       rcases hexternal with ⟨hflip_not_mem, hnoPath⟩
-      exact ⟨σ, flipLit.var, hflip_not_mem, hwit, hexi_flip,
+      exact ⟨σ, flipLit.var, hflip_not_mem, hon_eq, hwit, hexi_flip,
         hcontains_flip, hnoPath⟩
 
 private theorem patchPoolCandidate_failure_path_or_step_or_external
@@ -29369,6 +29370,7 @@ private theorem patchPoolCandidate_descent_or_residual_cases
           (patchDeleteWitnessAt s.formula flipVar σ skCand)) ∨
       (∃ σ flipVar,
         flipVar ∉ vars.toList ∧
+        σ on_ = startPos ∧
         DeleteDepWitness s.formula flipVar on_ skCand σ ∧
         s.formula.isVarExistential flipVar = true ∧
         (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
@@ -29416,6 +29418,7 @@ private theorem patchPoolCandidate_iterate_descent_or_blocked_or_external
     (∃ skStop σ flipVar,
       PatchPoolCandidate s vars on_ startPos skBase skStop ∧
       flipVar ∉ vars.toList ∧
+      σ on_ = startPos ∧
       DeleteDepWitness s.formula flipVar on_ skStop σ ∧
       s.formula.isVarExistential flipVar = true ∧
       (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
@@ -29436,6 +29439,7 @@ private theorem patchPoolCandidate_iterate_descent_or_blocked_or_external
       (∃ skStop σ flipVar,
         PatchPoolCandidate s vars on_ startPos skBase skStop ∧
         flipVar ∉ vars.toList ∧
+        σ on_ = startPos ∧
         DeleteDepWitness s.formula flipVar on_ skStop σ ∧
         s.formula.isVarExistential flipVar = true ∧
         (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
@@ -29468,11 +29472,11 @@ private theorem patchPoolCandidate_iterate_descent_or_blocked_or_external
             exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
               hlt_next skNext rfl hpoolNext
           · rcases hexternal with
-              ⟨σ, flipVar, hnot_mem, hwit, hexi_flip, hcontains_flip,
-                hnoPath⟩
+              ⟨σ, flipVar, hnot_mem, hon_eq, hwit, hexi_flip,
+                hcontains_flip, hnoPath⟩
             exact Or.inr (Or.inr
-              ⟨skCur, σ, flipVar, hpoolCur, hnot_mem, hwit, hexi_flip,
-                hcontains_flip, hnoPath⟩))
+              ⟨skCur, σ, flipVar, hpoolCur, hnot_mem, hon_eq, hwit,
+                hexi_flip, hcontains_flip, hnoPath⟩))
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
     skCand rfl hpool
 
@@ -29556,8 +29560,8 @@ private theorem patchPoolCandidate_iterate_descent_or_tail_residual_closed
             exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
               hlt_next skNext rfl hpoolNext
           · rcases hexternal with
-              ⟨σ, flipVar, hnot_mem, _hwit, hexi_flip, hcontains_flip,
-                _hnoPath⟩
+              ⟨σ, flipVar, hnot_mem, _hon_eq, _hwit, hexi_flip,
+                hcontains_flip, _hnoPath⟩
             exact False.elim
               (hnot_mem (hclosed flipVar hexi_flip hcontains_flip)))
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
@@ -29730,8 +29734,8 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_tail_residual_clo
             exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
               hlt_next skNext rfl hpoolNext
           · rcases hexternal with
-              ⟨σ, flipVar, hnot_mem, _hwit, hexi_flip, hcontains_flip,
-                _hnoPath⟩
+              ⟨σ, flipVar, hnot_mem, _hon_eq, _hwit, hexi_flip,
+                hcontains_flip, _hnoPath⟩
             exact False.elim
               (hnot_mem (hclosed flipVar hexi_flip hcontains_flip)))
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
@@ -29910,8 +29914,8 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
             exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
               hlt_next skNext rfl hpoolNext
           · rcases hexternal with
-              ⟨σ, flipVar, hnot_mem, _hwit, hexi_flip, hcontains_flip,
-                _hnoPath⟩
+              ⟨σ, flipVar, hnot_mem, _hon_eq, _hwit, hexi_flip,
+                hcontains_flip, _hnoPath⟩
             exact False.elim
               (hnot_mem (hclosed flipVar hexi_flip hcontains_flip)))
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
@@ -30285,6 +30289,7 @@ private theorem deleteWitness_descent_step_or_initial_residual_cases
               (patchDeleteWitnessAt s.formula of_ σSeed sk))) ∨
         (∃ σ flipVar,
           flipVar ∉ vars.toList ∧
+          σ on_ = σSeed on_ ∧
           DeleteDepWitness s.formula flipVar on_
             (patchDeleteWitnessAt s.formula of_ σSeed sk) σ ∧
           s.formula.isVarExistential flipVar = true ∧
@@ -30336,6 +30341,7 @@ private theorem deleteWitness_descent_step_or_initial_blocked_or_external
     (∃ startPos skStop σ flipVar,
       PatchPoolCandidate s vars on_ startPos sk skStop ∧
       flipVar ∉ vars.toList ∧
+      σ on_ = startPos ∧
       DeleteDepWitness s.formula flipVar on_ skStop σ ∧
       s.formula.isVarExistential flipVar = true ∧
       (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
@@ -30369,17 +30375,17 @@ private theorem deleteWitness_descent_step_or_initial_blocked_or_external
               ⟨σSeed on_, skStop, hpoolStop, hblockedStop⟩)
           · rcases hexternalStop with
               ⟨skStop, σStop, flipVarStop, hpoolStop, hnotMemStop,
-                hwitStop, hexiStop, hcontainsStop, hnoPathStop⟩
+                honStop, hwitStop, hexiStop, hcontainsStop, hnoPathStop⟩
             exact Or.inr (Or.inr
               ⟨σSeed on_, skStop, σStop, flipVarStop, hpoolStop,
-                hnotMemStop, hwitStop, hexiStop, hcontainsStop,
+                hnotMemStop, honStop, hwitStop, hexiStop, hcontainsStop,
                 hnoPathStop⟩)
       · rcases hexternal with
-          ⟨σ, flipVar, hnotMem, hwit, hexi_flip, hcontains_flip,
-            hnoPath⟩
+          ⟨σ, flipVar, hnotMem, hon_eq, hwit, hexi_flip,
+            hcontains_flip, hnoPath⟩
         exact Or.inr (Or.inr
           ⟨σSeed on_, patchDeleteWitnessAt s.formula of_ σSeed sk,
-            σ, flipVar, hpool, hnotMem, hwit, hexi_flip,
+            σ, flipVar, hpool, hnotMem, hon_eq, hwit, hexi_flip,
             hcontains_flip, hnoPath⟩)
 
 private theorem deleteWitness_descent_step_or_initial_external_diagnostic
@@ -30408,6 +30414,7 @@ private theorem deleteWitness_descent_step_or_initial_external_diagnostic
     (∃ startPos skStop σ flipVar,
       PatchPoolCandidate s vars on_ startPos sk skStop ∧
       flipVar ∉ vars.toList ∧
+      σ on_ = startPos ∧
       DeleteDepWitness s.formula flipVar on_ skStop σ ∧
       s.formula.isVarExistential flipVar = true ∧
       (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
@@ -30429,10 +30436,10 @@ private theorem deleteWitness_descent_step_or_initial_external_diagnostic
   · rcases hresidual with hblocked | hexternal
     · exact Or.inr (Or.inl hblocked)
     · rcases hexternal with
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
-          hexiFlip, hcontainsFlip, hnoPath⟩
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq,
+          hwitFlip, hexiFlip, hcontainsFlip, hnoPath⟩
       refine Or.inr (Or.inr
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq, hwitFlip,
           hexiFlip, hcontainsFlip, hnoPath, ?_⟩)
       by_cases hexivar : flipVar ∈ s.formula.exivars.toList
       · by_cases hgtFlip : on_ < flipVar
@@ -30475,6 +30482,7 @@ private theorem deleteWitness_descent_step_or_initial_external_reach_pair
     (∃ startPos skStop σ flipVar,
       PatchPoolCandidate s vars on_ startPos sk skStop ∧
       flipVar ∉ vars.toList ∧
+      σ on_ = startPos ∧
       DeleteDepWitness s.formula flipVar on_ skStop σ ∧
       s.formula.isVarExistential flipVar = true ∧
       (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
@@ -30494,10 +30502,10 @@ private theorem deleteWitness_descent_step_or_initial_external_reach_pair
   · rcases hresidual with hblocked | hexternal
     · exact Or.inr (Or.inl hblocked)
     · rcases hexternal with
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
-          hexiFlip, hcontainsFlip, hnoPath, hdiag⟩
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq,
+          hwitFlip, hexiFlip, hcontainsFlip, hnoPath, hdiag⟩
       refine Or.inr (Or.inr
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq, hwitFlip,
           hexiFlip, hcontainsFlip, hnoPath, ?_⟩)
       rcases hdiag with hnotExivar | hrest
       · exact False.elim (hnotExivar (hexivars_complete flipVar hexiFlip))
@@ -30538,6 +30546,7 @@ private theorem deleteWitness_descent_step_or_initial_external_reach_pair_with_b
     (∃ startPos skStop σ flipVar,
       PatchPoolCandidate s vars on_ startPos sk skStop ∧
       flipVar ∉ vars.toList ∧
+      σ on_ = startPos ∧
       DeleteDepWitness s.formula flipVar on_ skStop σ ∧
       DeleteDepWitness s.formula flipVar on_ sk σ ∧
       s.formula.isVarExistential flipVar = true ∧
@@ -30560,8 +30569,8 @@ private theorem deleteWitness_descent_step_or_initial_external_reach_pair_with_b
   · rcases hresidual with hblocked | hexternal
     · exact Or.inr (Or.inl hblocked)
     · rcases hexternal with
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
-          hexiFlip, hcontainsFlip, hnoPath, hreach⟩
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq,
+          hwitFlip, hexiFlip, hcontainsFlip, hnoPath, hreach⟩
       have hwitBase :
           DeleteDepWitness s.formula flipVar on_ sk σ :=
         (patchPoolCandidate_deleteDepWitness_iff_of_not_mem
@@ -30569,7 +30578,7 @@ private theorem deleteWitness_descent_step_or_initial_external_reach_pair_with_b
           (startPos := startPos) (skBase := sk) (skCand := skStop)
           (of_ := flipVar) (σ := σ) hpool hnotMem).1 hwitFlip
       exact Or.inr (Or.inr
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq, hwitFlip,
           hwitBase, hexiFlip, hcontainsFlip, hnoPath, hreach⟩)
 
 private theorem deleteWitness_descent_step_or_initial_external_reach_pair_with_base_tail
@@ -30605,6 +30614,7 @@ private theorem deleteWitness_descent_step_or_initial_external_reach_pair_with_b
     (∃ startPos skStop σ flipVar,
       PatchPoolCandidate s vars on_ startPos sk skStop ∧
       flipVar ∉ vars.toList ∧
+      σ on_ = startPos ∧
       s.formula.varValue σ skStop flipVar =
         s.formula.varValue σ sk flipVar ∧
       DeleteDepWitness s.formula flipVar on_ skStop σ ∧
@@ -30631,8 +30641,8 @@ private theorem deleteWitness_descent_step_or_initial_external_reach_pair_with_b
   · rcases hresidual with hblocked | hexternal
     · exact Or.inr (Or.inl hblocked)
     · rcases hexternal with
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
-          hwitBase, hexiFlip, hcontainsFlip, hnoPath, hreach⟩
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq,
+          hwitFlip, hwitBase, hexiFlip, hcontainsFlip, hnoPath, hreach⟩
       have hvalEq :
           s.formula.varValue σ skStop flipVar =
             s.formula.varValue σ sk flipVar :=
@@ -30646,7 +30656,7 @@ private theorem deleteWitness_descent_step_or_initial_external_reach_pair_with_b
         intro hpath
         exact hnoPath (by simpa [hvalEq] using hpath)
       exact Or.inr (Or.inr
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hvalEq,
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq, hvalEq,
           hwitFlip, hwitBase, hexiFlip, hcontainsFlip, hnoPath,
           hnoPathBase, hreach⟩)
 
@@ -30681,8 +30691,8 @@ private theorem deleteWitness_descent_step_or_initial_blocked_of_closed
   · rcases hresidual with hblocked | hexternal
     · exact Or.inr hblocked
     · rcases hexternal with
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, _hwit,
-          hexi_flip, hcontains_flip, _hnoPath⟩
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, _hon_eq,
+          _hwit, hexi_flip, hcontains_flip, _hnoPath⟩
       exact False.elim (hnotMem (hclosed flipVar hexi_flip hcontains_flip))
 
 private theorem deleteWitness_descent_step_or_cursor_tail_residual_closed
@@ -31056,6 +31066,7 @@ private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier
         (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
         PatchPoolCandidate s vars on_ startPos skBase skStop →
         flipVar ∉ vars.toList →
+        σ on_ = startPos →
         DeleteDepWitness s.formula flipVar on_ skStop σ →
         s.formula.isVarExistential flipVar = true →
         (s.formula.depset.getD flipVar #[]).contains on_ = true →
@@ -31089,11 +31100,11 @@ private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier
         dqbf cs hfull hon_le hon_univ hpaths
         (hblocked hall hpool hbranch)
     · rcases hexternalCase with
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitFlip,
-          hexiFlip, hcontainsFlip, hnoPath, hreach⟩
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq,
+          hwitFlip, hexiFlip, hcontainsFlip, hnoPath, hreach⟩
       exact deleteWitness_descent_step_of_good_or_forbidden_paths
         dqbf cs hfull hon_le hon_univ hpaths
-        (hexternal hall hpool hnotMem hwitFlip hexiFlip hcontainsFlip
+        (hexternal hall hpool hnotMem hon_eq hwitFlip hexiFlip hcontainsFlip
           hnoPath hreach)
 
 private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier_with_base_tail
@@ -31133,6 +31144,7 @@ private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier_w
         (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
         PatchPoolCandidate s vars on_ startPos skBase skStop →
         flipVar ∉ vars.toList →
+        σ on_ = startPos →
         s.formula.varValue σ skStop flipVar =
           s.formula.varValue σ skBase flipVar →
         DeleteDepWitness s.formula flipVar on_ skStop σ →
@@ -31171,12 +31183,12 @@ private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier_w
         dqbf cs hfull hon_le hon_univ hpaths
         (hblocked hall hpool hbranch)
     · rcases hexternalCase with
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hvalEq,
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq, hvalEq,
           hwitStop, hwitBase, hexiFlip, hcontainsFlip, hnoPathStop,
           hnoPathBase, hreach⟩
       exact deleteWitness_descent_step_of_good_or_forbidden_paths
         dqbf cs hfull hon_le hon_univ hpaths
-        (hexternal hall hpool hnotMem hvalEq hwitStop hwitBase
+        (hexternal hall hpool hnotMem hon_eq hvalEq hwitStop hwitBase
           hexiFlip hcontainsFlip hnoPathStop hnoPathBase hreach)
 
 private abbrev ExternalPatchFailureContinuation
@@ -31186,6 +31198,7 @@ private abbrev ExternalPatchFailureContinuation
     (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
     PatchPoolCandidate s vars on_ startPos skBase skStop →
     flipVar ∉ vars.toList →
+    σ on_ = startPos →
     s.formula.varValue σ skStop flipVar =
       s.formula.varValue σ skBase flipVar →
     DeleteDepWitness s.formula flipVar on_ skStop σ →
@@ -31253,7 +31266,7 @@ private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier_w
       hexivars_complete hdep_gt hblocked
       (by
         intro startPos skBase skStop σ flipVar hall hpool hnotMem
-          hvalEq hwitStop hwitBase hexiFlip hcontainsFlip hnoPathStop
+          hon_eq hvalEq hwitStop hwitBase hexiFlip hcontainsFlip hnoPathStop
           hnoPathBase hreach
         have hprogress :
             TargetRepairProgressCandidate s vars on_ skBase
@@ -31269,7 +31282,7 @@ private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier_w
           hgood | hfail
         · exact Or.inl hgood
         · rcases hfail with ⟨τ, hfalse⟩
-          exact hexternalPatch hall hpool hnotMem hvalEq hwitStop
+          exact hexternalPatch hall hpool hnotMem hon_eq hvalEq hwitStop
             hwitBase hexiFlip hcontainsFlip hnoPathStop hnoPathBase
             hreach hprogress hfalse)
 
@@ -31280,6 +31293,7 @@ private abbrev ExternalTailPatchFailureContinuation
     (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
     PatchPoolCandidate s vars on_ startPos skBase skStop →
     flipVar ∉ vars.toList →
+    σ on_ = startPos →
     s.formula.varValue σ skStop flipVar =
       s.formula.varValue σ skBase flipVar →
     DeleteDepWitness s.formula flipVar on_ skStop σ →
@@ -31301,7 +31315,7 @@ private theorem externalTailPatchFailureContinuation_of_noExternalDependentTail
     (hnoExternal : NoExternalDependentTail s vars on_) :
     ExternalTailPatchFailureContinuation s vars on_ := by
   intro startPos skBase skStop σ τ flipVar _hall _hpool hnotMem
-    _hvalEq _hwitStop _hwitBase hexiFlip hcontainsFlip _hnoPathStop
+    _hon_eq _hvalEq _hwitStop _hwitBase hexiFlip hcontainsFlip _hnoPathStop
     _hnoPathBase _hprogress _hfalse
   exact False.elim (hnoExternal flipVar hexiFlip hcontainsFlip hnotMem)
 
@@ -31337,8 +31351,8 @@ private theorem deleteIndependenceSetBridge_of_initial_external_frontier_externa
         dqbf cs hfull hon_le hon_univ hpaths
         (hblocked hall hpool hbranch)
     · rcases hexternal with
-        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitStop,
-          hexiFlip, hcontainsFlip, hnoPathStop⟩
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hon_eq,
+          hwitStop, hexiFlip, hcontainsFlip, hnoPathStop⟩
       have hvalEq :
           s.formula.varValue σ skStop flipVar =
             s.formula.varValue σ sk flipVar :=
@@ -31373,7 +31387,7 @@ private theorem deleteIndependenceSetBridge_of_initial_external_frontier_externa
       · rcases hfail with ⟨τ, hfalse⟩
         exact deleteWitness_descent_step_of_good_or_forbidden_paths
           dqbf cs hfull hon_le hon_univ hpaths
-          (hexternalPatch hall hpool hnotMem hvalEq hwitStop hwitBase
+          (hexternalPatch hall hpool hnotMem hon_eq hvalEq hwitStop hwitBase
             hexiFlip hcontainsFlip hnoPathStop hnoPathBase hprogress
             hfalse)
 
