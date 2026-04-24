@@ -19682,6 +19682,51 @@ private theorem flexibleRepairPoolCandidate_false_matrix_changed_lit
       hlfalse, hnoPath⟩
   exact ⟨cref, c, l, hget, hlmem, hmem, hltrue, hlfalse, hnoPath⟩
 
+private theorem flexibleRepairPoolTracked_false_matrix_current_properSubset
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase := by
+  classical
+  rcases htracked with ⟨hpool, hfoot, hlive⟩
+  constructor
+  · exact flexibleRepairPoolCandidate_fiberSetSubset hpool
+  · rcases flexibleRepairPoolCandidate_false_matrix_changed_lit
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) hpool hallBase hfalse with
+      ⟨_cref, _c, l, _hget, _hlmem, hlvar, hltrue, hlfalse,
+        _hnoPath⟩
+    let args := deleteDepArgs s.formula l.var on_ σ
+    have hdiff :
+        s.formula.varValue σ skCand l.var ≠
+          s.formula.varValue σ skBase l.var :=
+      litValue_true_false_implies_varValue_ne
+        s.formula σ skBase skCand l hltrue hlfalse
+    rcases hfoot l.var σ hdiff with ⟨_hlvarFoot, hwitBase, _hfiber⟩
+    refine ⟨l.var, hlvar, args, ?_, ?_⟩
+    · rw [mem_deleteWitnessFiberList_iff]
+      exact ⟨by
+        simpa [args, deleteDepArgs_size s.formula l.var on_ σ] using
+          mem_allBoolArrays_of_size args,
+        ⟨σ, rfl, hwitBase⟩⟩
+    · intro hmemNew
+      have hfiberNew :
+          DeleteWitnessFiber s.formula l.var on_ skCand args :=
+        (mem_deleteWitnessFiberList_iff s.formula l.var on_ skCand args).1
+          hmemNew |>.2
+      rcases hfiberNew with ⟨ρ, hρargs, hwitCand⟩
+      have hargs_eq :
+          deleteDepArgs s.formula l.var on_ σ =
+            deleteDepArgs s.formula l.var on_ ρ := by
+        simpa [args] using hρargs.symm
+      have hval_eq :
+          s.formula.varValue σ skCand l.var =
+            s.formula.varValue σ skBase l.var :=
+        hlive l.var ρ σ hlvar hwitCand hargs_eq
+      exact hdiff hval_eq
+
 private theorem false_lit_deleteWitness_or_flip_false
     (f : DQBF) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment) (l : Literal)
