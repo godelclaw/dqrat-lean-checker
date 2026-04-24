@@ -20588,6 +20588,73 @@ private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_res
       hleft_not_live, hright_base_wit, hright_not_live, by
         simpa [sk₂, sk₁] using hfalse, hremoved⟩
 
+private def FlexibleRepairSameClauseTwoPatchResidual
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand : SkolemAssignment) (σ : UnivAssignment) : Prop :=
+  ∃ cref c leftLit rightLit τ,
+    s.clauses.getClause cref = some c ∧
+    leftLit ∈ c.lits.toList ∧
+    rightLit ∈ c.lits.toList ∧
+    leftLit.var ∈ vars.toList ∧
+    rightLit.var ∈ vars.toList ∧
+    leftLit.var ≠ rightLit.var ∧
+    DeleteDepWitness s.formula leftLit.var on_ skBase σ ∧
+    ¬ DeleteDepWitness s.formula leftLit.var on_ skCand σ ∧
+    DeleteDepWitness s.formula rightLit.var on_ skBase
+      (flipUniv on_ σ) ∧
+    ¬ DeleteDepWitness s.formula rightLit.var on_ skCand
+      (flipUniv on_ σ) ∧
+    let sk₁ :=
+      patchDeleteWitnessAt s.formula leftLit.var σ skBase
+    let sk₂ :=
+      patchDeleteWitnessAt s.formula rightLit.var (flipUniv on_ σ) sk₁
+    s.clauses.matrixValue s.formula τ sk₂ = false ∧
+      ((PatchChangedFiber s.formula s.clauses leftLit.var on_ σ τ
+            skBase ∧
+          ¬ DeleteDepWitness s.formula leftLit.var on_ sk₂ τ) ∨
+        (PatchChangedFiber s.formula s.clauses rightLit.var on_
+            (flipUniv on_ σ) τ sk₁ ∧
+          ¬ DeleteDepWitness s.formula rightLit.var on_ sk₂ τ))
+
+private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_outcome_or_candidate_residual
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hfailure :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ) :
+    ((∃ sk',
+      (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+    (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+      DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+      DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) ∨
+      ∃ skNext,
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skBase ∧
+        FlexibleRepairSameClauseTwoPatchResidual
+          s vars on_ skBase skCand σ := by
+  rcases flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_candidate
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ)
+      hexi hcontains htracked hfailure with
+    ⟨skNext, htrackedNext, hltNext⟩
+  rcases flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_residual
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ)
+      hon_univ hgt hexi hcontains hallBase htracked hfailure with
+    hgood | hresidual
+  · exact Or.inl (Or.inl hgood)
+  · exact Or.inr ⟨skNext, htrackedNext, hltNext, hresidual⟩
+
 private theorem flexibleRepairSameClauseFlipFailure_to_twoPolarityFailure
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
@@ -26719,6 +26786,60 @@ private theorem flexibleRepairPoolTrackedContinuation_of_two_polarity_clause_fro
           (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
           (skCand := skCand) (σ := σ) htracked.1 hall hfailure))
 
+private abbrev FlexibleRepairSameClauseTwoPatchResidualHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    FlexibleRepairSameClauseTwoPatchResidual
+      s vars on_ skBase skCand σ →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private theorem flexibleRepairPoolTrackedContinuation_of_two_patch_residual_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchResidualHandler s vars on_) :
+    FlexibleRepairPoolTrackedContinuation s vars on_ := by
+  exact flexibleRepairPoolTrackedContinuation_of_same_clause_flip_frontier
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+    (on_ := on_) hfull hon_le hon_univ hclosed hgt hexi hcontains
+    hpaths
+    (by
+      intro skBase skCand σ hall htracked hfalse hfailure
+      have htwo :
+          FlexibleRepairSameClauseTwoPolarityFailure
+            s vars on_ skBase skCand σ :=
+        flexibleRepairSameClauseFlipFailure_to_twoPolarityFailure
+          (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+          (skCand := skCand) (σ := σ) htracked.1 hall hfailure
+      rcases
+          flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_outcome_or_candidate_residual
+            (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+            (skCand := skCand) (σ := σ)
+            hon_univ hgt hexi hcontains hall htracked htwo with
+        houtcome | hres
+      · simpa [DeleteIndependenceDescentOutcome] using houtcome
+      · rcases hres with
+          ⟨skNext, htrackedNext, hltNext, hresidualCase⟩
+        exact hresidual hall htracked hfalse htwo htrackedNext hltNext
+          hresidualCase)
+
 private theorem flexibleRepairPoolContinuation_of_two_polarity_clause_frontier
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
@@ -31034,6 +31155,28 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clos
         (dqbf := dqbf) (cs := cs) hfull hon_le hon_univ hclosed hgt
         hexi hcontains hpaths htwoPolarity)
 
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_two_patch_residual_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchResidualHandler s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_trackedRepairPoolContinuation
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (flexibleRepairPoolTrackedContinuation_of_two_patch_residual_frontier
+        (dqbf := dqbf) (cs := cs) hfull hon_le hon_univ hclosed hgt
+        hexi hcontains hpaths hresidual)
+
 private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledCursorTerminalHandlers
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -31382,6 +31525,27 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clea
       dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
       (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
       htwoPolarity
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_two_patch_residual_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchResidualHandler s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_two_patch_residual_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hresidual
 
 /-- Conditional descent skeleton under the deliberately too-strong assumption
     that every local patch preserves the matrix. Keep this out of the trusted
