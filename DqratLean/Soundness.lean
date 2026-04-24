@@ -25363,6 +25363,28 @@ private theorem firstStartCursorDescentHandler_of_flexibleRepairPoolContinuation
   firstStartExitLiteralContinuation_of_flexibleRepairPoolContinuation
     hexi hcontains hcontinue
 
+private theorem pooledSameStartPairDescentHandler_of_flexibleRepairPoolContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_) :
+    PooledSameStartPairDescentHandler s vars on_ := by
+  intro startPos skBase skStop hall hpool _hblocked
+  exact hcontinue hall
+    (flexibleRepairPoolCandidate_of_patchPoolCandidate hpool)
+
+private theorem pooledCursorTerminalDescentHandlers_of_flexibleRepairPoolContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_) :
+    PooledCursorTerminalDescentHandlers s vars on_ :=
+  ⟨pooledSameStartPairDescentHandler_of_flexibleRepairPoolContinuation
+      hcontinue,
+    stableCursorDescentHandler_of_flexibleRepairPoolContinuation
+      hexi hcontains hcontinue,
+    firstStartCursorDescentHandler_of_flexibleRepairPoolContinuation
+      hexi hcontains hcontinue⟩
+
 private theorem pooledExitLiteralTerminalContinuations_of_flexibleRepairPoolContinuation
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
@@ -30041,6 +30063,26 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clea
     deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_pooledTerminalContinuations
       dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hnoExternal
       hhandlers
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_flexibleRepairPoolContinuation
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_pooledCursorTerminalHandlers
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hnoExternal
+      (pooledCursorTerminalDescentHandlers_of_flexibleRepairPoolContinuation
+        hexi hcontains hcontinue)
 
 private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_path_flip_frontier
     (dqbf : DQBF) (cs : ClauseStore)
