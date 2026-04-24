@@ -20127,6 +20127,68 @@ private theorem flexibleRepairPoolCandidate_false_matrix_changed_lit_with_clause
   exact ⟨cref, c, l, hget, hclause_false, hlmem, hmem, hltrue,
     hlfalse, hnoPath_l⟩
 
+private theorem flexibleRepairPoolCandidate_external_patch_false_matrix_changed_lit_with_clause_false
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    {σSeed τ : UnivAssignment} {flipVar : Var}
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hnot_mem : flipVar ∉ vars.toList)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    (hfalse :
+      s.clauses.matrixValue s.formula τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand) = false) :
+    ∃ cref c l,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand) c.lits =
+          false ∧
+      l ∈ c.lits.toList ∧
+      s.formula.litValue τ skBase l = true ∧
+      s.formula.litValue τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand) l = false ∧
+      (l.var = flipVar ∨
+        l.var ∈ vars.toList ∧
+          s.formula.litValue τ skCand l = false ∧
+          ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
+            (mkLit l.var (s.formula.varValue τ skBase l.var))) := by
+  classical
+  let skPatch := patchDeleteWitnessAt s.formula flipVar σSeed skCand
+  have hprogress :
+      TargetRepairProgressCandidate s vars on_ skBase skPatch :=
+    targetRepairProgressCandidate_patch_not_mem
+      (s := s) (vars := vars) (on_ := on_) (patched := flipVar)
+      (skBase := skBase) (skCand := skCand) (σSeed := σSeed)
+      (targetRepairProgressCandidate_of_flexibleRepairPoolCandidate hpool)
+      hnot_mem
+  rcases targetRepairProgressCandidate_false_matrix_changed_lit
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skPatch) (σ := τ) hprogress hallBase hfalse with
+    ⟨cref, c, l, hget, hclause_false, hlmem, hltrue, hlfalse, hdiff⟩
+  refine ⟨cref, c, l, hget, hclause_false, hlmem, hltrue,
+    hlfalse, ?_⟩
+  by_cases hvar : l.var = flipVar
+  · exact Or.inl hvar
+  · right
+    have hpatch_lit :
+        s.formula.litValue τ skPatch l =
+          s.formula.litValue τ skCand l := by
+      simpa [skPatch] using
+        litValue_patchDeleteWitnessAt_eq_of_ne_var
+          s.formula flipVar σSeed τ skCand l hvar
+    have hpatch_var :
+        s.formula.varValue τ skPatch l.var =
+          s.formula.varValue τ skCand l.var := by
+      simpa [skPatch] using
+        varValue_patchDeleteWitnessAt_eq_of_ne
+          s.formula flipVar σSeed τ skCand hvar
+    have hdiffCand :
+        s.formula.varValue τ skCand l.var ≠
+          s.formula.varValue τ skBase l.var := by
+      intro hsame
+      exact hdiff (by rw [hpatch_var, hsame])
+    rcases hpool.2.2 l.var τ hdiffCand with ⟨hmem, hnoPath⟩
+    exact ⟨hmem, by simpa [hpatch_lit] using hlfalse, hnoPath⟩
+
 private theorem flexibleRepairPoolCandidate_false_matrix_changed_lit
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skBase skCand : SkolemAssignment}
