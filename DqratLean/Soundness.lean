@@ -13855,6 +13855,33 @@ private inductive DeletePurePath
       (hdep : (st.formula.depset.getD lit.var #[]).contains on_ = true) :
       DeletePurePath st on_ start lit
 
+private theorem external_patch_flip_lit_seed_nonpath
+    {s : CheckState} {sk : SkolemAssignment} {flipVar on_ : Var}
+    {σSeed τ : UnivAssignment} {l : Literal}
+    (hexiFlip : s.formula.isVarExistential flipVar = true)
+    (hcontainsFlip :
+      (s.formula.depset.getD flipVar #[]).contains on_ = true)
+    (hvar : l.var = flipVar)
+    (hltrue : s.formula.litValue τ sk l = true)
+    (hlfalse :
+      s.formula.litValue τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed sk) l = false)
+    (hnoPathSeed :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σSeed on_)))
+        (mkLit flipVar (s.formula.varValue σSeed sk flipVar))) :
+    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l := by
+  intro hpath
+  have hon_eq : τ on_ = σSeed on_ :=
+    external_patch_flip_lit_on_eq
+      (s := s) (sk := sk) (flipVar := flipVar) (on_ := on_)
+      (σSeed := σSeed) (τ := τ) (l := l)
+      hexiFlip hcontainsFlip hvar hltrue hlfalse
+  have hlit_eq :
+      l = mkLit flipVar (s.formula.varValue σSeed sk flipVar) :=
+    litValue_patchDeleteWitnessAt_changed_implies_lit_eq_seed
+      s.formula flipVar σSeed τ sk l hexiFlip hvar hltrue hlfalse
+  exact hnoPathSeed (by simpa [hon_eq, hlit_eq] using hpath)
+
 private theorem mkLit_ne_of_var_ne
     {v w : Var} {p q : Bool} (hne : v ≠ w) :
     mkLit v p ≠ mkLit w q := by
@@ -20265,6 +20292,65 @@ private theorem flexibleRepairPoolCandidate_external_patch_false_matrix_changed_
       exact hdiff (by rw [hpatch_var, hsame])
     rcases hpool.2.2 l.var τ hdiffCand with ⟨hmem, hnoPath⟩
     exact ⟨hmem, by simpa [hpatch_lit] using hlfalse, hnoPath⟩
+
+private theorem flexibleRepairPoolCandidate_external_patch_false_matrix_internal_or_flip
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    {σSeed τ : UnivAssignment} {flipVar : Var}
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    (hexiFlip : s.formula.isVarExistential flipVar = true)
+    (hcontainsFlip :
+      (s.formula.depset.getD flipVar #[]).contains on_ = true)
+    (hnoPathSeed :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σSeed on_)))
+        (mkLit flipVar (s.formula.varValue σSeed skCand flipVar)))
+    (hfalse :
+      s.clauses.matrixValue s.formula τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand) = false) :
+    (∃ cref c l,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue τ skCand c.lits = false ∧
+      l ∈ c.lits.toList ∧
+      l.var ∈ vars.toList ∧
+      s.formula.litValue τ skBase l = true ∧
+      s.formula.litValue τ skCand l = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l) ∨
+    ∃ cref c l,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand) c.lits =
+          false ∧
+      l ∈ c.lits.toList ∧
+      l.var = flipVar ∧
+      s.formula.litValue τ skCand l = true ∧
+      s.formula.litValue τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand) l = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l := by
+  rcases external_patch_false_matrix_candidate_false_or_flip_lit
+      (s := s) (of_ := flipVar) (σ₀ := σSeed) (σ := τ)
+      (sk := skCand) hfalse with
+    hfalseCand | hflip
+  · rcases flexibleRepairPoolCandidate_false_matrix_changed_lit_with_clause_false
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) hpool hallBase hfalseCand with
+      ⟨cref, c, l, hget, hclause_false, hlmem, hmem, hltrue,
+        hlfalse, hnoPath⟩
+    exact Or.inl
+      ⟨cref, c, l, hget, hclause_false, hlmem, hmem, hltrue,
+        hlfalse, hnoPath⟩
+  · rcases hflip with
+      ⟨cref, c, l, hget, hclause_false, hlmem, hvar, hltrue,
+        hlfalse⟩
+    have hnoPath :
+        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l :=
+      external_patch_flip_lit_seed_nonpath
+        (s := s) (sk := skCand) (flipVar := flipVar) (on_ := on_)
+        (σSeed := σSeed) (τ := τ) (l := l)
+        hexiFlip hcontainsFlip hvar hltrue hlfalse hnoPathSeed
+    exact Or.inr
+      ⟨cref, c, l, hget, hclause_false, hlmem, hvar, hltrue,
+        hlfalse, hnoPath⟩
 
 private theorem flexibleRepairPoolCandidate_false_matrix_changed_lit
     {s : CheckState} {vars : Array Var} {on_ : Var}
