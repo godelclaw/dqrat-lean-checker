@@ -27971,6 +27971,15 @@ private abbrev FlexibleRepairExternalPatchFailureContinuation
       (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private theorem flexibleRepairExternalPatchFailureContinuation_of_noExternalDependentTail
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hnoExternal : NoExternalDependentTail s vars on_) :
+    FlexibleRepairExternalPatchFailureContinuation s vars on_ := by
+  intro skBase skCand σ τ flipVar _hall _hpool hnotMem _hvalEq
+    _hwitCand _hwitBase hexiFlip hcontainsFlip _hnoPathCand _hnoPathBase
+    _hprogress _hfalse
+  exact False.elim (hnoExternal flipVar hexiFlip hcontainsFlip hnotMem)
+
 private theorem flexibleRepairPoolContinuation_of_external_patch_frontier
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
@@ -31287,6 +31296,15 @@ private abbrev ExternalTailPatchFailureContinuation
       (patchDeleteWitnessAt s.formula flipVar σ skStop) = false →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private theorem externalTailPatchFailureContinuation_of_noExternalDependentTail
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hnoExternal : NoExternalDependentTail s vars on_) :
+    ExternalTailPatchFailureContinuation s vars on_ := by
+  intro startPos skBase skStop σ τ flipVar _hall _hpool hnotMem
+    _hvalEq _hwitStop _hwitBase hexiFlip hcontainsFlip _hnoPathStop
+    _hnoPathBase _hprogress _hfalse
+  exact False.elim (hnoExternal flipVar hexiFlip hcontainsFlip hnotMem)
+
 private theorem deleteIndependenceSetBridge_of_initial_external_frontier_external_patch
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -33716,6 +33734,42 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clea
       dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hnoExternal
       (pooledCursorTerminalDescentHandlers_of_flexibleRepairPoolContinuation
         hexi hcontains hcontinue)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_external_patch_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hsameClause :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  let hcontinue : FlexibleRepairPoolContinuation s vars on_ :=
+    flexibleRepairPoolContinuation_of_external_patch_frontier
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hsameClause
+      (flexibleRepairExternalPatchFailureContinuation_of_noExternalDependentTail
+        hnoExternal)
+  exact
+    deleteIndependenceSetBridge_of_initial_external_frontier_external_patch
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (patchPoolBlockedPathBranch_apply_flexibleRepairPoolContinuation
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+        hfull hon_le hon_univ hexi hcontains hpaths hcontinue)
+      (externalTailPatchFailureContinuation_of_noExternalDependentTail
+        hnoExternal)
 
 private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_path_flip_frontier
     (dqbf : DQBF) (cs : ClauseStore)
