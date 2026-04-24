@@ -27671,6 +27671,105 @@ private abbrev FlexibleRepairTrackedProperSubsetFalseRestart
     s.clauses.matrixValue s.formula σ skCand = false →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private abbrev FlexibleRepairSameClauseCurrentStrictRestart
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+    DeleteIndependenceDescentOutcome s vars on_ skBase ∨
+      ∃ skNext,
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skCand ∧
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+
+private theorem flexibleRepairTrackedProperSubsetFalseRestart_of_sameClause_currentStrictRestart
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hsameCurrent :
+      FlexibleRepairSameClauseCurrentStrictRestart s vars on_) :
+    FlexibleRepairTrackedProperSubsetFalseRestart s vars on_ := by
+  classical
+  intro skBase skCand σ hallBase htracked hproper hfalse
+  let P : Nat → Prop := fun n =>
+    ∀ {skCur : SkolemAssignment} {τ : UnivAssignment},
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      FlexibleRepairPoolTracked s vars on_ skBase skCur →
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCur skBase →
+      s.clauses.matrixValue s.formula τ skCur = false →
+      DeleteIndependenceDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur τ hcount htrackedCur hproperCur hfalseCur
+      let handleStrict :
+          FlexibleRepairTrackedStrictStep s vars on_ skBase skCur →
+          DeleteIndependenceDescentOutcome s vars on_ skBase := by
+        intro hstrict
+        rcases hstrict with ⟨skNext, htrackedNext, hltNext⟩
+        by_cases hfailNext :
+            ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false
+        · rcases hfailNext with ⟨ρ, hfalseNext⟩
+          have hproperNext :
+              DeleteWitnessFiberSetProperSubset
+                s.formula vars on_ skNext skBase :=
+            flexibleRepairPoolTracked_false_matrix_current_properSubset
+              htrackedNext hallBase hfalseNext
+          have hlt_n :
+              deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+            simpa [hcount] using hltNext
+          exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+            hlt_n (skCur := skNext) (τ := ρ) rfl htrackedNext
+            hproperNext hfalseNext
+        · left
+          refine ⟨skNext, ?_, htrackedNext.1.1⟩
+          intro ρ
+          cases hval : s.clauses.matrixValue s.formula ρ skNext with
+          | false => exact False.elim (hfailNext ⟨ρ, hval⟩)
+          | true => rfl
+      rcases flexibleRepairPoolTracked_false_matrix_step_or_pathBranch_or_sameClauseFlipFailure
+          (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+          (skCand := skCur)
+          hclosed hgt hexi hcontains htrackedCur hallBase hfalseCur with
+        hstrict | hrest
+      · exact handleStrict hstrict
+      · rcases hrest with hpath | hsameClause
+        · exact handleStrict
+            (flexibleRepairPathBranch_trackedStrictStep
+              (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+              (on_ := on_) (skBase := skBase) (skCand := skCur)
+              (σ := τ)
+              hfull hon_le hon_univ hexi hcontains hpaths
+              htrackedCur hpath)
+        · rcases hsameCurrent hallBase htrackedCur hproperCur hfalseCur
+              hsameClause with
+            houtcome | hnext
+          · exact houtcome
+          · rcases hnext with
+              ⟨skNext, htrackedNext, hproperNext, hltNext,
+                ρ, hfalseNext⟩
+            have hlt_n :
+                deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+              simpa [hcount] using hltNext
+            exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+              hlt_n (skCur := skNext) (τ := ρ) rfl htrackedNext
+              hproperNext hfalseNext)
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    (skCur := skCand) (τ := σ) rfl htracked hproper hfalse
+
 private theorem deleteIndependenceDescentOutcome_of_model_properSubset
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skBase skCand : SkolemAssignment}
