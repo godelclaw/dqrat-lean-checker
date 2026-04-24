@@ -3607,6 +3607,83 @@ private theorem matrixValue_false_implies_exists_false_clause
         cases hval : f.clauseValue σ sk c.lits <;> simp [hget, hval] at hnot ⊢
       exact ⟨i + 1, c, hget, hclause⟩
 
+private theorem matrixValue_false_of_false_clause
+    (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment)
+    (sk : SkolemAssignment) {cref : CRef} {c : Clause}
+    (hget : cs.getClause cref = some c)
+    (hfalse : f.clauseValue σ sk c.lits = false) :
+    cs.matrixValue f σ sk = false := by
+  cases hmat : cs.matrixValue f σ sk with
+  | false => rfl
+  | true =>
+      have htrue : f.clauseValue σ sk c.lits = true :=
+        clauseValue_of_matrixValue f cs σ sk cref c hmat hget
+      rw [hfalse] at htrue
+      cases htrue
+
+private theorem external_patch_false_clause_candidate_false_or_flip_lit
+    (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment) (lits : Array Literal)
+    (hfalse :
+      f.clauseValue σ (patchDeleteWitnessAt f of_ σ₀ sk) lits = false) :
+    f.clauseValue σ sk lits = false ∨
+      ∃ l ∈ lits.toList,
+        l.var = of_ ∧
+        f.litValue σ sk l = true ∧
+        f.litValue σ (patchDeleteWitnessAt f of_ σ₀ sk) l = false := by
+  cases hbase : f.clauseValue σ sk lits with
+  | false => exact Or.inl rfl
+  | true =>
+      exact Or.inr
+        (clauseValue_true_false_implies_exists_changed_lit_in_patch
+          f of_ σ₀ σ sk lits hbase hfalse)
+
+private theorem external_patch_false_matrix_candidate_false_or_flip_lit
+    {s : CheckState} {sk : SkolemAssignment} {of_ : Var}
+    {σ₀ σ : UnivAssignment}
+    (hfalse :
+      s.clauses.matrixValue s.formula σ
+        (patchDeleteWitnessAt s.formula of_ σ₀ sk) = false) :
+    s.clauses.matrixValue s.formula σ sk = false ∨
+      ∃ cref c l,
+        s.clauses.getClause cref = some c ∧
+        s.formula.clauseValue σ
+          (patchDeleteWitnessAt s.formula of_ σ₀ sk) c.lits = false ∧
+        l ∈ c.lits.toList ∧
+        l.var = of_ ∧
+        s.formula.litValue σ sk l = true ∧
+        s.formula.litValue σ
+          (patchDeleteWitnessAt s.formula of_ σ₀ sk) l = false := by
+  rcases matrixValue_false_implies_exists_false_clause
+      s.formula s.clauses σ
+      (patchDeleteWitnessAt s.formula of_ σ₀ sk) hfalse with
+    ⟨cref, c, hget, hclause_false⟩
+  rcases external_patch_false_clause_candidate_false_or_flip_lit
+      s.formula of_ σ₀ σ sk c.lits hclause_false with
+    hbase_false | hchanged
+  · exact Or.inl
+      (matrixValue_false_of_false_clause
+        s.formula s.clauses σ sk hget hbase_false)
+  · rcases hchanged with ⟨l, hlmem, hvar, hltrue, hlfalse⟩
+    exact Or.inr
+      ⟨cref, c, l, hget, hclause_false, hlmem, hvar, hltrue, hlfalse⟩
+
+private theorem external_patch_flip_lit_on_eq
+    {s : CheckState} {sk : SkolemAssignment} {flipVar on_ : Var}
+    {σSeed τ : UnivAssignment} {l : Literal}
+    (hexiFlip : s.formula.isVarExistential flipVar = true)
+    (hcontainsFlip :
+      (s.formula.depset.getD flipVar #[]).contains on_ = true)
+    (hvar : l.var = flipVar)
+    (hltrue : s.formula.litValue τ sk l = true)
+    (hlfalse :
+      s.formula.litValue τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed sk) l = false) :
+    τ on_ = σSeed on_ :=
+  litValue_patchDeleteWitnessAt_changed_implies_on_eq
+    s.formula flipVar on_ σSeed τ sk l hexiFlip hcontainsFlip hvar
+    hltrue hlfalse
+
 private theorem matrixValue_patchDeleteWitnessAt_false_implies_changed_lit
     (f : DQBF) (cs : ClauseStore) (of_ : Var)
     (σ₀ σ : UnivAssignment) (sk : SkolemAssignment)
