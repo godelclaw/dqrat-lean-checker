@@ -27971,6 +27971,34 @@ private abbrev FlexibleRepairExternalPatchFailureContinuation
       (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private abbrev FlexibleRepairExternalReachPatchFailureContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ τ : UnivAssignment}
+    {flipVar : Var},
+    (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
+    FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+    flipVar ∉ vars.toList →
+    s.formula.varValue σ skCand flipVar =
+      s.formula.varValue σ skBase flipVar →
+    DeleteDepWitness s.formula flipVar on_ skCand σ →
+    DeleteDepWitness s.formula flipVar on_ skBase σ →
+    s.formula.isVarExistential flipVar = true →
+    (s.formula.depset.getD flipVar #[]).contains on_ = true →
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+      (mkLit flipVar (s.formula.varValue σ skCand flipVar)) →
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+      (mkLit flipVar (s.formula.varValue σ skBase flipVar)) →
+    (∃ pos : Bool,
+      (getReachable s (mkLit on_ true)).getD
+          (mkLit flipVar pos).x false = true ∧
+      (getReachable s (mkLit on_ false)).getD
+          (mkLit flipVar (!pos)).x false = true) →
+    TargetRepairProgressCandidate s vars on_ skBase
+      (patchDeleteWitnessAt s.formula flipVar σ skCand) →
+    s.clauses.matrixValue s.formula τ
+      (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
 private theorem flexibleRepairExternalPatchFailureContinuation_of_noExternalDependentTail
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hnoExternal : NoExternalDependentTail s vars on_) :
@@ -27978,6 +28006,15 @@ private theorem flexibleRepairExternalPatchFailureContinuation_of_noExternalDepe
   intro skBase skCand σ τ flipVar _hall _hpool hnotMem _hvalEq
     _hwitCand _hwitBase hexiFlip hcontainsFlip _hnoPathCand _hnoPathBase
     _hprogress _hfalse
+  exact False.elim (hnoExternal flipVar hexiFlip hcontainsFlip hnotMem)
+
+private theorem flexibleRepairExternalReachPatchFailureContinuation_of_noExternalDependentTail
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hnoExternal : NoExternalDependentTail s vars on_) :
+    FlexibleRepairExternalReachPatchFailureContinuation s vars on_ := by
+  intro skBase skCand σ τ flipVar _hall _hpool hnotMem _hvalEq
+    _hwitCand _hwitBase hexiFlip hcontainsFlip _hnoPathCand _hnoPathBase
+    _hreach _hprogress _hfalse
   exact False.elim (hnoExternal flipVar hexiFlip hcontainsFlip hnotMem)
 
 private theorem flexibleRepairPoolContinuation_of_external_patch_frontier
@@ -28067,6 +28104,57 @@ private theorem flexibleRepairPoolContinuation_of_external_patch_frontier
         · exact hpoolCur.1)
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
     skCand rfl hpool
+
+private theorem flexibleRepairPoolContinuation_of_external_reach_patch_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hsameClause :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s vars on_) :
+    FlexibleRepairPoolContinuation s vars on_ := by
+  exact
+    flexibleRepairPoolContinuation_of_external_patch_frontier
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hsameClause
+      (by
+        intro skBase skCand σ τ flipVar hall hpool hnotMem hvalEq
+          hwitCand hwitBase hexiFlip hcontainsFlip hnoPathCand
+          hnoPathBase hprogress hfalse
+        have hreach :
+            ∃ pos : Bool,
+              (getReachable s (mkLit on_ true)).getD
+                  (mkLit flipVar pos).x false = true ∧
+              (getReachable s (mkLit on_ false)).getD
+                  (mkLit flipVar (!pos)).x false = true :=
+          noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_reach_pair
+            hnoCrossClosed (hexivars_complete flipVar hexiFlip)
+            (hdep_gt flipVar hexiFlip hcontainsFlip) hcontainsFlip
+            hnotMem
+        exact hexternal hall hpool hnotMem hvalEq hwitCand hwitBase
+          hexiFlip hcontainsFlip hnoPathCand hnoPathBase hreach hprogress
+          hfalse)
 
 private theorem patchPoolBlockedPathBranch_apply_flexibleRepairPoolContinuation
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
