@@ -31541,6 +31541,29 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clos
         (dqbf := dqbf) (cs := cs) hfull hon_le hon_univ hclosed hgt
         hexi hcontains hpaths hresidual)
 
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_two_patch_properSubset_residual_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchProperSubsetResidualHandler
+        s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_trackedRepairPoolContinuation
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (flexibleRepairPoolTrackedContinuation_of_two_patch_properSubset_residual_frontier
+        (dqbf := dqbf) (cs := cs) hfull hon_le hon_univ hclosed hgt
+        hexi hcontains hpaths hresidual)
+
 private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledCursorTerminalHandlers
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -31907,6 +31930,28 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clea
     DeleteIndependenceSetBridge s vars on_ := by
   exact
     deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_two_patch_residual_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hresidual
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_two_patch_properSubset_residual_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchProperSubsetResidualHandler
+        s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_two_patch_properSubset_residual_frontier
       dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
       (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
       hresidual
