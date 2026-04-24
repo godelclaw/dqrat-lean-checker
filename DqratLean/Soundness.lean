@@ -28224,6 +28224,84 @@ private abbrev FlexibleRepairExternalReachPatchFailureContinuation
       (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private abbrev FlexibleRepairExternalPatchInternalFailureContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {τ : UnivAssignment}
+    {cref : CRef} {c : Clause} {l : Literal},
+    (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
+    FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+    s.clauses.getClause cref = some c →
+    s.formula.clauseValue τ skCand c.lits = false →
+    l ∈ c.lits.toList →
+    l.var ∈ vars.toList →
+    s.formula.litValue τ skBase l = true →
+    s.formula.litValue τ skCand l = false →
+    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev FlexibleRepairExternalPatchFlipFailureContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ τ : UnivAssignment}
+    {flipVar : Var} {cref : CRef} {c : Clause} {l : Literal},
+    (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
+    FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+    flipVar ∉ vars.toList →
+    s.formula.varValue σ skCand flipVar =
+      s.formula.varValue σ skBase flipVar →
+    DeleteDepWitness s.formula flipVar on_ skCand σ →
+    DeleteDepWitness s.formula flipVar on_ skBase σ →
+    s.formula.isVarExistential flipVar = true →
+    (s.formula.depset.getD flipVar #[]).contains on_ = true →
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+      (mkLit flipVar (s.formula.varValue σ skCand flipVar)) →
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+      (mkLit flipVar (s.formula.varValue σ skBase flipVar)) →
+    (∃ pos : Bool,
+      (getReachable s (mkLit on_ true)).getD
+          (mkLit flipVar pos).x false = true ∧
+      (getReachable s (mkLit on_ false)).getD
+          (mkLit flipVar (!pos)).x false = true) →
+    TargetRepairProgressCandidate s vars on_ skBase
+      (patchDeleteWitnessAt s.formula flipVar σ skCand) →
+    s.clauses.getClause cref = some c →
+    s.formula.clauseValue τ
+      (patchDeleteWitnessAt s.formula flipVar σ skCand) c.lits =
+        false →
+    l ∈ c.lits.toList →
+    l.var = flipVar →
+    s.formula.litValue τ skCand l = true →
+    s.formula.litValue τ
+      (patchDeleteWitnessAt s.formula flipVar σ skCand) l = false →
+    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private theorem flexibleRepairExternalReachPatchFailureContinuation_of_internal_or_flip
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hinternal :
+      FlexibleRepairExternalPatchInternalFailureContinuation s vars on_)
+    (hflip :
+      FlexibleRepairExternalPatchFlipFailureContinuation s vars on_) :
+    FlexibleRepairExternalReachPatchFailureContinuation s vars on_ := by
+  intro skBase skCand σ τ flipVar hall hpool hnotMem hvalEq
+    hwitCand hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase
+    hreach hprogress hfalse
+  rcases flexibleRepairPoolCandidate_external_patch_false_matrix_internal_or_flip
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σSeed := σ) (τ := τ) (flipVar := flipVar)
+      hpool hall hexiFlip hcontainsFlip hnoPathCand hfalse with
+    hinternalCase | hflipCase
+  · rcases hinternalCase with
+      ⟨cref, c, l, hget, hclause_false, hlmem, hlvar, hltrue,
+        hlfalse, hnoPath⟩
+    exact hinternal hall hpool hget hclause_false hlmem hlvar hltrue
+      hlfalse hnoPath
+  · rcases hflipCase with
+      ⟨cref, c, l, hget, hclause_false, hlmem, hvar, hltrue,
+        hlfalse, hnoPath⟩
+    exact hflip hall hpool hnotMem hvalEq hwitCand hwitBase hexiFlip
+      hcontainsFlip hnoPathCand hnoPathBase hreach hprogress hget
+      hclause_false hlmem hvar hltrue hlfalse hnoPath
+
 private theorem flexibleRepairExternalPatchFailureContinuation_of_noExternalDependentTail
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hnoExternal : NoExternalDependentTail s vars on_) :
