@@ -31747,6 +31747,44 @@ private theorem externalPatchFailureContinuation_of_flexibleReach
     hexiFlip hcontainsFlip hnoPathStop' hnoPathBase' hreach hprogress
     hfalse
 
+private theorem externalDiagnosticPatchFailureContinuation_of_reach
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hexternal : ExternalPatchFailureContinuation s vars on_) :
+    ExternalDiagnosticPatchFailureContinuation s vars on_ := by
+  intro startPos skBase skStop σ τ flipVar hall hpool hnotMem hon_eq
+    hvalEq hwitStop hwitBase hexiFlip hcontainsFlip hnoPathStop
+    hnoPathBase hdiag hprogress hfalse
+  rcases hdiag with hnotExivar | hrest
+  · exact False.elim (hnotExivar (hexivars_complete flipVar hexiFlip))
+  · rcases hrest with hnotGt | hreach
+    · exact False.elim (hnotGt (hdep_gt flipVar hexiFlip hcontainsFlip))
+    · exact hexternal hall hpool hnotMem hon_eq hvalEq hwitStop
+        hwitBase hexiFlip hcontainsFlip hnoPathStop hnoPathBase hreach
+        hprogress hfalse
+
+private theorem externalDiagnosticPatchFailureContinuation_of_flexibleReach
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s vars on_) :
+    ExternalDiagnosticPatchFailureContinuation s vars on_ :=
+  externalDiagnosticPatchFailureContinuation_of_reach
+    hexivars_complete hdep_gt
+    (externalPatchFailureContinuation_of_flexibleReach hexternal)
+
 private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier_with_base_tail_external_patch
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
