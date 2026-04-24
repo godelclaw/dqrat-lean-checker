@@ -30542,6 +30542,89 @@ private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier
         (hexternal hall hpool hnotMem hwitFlip hexiFlip hcontainsFlip
           hnoPath hreach)
 
+private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier_with_base_tail
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hblocked :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolBlockedPathBranch s vars on_ startPos skBase skStop →
+        (∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))))
+    (hexternal :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
+        {σ : UnivAssignment} {flipVar : Var},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        flipVar ∉ vars.toList →
+        s.formula.varValue σ skStop flipVar =
+          s.formula.varValue σ skBase flipVar →
+        DeleteDepWitness s.formula flipVar on_ skStop σ →
+        DeleteDepWitness s.formula flipVar on_ skBase σ →
+        s.formula.isVarExistential flipVar = true →
+        (s.formula.depset.getD flipVar #[]).contains on_ = true →
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit flipVar (s.formula.varValue σ skStop flipVar)) →
+        ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+          (mkLit flipVar (s.formula.varValue σ skBase flipVar)) →
+        (∃ pos : Bool,
+          (getReachable s (mkLit on_ true)).getD
+              (mkLit flipVar pos).x false = true ∧
+          (getReachable s (mkLit on_ false)).getD
+              (mkLit flipVar (!pos)).x false = true) →
+        (∃ sk',
+          (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+        (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+          DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+          DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_deleteWitness_descent_step hexi
+  intro of_ sk σ₀ hall hof hwit
+  rcases deleteWitness_descent_step_or_initial_external_reach_pair_with_base_tail
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (of_ := of_) (sk := sk) (σ₀ := σ₀)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
+      hexivars_complete hdep_gt hall hof hwit with
+    hgood | hresidual
+  · exact hgood
+  · rcases hresidual with hblockedCase | hexternalCase
+    · rcases hblockedCase with ⟨startPos, skStop, hpool, hbranch⟩
+      exact deleteWitness_descent_step_of_good_or_forbidden_paths
+        dqbf cs hfull hon_le hon_univ hpaths
+        (hblocked hall hpool hbranch)
+    · rcases hexternalCase with
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hvalEq,
+          hwitStop, hwitBase, hexiFlip, hcontainsFlip, hnoPathStop,
+          hnoPathBase, hreach⟩
+      exact deleteWitness_descent_step_of_good_or_forbidden_paths
+        dqbf cs hfull hon_le hon_univ hpaths
+        (hexternal hall hpool hnotMem hvalEq hwitStop hwitBase
+          hexiFlip hcontainsFlip hnoPathStop hnoPathBase hreach)
+
 private theorem deleteIndependenceSetBridge_of_origin_cursor_residual_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
