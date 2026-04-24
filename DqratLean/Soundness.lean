@@ -27169,6 +27169,37 @@ private abbrev FlexibleRepairSameClauseTwoPatchProperSubsetResidualHandler
       s vars on_ skBase skCand σ →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private abbrev FlexibleRepairSameClauseTwoPatchDoubleProperSubsetResidualHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    FlexibleRepairSameClauseTwoPatchResidual
+      s vars on_ skBase skCand σ →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private theorem flexibleRepairSameClauseTwoPatchProperSubsetResidualHandler_of_doubleProperSubset
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandler :
+      FlexibleRepairSameClauseTwoPatchDoubleProperSubsetResidualHandler
+        s vars on_) :
+    FlexibleRepairSameClauseTwoPatchProperSubsetResidualHandler
+      s vars on_ := by
+  intro skBase skCand skNext σ hall htracked hfalse hfailure
+    htrackedNext hltNext hproperNext hresidual
+  exact hhandler hall htracked hfalse hfailure
+    (flexibleRepairPoolTracked_false_matrix_current_properSubset
+      htracked hall hfalse)
+    htrackedNext hltNext hproperNext hresidual
+
 private theorem flexibleRepairPoolTrackedContinuation_of_two_patch_residual_frontier
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
