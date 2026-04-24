@@ -34308,6 +34308,73 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clea
       (pooledCursorTerminalDescentHandlers_of_flexibleRepairPoolContinuation
         hexi hcontains hcontinue)
 
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_external_diagnostic_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hcontinue : FlexibleRepairPoolContinuation s vars on_)
+    (hexternal :
+      ExternalDiagnosticPatchFailureContinuation s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_initial_external_diagnostic_frontier_with_base_tail_external_patch
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hexi hgt hcontains hpaths hnoCrossClosed
+      (patchPoolBlockedPathBranch_apply_flexibleRepairPoolContinuation
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+        hfull hon_le hon_univ hexi hcontains hpaths hcontinue)
+      hexternal
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_external_diagnostic_reach_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hsameClause :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  let hcontinue : FlexibleRepairPoolContinuation s vars on_ :=
+    flexibleRepairPoolContinuation_of_external_reach_patch_frontier
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
+      hexivars_complete hdep_gt hsameClause hexternal
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_external_diagnostic_frontier
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hexi hgt hcontains hpaths hnoCrossClosed
+      hcontinue
+      (externalDiagnosticPatchFailureContinuation_of_flexibleReach
+        hexivars_complete hdep_gt hexternal)
+
 private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_external_reach_patch_frontier
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
