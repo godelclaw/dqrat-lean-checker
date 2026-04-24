@@ -30936,6 +30936,101 @@ private theorem deleteIndependenceSetBridge_of_initial_external_reach_frontier_w
             hwitBase hexiFlip hcontainsFlip hnoPathStop hnoPathBase
             hreach hprogress hfalse)
 
+private abbrev ExternalTailPatchFailureContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
+    {σ τ : UnivAssignment} {flipVar : Var},
+    (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
+    PatchPoolCandidate s vars on_ startPos skBase skStop →
+    flipVar ∉ vars.toList →
+    s.formula.varValue σ skStop flipVar =
+      s.formula.varValue σ skBase flipVar →
+    DeleteDepWitness s.formula flipVar on_ skStop σ →
+    DeleteDepWitness s.formula flipVar on_ skBase σ →
+    s.formula.isVarExistential flipVar = true →
+    (s.formula.depset.getD flipVar #[]).contains on_ = true →
+    ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+      (mkLit flipVar (s.formula.varValue σ skStop flipVar)) →
+    ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+      (mkLit flipVar (s.formula.varValue σ skBase flipVar)) →
+    TargetRepairProgressCandidate s vars on_ skBase
+      (patchDeleteWitnessAt s.formula flipVar σ skStop) →
+    s.clauses.matrixValue s.formula τ
+      (patchDeleteWitnessAt s.formula flipVar σ skStop) = false →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private theorem deleteIndependenceSetBridge_of_initial_external_frontier_external_patch
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hblocked :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolBlockedPathBranch s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hexternalPatch : ExternalTailPatchFailureContinuation s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_deleteWitness_descent_step hexi
+  intro of_ sk σ₀ hall hof hwit
+  rcases deleteWitness_descent_step_or_initial_blocked_or_external
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hresidual
+  · exact hgood
+  · rcases hresidual with hblockedCase | hexternal
+    · rcases hblockedCase with ⟨startPos, skStop, hpool, hbranch⟩
+      exact deleteWitness_descent_step_of_good_or_forbidden_paths
+        dqbf cs hfull hon_le hon_univ hpaths
+        (hblocked hall hpool hbranch)
+    · rcases hexternal with
+        ⟨startPos, skStop, σ, flipVar, hpool, hnotMem, hwitStop,
+          hexiFlip, hcontainsFlip, hnoPathStop⟩
+      have hvalEq :
+          s.formula.varValue σ skStop flipVar =
+            s.formula.varValue σ sk flipVar :=
+        patchPoolCandidate_varValue_eq_of_not_mem
+          (s := s) (vars := vars) (on_ := on_)
+          (startPos := startPos) (skBase := sk) (skCand := skStop)
+          (of_ := flipVar) σ hpool hnotMem
+      have hwitBase :
+          DeleteDepWitness s.formula flipVar on_ sk σ :=
+        (patchPoolCandidate_deleteDepWitness_iff_of_not_mem
+          (s := s) (vars := vars) (on_ := on_)
+          (startPos := startPos) (skBase := sk) (skCand := skStop)
+          (of_ := flipVar) (σ := σ) hpool hnotMem).1 hwitStop
+      have hnoPathBase :
+          ¬ DeletePurePath s on_ (mkLit on_ (!startPos))
+            (mkLit flipVar (s.formula.varValue σ sk flipVar)) := by
+        intro hpath
+        exact hnoPathStop (by simpa [hvalEq] using hpath)
+      have hprogress :
+          TargetRepairProgressCandidate s vars on_ sk
+            (patchDeleteWitnessAt s.formula flipVar σ skStop) :=
+        patchPoolCandidate_external_patch_targetProgress
+          (s := s) (vars := vars) (on_ := on_) (patched := flipVar)
+          (startPos := startPos) (skBase := sk) (skCand := skStop)
+          (σSeed := σ) hpool hnotMem
+      rcases targetRepairProgressCandidate_descent_or_false
+          (s := s) (vars := vars) (on_ := on_) (skBase := sk)
+          (skCand := patchDeleteWitnessAt s.formula flipVar σ skStop)
+          hprogress with
+        hgood | hfail
+      · exact hgood
+      · rcases hfail with ⟨τ, hfalse⟩
+        exact deleteWitness_descent_step_of_good_or_forbidden_paths
+          dqbf cs hfull hon_le hon_univ hpaths
+          (hexternalPatch hall hpool hnotMem hvalEq hwitStop hwitBase
+            hexiFlip hcontainsFlip hnoPathStop hnoPathBase hprogress
+            hfalse)
+
 private theorem deleteIndependenceSetBridge_of_origin_cursor_residual_continuation_closed
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
