@@ -4508,6 +4508,44 @@ private theorem DQBFTrue_forceDelDep_of_not_contains
   rw [matrixValue_forceDelDep_eq_of_not_contains f cs of_ on_ σ sk hnot]
   exact hsk σ
 
+private theorem DQBFTrue_forceDelDepsList_of_all_not_contains
+    (f : DQBF) (cs : ClauseStore) (vars : List Var) (on_ : Var)
+    (hnot : ∀ of_ ∈ vars,
+      (f.depset.getD of_ #[]).contains on_ = false)
+    (htrue : DQBFTrue f cs) :
+    DQBFTrue (forceDelDepsList f vars on_) cs := by
+  induction vars generalizing f with
+  | nil =>
+      simpa [forceDelDepsList] using htrue
+  | cons of_ vars ih =>
+      have hnot_of : (f.depset.getD of_ #[]).contains on_ = false :=
+        hnot of_ (by simp)
+      have htrue_step : DQBFTrue (f.forceDelDep of_ on_) cs :=
+        DQBFTrue_forceDelDep_of_not_contains f cs of_ on_ hnot_of htrue
+      have hnot_tail :
+          ∀ x ∈ vars,
+            ((f.forceDelDep of_ on_).depset.getD x #[]).contains on_ =
+              false := by
+        intro x hx
+        by_cases hxof : x = of_
+        · subst x
+          rw [forceDelDep_depset_getD_self_of_not_contains f of_ on_ hnot_of]
+          exact hnot_of
+        · rw [forceDelDep_depset_getD_of_ne f of_ on_ x hxof]
+          exact hnot x (List.mem_cons_of_mem of_ hx)
+      simpa [forceDelDepsList] using
+        ih (f := f.forceDelDep of_ on_) hnot_tail htrue_step
+
+private theorem DQBFTrue_forceDelDeps_of_all_not_contains
+    (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var)
+    (hnot : ∀ of_ ∈ vars.toList,
+      (f.depset.getD of_ #[]).contains on_ = false)
+    (htrue : DQBFTrue f cs) :
+    DQBFTrue (forceDelDeps f vars on_) cs := by
+  simpa [forceDelDeps] using
+    DQBFTrue_forceDelDepsList_of_all_not_contains
+      f cs vars.toList on_ hnot htrue
+
 private theorem forceDelDepsList_isVarExistential
     (f : DQBF) (vars : List Var) (on_ v : Var) :
     (forceDelDepsList f vars on_).isVarExistential v = f.isVarExistential v := by
@@ -4559,6 +4597,157 @@ private theorem forceDelDeps_depset_getD
     (forceDelDeps f vars on_).depset.getD v #[] =
       if v ∈ vars.toList then (f.depset.getD v #[]).filter (· ≠ on_) else f.depset.getD v #[] := by
   simpa [forceDelDeps] using forceDelDepsList_depset_getD f vars.toList on_ v
+
+private theorem forceDelDepsList_depset_getD_filter_contains
+    (f : DQBF) (vars : List Var) (on_ v : Var) :
+    (forceDelDepsList f
+        (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_)
+        on_).depset.getD v #[] =
+      (forceDelDepsList f vars on_).depset.getD v #[] := by
+  classical
+  rw [forceDelDepsList_depset_getD, forceDelDepsList_depset_getD]
+  by_cases hmem : v ∈ vars
+  · by_cases hcontains : (f.depset.getD v #[]).contains on_ = true
+    · have hmem_filter :
+          v ∈ vars.filter
+            (fun of_ => (f.depset.getD of_ #[]).contains on_) := by
+        exact List.mem_filter.mpr ⟨hmem, hcontains⟩
+      rw [if_pos hmem_filter, if_pos hmem]
+    · have hmem_filter :
+          v ∉ vars.filter
+            (fun of_ => (f.depset.getD of_ #[]).contains on_) := by
+        intro hv
+        have hcontains' : (f.depset.getD v #[]).contains on_ = true :=
+          (List.mem_filter.mp hv).2
+        exact hcontains hcontains'
+      have hfilter_eq :
+          (f.depset.getD v #[]).filter (· ≠ on_) =
+            f.depset.getD v #[] := by
+        have hnot : (f.depset.getD v #[]).contains on_ = false := by
+          cases h : (f.depset.getD v #[]).contains on_ <;> simp_all
+        have hself :=
+          forceDelDep_depset_getD_self_of_not_contains f v on_ hnot
+        rw [forceDelDep_depset_getD_self] at hself
+        exact hself
+      rw [if_neg hmem_filter, if_pos hmem]
+      exact hfilter_eq.symm
+  · have hmem_filter :
+        v ∉ vars.filter
+          (fun of_ => (f.depset.getD of_ #[]).contains on_) := by
+      intro hv
+      exact hmem (List.mem_filter.mp hv).1
+    rw [if_neg hmem_filter, if_neg hmem]
+
+private theorem varValue_forceDelDepsList_filter_contains_eq
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (v : Var) :
+    (forceDelDepsList f
+        (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_)
+        on_).varValue σ sk v =
+      (forceDelDepsList f vars on_).varValue σ sk v := by
+  by_cases hex : f.isVarExistential v = true
+  · have hex_filter :
+        (forceDelDepsList f
+          (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_)
+          on_).isVarExistential v = true := by
+      simpa [forceDelDepsList_isVarExistential] using hex
+    have hex_all :
+        (forceDelDepsList f vars on_).isVarExistential v = true := by
+      simpa [forceDelDepsList_isVarExistential] using hex
+    rw [DQBF.varValue, DQBF.varValue, hex_filter, hex_all]
+    unfold DQBF.exiValue
+    rw [forceDelDepsList_depset_getD_filter_contains f vars on_ v]
+  · have hex_filter :
+        (forceDelDepsList f
+          (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_)
+          on_).isVarExistential v = false := by
+      have hex_false : f.isVarExistential v = false := by
+        cases h : f.isVarExistential v <;> simp_all
+      simpa [forceDelDepsList_isVarExistential] using hex_false
+    have hex_all :
+        (forceDelDepsList f vars on_).isVarExistential v = false := by
+      have hex_false : f.isVarExistential v = false := by
+        cases h : f.isVarExistential v <;> simp_all
+      simpa [forceDelDepsList_isVarExistential] using hex_false
+    rw [DQBF.varValue, DQBF.varValue, hex_filter, hex_all]
+    simp
+
+private theorem litValue_forceDelDepsList_filter_contains_eq
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal) :
+    (forceDelDepsList f
+        (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_)
+        on_).litValue σ sk l =
+      (forceDelDepsList f vars on_).litValue σ sk l := by
+  unfold DQBF.litValue
+  rw [varValue_forceDelDepsList_filter_contains_eq f vars on_ σ sk l.var]
+
+private theorem clauseValue_forceDelDepsList_filter_contains_eq
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal) :
+    (forceDelDepsList f
+        (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_)
+        on_).clauseValue σ sk lits =
+      (forceDelDepsList f vars on_).clauseValue σ sk lits := by
+  unfold DQBF.clauseValue
+  simpa using
+    (Array.any_congr (w := rfl)
+      (h := fun l =>
+        litValue_forceDelDepsList_filter_contains_eq
+          f vars on_ σ sk l)
+      (wstart := rfl) (wstop := rfl))
+
+private theorem matrixValue_forceDelDepsList_filter_contains_eq
+    (f : DQBF) (cs : ClauseStore) (vars : List Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) :
+    cs.matrixValue
+        (forceDelDepsList f
+          (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_)
+          on_) σ sk =
+      cs.matrixValue (forceDelDepsList f vars on_) σ sk := by
+  unfold ClauseStore.matrixValue
+  apply List.all_congr rfl
+  intro i
+  cases hclause : cs.getClause (i + 1) with
+  | none =>
+      simp [hclause]
+  | some c =>
+      simpa [hclause, Array.contains_iff_mem] using
+        clauseValue_forceDelDepsList_filter_contains_eq
+          f vars on_ σ sk c.lits
+
+private theorem DQBFTrue_forceDelDepsList_of_filter_contains
+    (f : DQBF) (cs : ClauseStore) (vars : List Var) (on_ : Var)
+    (htrue :
+      DQBFTrue
+        (forceDelDepsList f
+          (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_)
+          on_) cs) :
+    DQBFTrue (forceDelDepsList f vars on_) cs := by
+  rcases htrue with ⟨sk, hsk⟩
+  refine ⟨sk, ?_⟩
+  intro σ
+  rw [← matrixValue_forceDelDepsList_filter_contains_eq f cs vars on_ σ sk]
+  exact hsk σ
+
+private theorem DQBFTrue_forceDelDeps_of_filter_contains
+    (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var)
+    (htrue :
+      DQBFTrue
+        (forceDelDeps f
+          (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_)
+          on_) cs) :
+    DQBFTrue (forceDelDeps f vars on_) cs := by
+  have htrueList :
+      DQBFTrue
+        (forceDelDepsList f
+          (vars.toList.filter
+            fun of_ => (f.depset.getD of_ #[]).contains on_)
+          on_) cs := by
+    simpa [forceDelDeps, Array.toList_filter] using htrue
+  simpa [forceDelDeps] using
+    DQBFTrue_forceDelDepsList_of_filter_contains
+      f cs vars.toList on_ htrueList
 
 private theorem liftForceDelDepsWitness_apply_of_not_mem
     (f : DQBF) (vars : List Var) (on_ : Var) (sk : SkolemAssignment)
@@ -36579,6 +36768,110 @@ private theorem computeDeps_forceDelDep_formula_sound_of_member_contains
       hmem hexi' htrueDel
   exact DQBFTrue_forceDelDep_of_exhibiting_bridge
     s₁.formula s₁.clauses of_ on_ hexi' hbridge htrue
+
+private theorem computeDeps_forceDelDep_formula_sound_of_member_contains_external_reach_patch_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {of_ on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hexi : s.formula.isVarExistential of_ = true)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hmem : of_ ∈ (s₁.indepOf.getD (on_ - 1) #[]).toList)
+    (hcontains : (s₁.formula.depset.getD of_ #[]).contains on_ = true)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hsameClause :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s
+          (computeDepsActiveDeletionVars s₁ on_) on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseFlipFailure s
+          (computeDepsActiveDeletionVars s₁ on_) on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s
+          (computeDepsActiveDeletionVars s₁ on_) on_ skBase)
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s
+        (computeDepsActiveDeletionVars s₁ on_) on_)
+    (htrue : DQBFTrue s₁.formula s₁.clauses) :
+    DQBFTrue (s₁.formula.forceDelDep of_ on_) s₁.clauses := by
+  classical
+  have hsame := computeDeps_sameFC_spec on_ s s ⟨rfl, rfl⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hsame
+  rw [hrun] at hsame
+  rcases hsame with ⟨hformula, _⟩
+  have hexi' : s₁.formula.isVarExistential of_ = true := by
+    simpa [hformula] using hexi
+  let vars := computeDepsActiveDeletionVars s₁ on_
+  have hmem_active : of_ ∈ vars.toList := by
+    apply Array.mem_toList_iff.mpr
+    unfold vars computeDepsActiveDeletionVars
+    apply Array.mem_filter.mpr
+    exact ⟨Array.mem_toList_iff.mp hmem, hcontains⟩
+  have htrueDel :
+      DQBFTrue
+        (forceDelDeps s₁.formula vars on_) s₁.clauses := by
+    simpa [vars] using
+      computeDeps_forceDelDeps_formula_sound_of_external_reach_patch_frontier
+        dqbf cs hfull hon hon_le hon_univ hrun
+        hexivars_complete hdep_gt hsameClause hexternal htrue
+  have hbridge : DeleteIndependenceBridge s₁ of_ on_ := by
+    exact DeleteIndependenceBridge.of_forceDelDepsTrue
+      (st := s₁) (vars := vars) (of_ := of_) (on_ := on_)
+      hmem_active hexi' htrueDel
+  exact DQBFTrue_forceDelDep_of_exhibiting_bridge
+    s₁.formula s₁.clauses of_ on_ hexi' hbridge htrue
+
+private theorem computeDeps_deleteIndependenceBridge_of_member_contains_external_reach_patch_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {of_ on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hexi : s.formula.isVarExistential of_ = true)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hmem : of_ ∈ (s₁.indepOf.getD (on_ - 1) #[]).toList)
+    (hcontains : (s₁.formula.depset.getD of_ #[]).contains on_ = true)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hsameClause :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s
+          (computeDepsActiveDeletionVars s₁ on_) on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseFlipFailure s
+          (computeDepsActiveDeletionVars s₁ on_) on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s
+          (computeDepsActiveDeletionVars s₁ on_) on_ skBase)
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s
+        (computeDepsActiveDeletionVars s₁ on_) on_) :
+    DeleteIndependenceBridge s₁ of_ on_ := by
+  have hsame := computeDeps_sameFC_spec on_ s s ⟨rfl, rfl⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hsame
+  rw [hrun] at hsame
+  rcases hsame with ⟨hformula, _⟩
+  have hexi' : s₁.formula.isVarExistential of_ = true := by
+    simpa [hformula] using hexi
+  intro htrue
+  exact (DeleteIndependenceBridge.of_forceDelDepTrue hexi'
+    (computeDeps_forceDelDep_formula_sound_of_member_contains_external_reach_patch_frontier
+      dqbf cs hfull hon hon_le hexi hon_univ hrun hmem hcontains
+      hexivars_complete hdep_gt hsameClause hexternal htrue)) htrue
 
 private theorem computeDeps_forceDelDep_formula_sound_of_member
     (dqbf : DQBF) (cs : ClauseStore)
