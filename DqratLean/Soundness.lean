@@ -28898,6 +28898,27 @@ private theorem flexibleRepairTrackedStrictStep_apply_trackedPoolContinuation
   rcases hstrict with ⟨skNext, htrackedNext, _hltNext⟩
   exact hcontinue hall htrackedNext
 
+private abbrev FlexibleRepairPoolTrackedLocalStrictContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skStop : SkolemAssignment) : Prop :=
+  ∀ {skNext : SkolemAssignment},
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skStop →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private theorem flexibleRepairTrackedStrictStep_apply_trackedLocalStrictContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skStop : SkolemAssignment}
+    (hcontinue :
+      FlexibleRepairPoolTrackedLocalStrictContinuation
+        s vars on_ skBase skStop)
+    (hstrict :
+      FlexibleRepairTrackedStrictStep s vars on_ skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases hstrict with ⟨skNext, htrackedNext, hltNext⟩
+  exact hcontinue hltNext htrackedNext
+
 private theorem sameStartExitLiteralContinuation_of_localStrictContinuation
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skStop : SkolemAssignment}
@@ -29313,6 +29334,81 @@ private theorem flexibleRepairPoolContinuation_of_same_clause_flip_frontier
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
     skCand rfl hpool
 
+private abbrev FlexibleRepairSameClauseLocalContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolCandidate s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+    FlexibleRepairPoolLocalStrictContinuation s vars on_ skBase skCand →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private theorem flexibleRepairPoolContinuation_of_same_clause_flip_local_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hsameClause : FlexibleRepairSameClauseLocalContinuation s vars on_) :
+    FlexibleRepairPoolContinuation s vars on_ := by
+  classical
+  intro skBase skCand hall hpool
+  let P : Nat → Prop := fun n =>
+    ∀ skCur,
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      FlexibleRepairPoolCandidate s vars on_ skBase skCur →
+      DeleteIndependenceDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur hcount hpoolCur
+      let hlocal :
+          FlexibleRepairPoolLocalStrictContinuation
+            s vars on_ skBase skCur := by
+        intro skNext hltNext hpoolNext
+        have hlt_n :
+            deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+          simpa [hcount] using hltNext
+        exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+          hlt_n skNext rfl hpoolNext
+      by_cases hfail :
+          ∃ σ, s.clauses.matrixValue s.formula σ skCur = false
+      · rcases hfail with ⟨σ, hfalse⟩
+        rcases flexibleRepairPoolCandidate_false_matrix_step_or_pathBranch_or_sameClauseFlipFailure
+            (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+            (skCand := skCur)
+            hclosed hgt hexi hcontains hpoolCur hall hfalse with
+          hstep | hrest
+        · rcases hstep with ⟨skNext, hpoolNext, hltNext⟩
+          exact hlocal hltNext hpoolNext
+        · rcases hrest with hpathBranch | hsameClauseFailure
+          · rcases flexibleRepairPathBranch_strictStep
+                (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                (on_ := on_) (skBase := skBase) (skCand := skCur)
+                (σ := σ)
+                hfull hon_le hon_univ hexi hcontains hpaths hpoolCur
+                hpathBranch with
+              ⟨skNext, hpoolNext, hltNext⟩
+            exact hlocal hltNext hpoolNext
+          · exact hsameClause hall hpoolCur hfalse hsameClauseFailure
+              hlocal
+      · left
+        refine ⟨skCur, ?_, ?_⟩
+        · intro σ
+          cases hval : s.clauses.matrixValue s.formula σ skCur with
+          | false => exact False.elim (hfail ⟨σ, hval⟩)
+          | true => rfl
+        · exact hpoolCur.1)
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    skCand rfl hpool
+
 private abbrev FlexibleRepairExternalPatchFailureContinuation
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   ∀ {skBase skCand : SkolemAssignment} {σ τ : UnivAssignment}
@@ -29548,6 +29644,91 @@ private theorem flexibleRepairPoolContinuation_of_external_patch_frontier
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
     skCand rfl hpool
 
+private theorem flexibleRepairPoolContinuation_of_external_patch_local_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hsameClause :
+      FlexibleRepairSameClauseLocalContinuation s vars on_)
+    (hexternal :
+      FlexibleRepairExternalPatchFailureContinuation s vars on_) :
+    FlexibleRepairPoolContinuation s vars on_ := by
+  classical
+  intro skBase skCand hall hpool
+  let P : Nat → Prop := fun n =>
+    ∀ skCur,
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      FlexibleRepairPoolCandidate s vars on_ skBase skCur →
+      DeleteIndependenceDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur hcount hpoolCur
+      let hlocal :
+          FlexibleRepairPoolLocalStrictContinuation
+            s vars on_ skBase skCur := by
+        intro skNext hltNext hpoolNext
+        have hlt_n :
+            deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+          simpa [hcount] using hltNext
+        exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+          hlt_n skNext rfl hpoolNext
+      by_cases hfail :
+          ∃ σ, s.clauses.matrixValue s.formula σ skCur = false
+      · rcases hfail with ⟨σ, hfalse⟩
+        rcases
+            flexibleRepairPoolCandidate_false_matrix_step_or_pathBranch_or_external_or_sameClauseFlipFailure
+              (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+              (skCand := skCur)
+              hon_univ hgt hexi hcontains hpoolCur hall hfalse with
+          hstrict | hrest
+        · rcases hstrict with ⟨skNext, hpoolNext, hltNext⟩
+          exact hlocal hltNext hpoolNext
+        · rcases hrest with hpath | hrest
+          · rcases flexibleRepairPathBranch_strictStep
+                (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                (on_ := on_) (skBase := skBase) (skCand := skCur)
+                (σ := σ)
+                hfull hon_le hon_univ hexi hcontains hpaths hpoolCur
+                hpath with
+              ⟨skNext, hpoolNext, hltNext⟩
+            exact hlocal hltNext hpoolNext
+          · rcases hrest with hexternalBranch | hsameClauseFailure
+            · rcases hexternalBranch with
+                ⟨flipVar, hnotMem, hvalEq, hwitCand, hwitBase,
+                  hexiFlip, hcontainsFlip, hnoPathCand, hnoPathBase,
+                  hprogress⟩
+              rcases targetRepairProgressCandidate_descent_or_false
+                  (s := s) (vars := vars) (on_ := on_)
+                  (skBase := skBase)
+                  (skCand :=
+                    patchDeleteWitnessAt s.formula flipVar σ skCur)
+                  hprogress with
+                hgood | hfalseExternal
+              · exact Or.inl hgood
+              · rcases hfalseExternal with ⟨τ, hfalsePatch⟩
+                exact hexternal hall hpoolCur hnotMem hvalEq hwitCand
+                  hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase
+                  hprogress hfalsePatch
+            · exact hsameClause hall hpoolCur hfalse hsameClauseFailure
+                hlocal
+      · left
+        refine ⟨skCur, ?_, ?_⟩
+        · intro σ
+          cases hval : s.clauses.matrixValue s.formula σ skCur with
+          | false => exact False.elim (hfail ⟨σ, hval⟩)
+          | true => rfl
+        · exact hpoolCur.1)
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    skCand rfl hpool
+
 private theorem flexibleRepairPoolContinuation_of_external_reach_patch_frontier
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
@@ -29579,6 +29760,52 @@ private theorem flexibleRepairPoolContinuation_of_external_reach_patch_frontier
     FlexibleRepairPoolContinuation s vars on_ := by
   exact
     flexibleRepairPoolContinuation_of_external_patch_frontier
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hsameClause
+      (by
+        intro skBase skCand σ τ flipVar hall hpool hnotMem hvalEq
+          hwitCand hwitBase hexiFlip hcontainsFlip hnoPathCand
+          hnoPathBase hprogress hfalse
+        have hreach :
+            ∃ pos : Bool,
+              (getReachable s (mkLit on_ true)).getD
+                  (mkLit flipVar pos).x false = true ∧
+              (getReachable s (mkLit on_ false)).getD
+                  (mkLit flipVar (!pos)).x false = true :=
+          noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_reach_pair
+            hnoCrossClosed (hexivars_complete flipVar hexiFlip)
+            (hdep_gt flipVar hexiFlip hcontainsFlip) hcontainsFlip
+            hnotMem
+        exact hexternal hall hpool hnotMem hvalEq hwitCand hwitBase
+          hexiFlip hcontainsFlip hnoPathCand hnoPathBase hreach hprogress
+          hfalse)
+
+private theorem flexibleRepairPoolContinuation_of_external_reach_patch_local_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hsameClause :
+      FlexibleRepairSameClauseLocalContinuation s vars on_)
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s vars on_) :
+    FlexibleRepairPoolContinuation s vars on_ := by
+  exact
+    flexibleRepairPoolContinuation_of_external_patch_local_frontier
       (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
       hfull hon_le hon_univ hgt hexi hcontains hpaths hsameClause
       (by
@@ -29739,6 +29966,86 @@ private theorem flexibleRepairPoolTrackedContinuation_of_same_clause_flip_fronti
             exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
               hlt_n skNext rfl htrackedNext
           · exact hsameClause hall htrackedCur hfalse hsameClauseFailure
+      · left
+        refine ⟨skCur, ?_, ?_⟩
+        · intro σ
+          cases hval : s.clauses.matrixValue s.formula σ skCur with
+          | false => exact False.elim (hfail ⟨σ, hval⟩)
+          | true => rfl
+        · exact htrackedCur.1.1)
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    skCand rfl htracked
+
+private abbrev FlexibleRepairSameClauseTrackedLocalContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+    FlexibleRepairPoolTrackedLocalStrictContinuation
+      s vars on_ skBase skCand →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private theorem flexibleRepairPoolTrackedContinuation_of_same_clause_flip_local_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hsameClause :
+      FlexibleRepairSameClauseTrackedLocalContinuation s vars on_) :
+    FlexibleRepairPoolTrackedContinuation s vars on_ := by
+  classical
+  intro skBase skCand hall htracked
+  let P : Nat → Prop := fun n =>
+    ∀ skCur,
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      FlexibleRepairPoolTracked s vars on_ skBase skCur →
+      DeleteIndependenceDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur hcount htrackedCur
+      let hlocal :
+          FlexibleRepairPoolTrackedLocalStrictContinuation
+            s vars on_ skBase skCur := by
+        intro skNext hltNext htrackedNext
+        have hlt_n :
+            deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+          simpa [hcount] using hltNext
+        exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+          hlt_n skNext rfl htrackedNext
+      by_cases hfail :
+          ∃ σ, s.clauses.matrixValue s.formula σ skCur = false
+      · rcases hfail with ⟨σ, hfalse⟩
+        rcases flexibleRepairPoolTracked_false_matrix_step_or_pathBranch_or_sameClauseFlipFailure
+            (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+            (skCand := skCur)
+            hclosed hgt hexi hcontains htrackedCur hall hfalse with
+          hstep | hrest
+        · exact flexibleRepairTrackedStrictStep_apply_trackedLocalStrictContinuation
+            (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+            (skStop := skCur) hlocal hstep
+        · rcases hrest with hpathBranch | hsameClauseFailure
+          · exact
+              flexibleRepairTrackedStrictStep_apply_trackedLocalStrictContinuation
+                (s := s) (vars := vars) (on_ := on_)
+                (skBase := skBase) (skStop := skCur) hlocal
+                (flexibleRepairPathBranch_trackedStrictStep
+                  (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                  (on_ := on_) (skBase := skBase) (skCand := skCur)
+                  (σ := σ)
+                  hfull hon_le hon_univ hexi hcontains hpaths
+                  htrackedCur hpathBranch)
+          · exact hsameClause hall htrackedCur hfalse hsameClauseFailure
+              hlocal
       · left
         refine ⟨skCur, ?_, ?_⟩
         · intro σ
@@ -36208,6 +36515,45 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_exte
     DeleteIndependenceSetBridge s vars on_ := by
   let hcontinue : FlexibleRepairPoolContinuation s vars on_ :=
     flexibleRepairPoolContinuation_of_external_reach_patch_frontier
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
+      hexivars_complete hdep_gt hsameClause hexternal
+  exact
+    deleteIndependenceSetBridge_of_initial_external_reach_frontier_with_base_tail_external_patch
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hexi hgt hcontains hpaths hnoCrossClosed
+      hexivars_complete hdep_gt
+      (patchPoolBlockedPathBranch_apply_flexibleRepairPoolContinuation
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+        hfull hon_le hon_univ hexi hcontains hpaths hcontinue)
+      (externalPatchFailureContinuation_of_flexibleReach hexternal)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_external_reach_patch_local_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hsameClause :
+      FlexibleRepairSameClauseLocalContinuation s vars on_)
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  let hcontinue : FlexibleRepairPoolContinuation s vars on_ :=
+    flexibleRepairPoolContinuation_of_external_reach_patch_local_frontier
       (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
       hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
       hexivars_complete hdep_gt hsameClause hexternal
