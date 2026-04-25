@@ -39427,6 +39427,65 @@ private theorem computeDeps_forceDelDeps_formula_sound_of_external_reach_patch_f
     DeleteIndependenceSetBridge.of_sameFC hbridge_s hfacts.sameFC
   exact DQBFTrue_forceDelDeps_of_setBridge hfacts.hexi hbridge_s₁ htrue
 
+private theorem computeDeps_forceDelDeps_formula_sound_of_external_reach_patch_local_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hsameClause :
+      FlexibleRepairSameClauseLocalContinuation s
+        (computeDepsActiveDeletionVars s₁ on_) on_)
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s
+        (computeDepsActiveDeletionVars s₁ on_) on_)
+    (htrue : DQBFTrue s₁.formula s₁.clauses) :
+    DQBFTrue
+      (forceDelDeps s₁.formula (computeDepsActiveDeletionVars s₁ on_) on_)
+      s₁.clauses := by
+  classical
+  let vars := computeDepsActiveDeletionVars s₁ on_
+  have hfacts :
+      ComputeDepsActiveDeletionFacts s s₁ vars on_ := by
+    simpa [vars] using
+      computeDeps_activeDeletionFacts_filter_contains
+        dqbf cs hfull hon hon_le hon_univ hrun
+  have hexi_s :
+      ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true := by
+    intro of_ hof
+    simpa [hfacts.sameFC.1] using hfacts.hexi of_ hof
+  have hcontains_s :
+      ∀ of_ ∈ vars.toList,
+        (s.formula.depset.getD of_ #[]).contains on_ = true := by
+    intro of_ hof
+    simpa [hfacts.sameFC.1] using hfacts.contains_on of_ hof
+  have hbridge_s : DeleteIndependenceSetBridge s vars on_ :=
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_external_reach_patch_local_frontier
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hexi_s hfacts.gt_on hcontains_s
+      hfacts.no_cross_paths hfacts.no_cross_dep_closed
+      hexivars_complete hdep_gt
+      (by
+        change FlexibleRepairSameClauseLocalContinuation s
+          (computeDepsActiveDeletionVars s₁ on_) on_
+        exact hsameClause)
+      (by
+        change FlexibleRepairExternalReachPatchFailureContinuation s
+          (computeDepsActiveDeletionVars s₁ on_) on_
+        exact hexternal)
+  have hbridge_s₁ : DeleteIndependenceSetBridge s₁ vars on_ :=
+    DeleteIndependenceSetBridge.of_sameFC hbridge_s hfacts.sameFC
+  exact DQBFTrue_forceDelDeps_of_setBridge hfacts.hexi hbridge_s₁ htrue
+
 private theorem forceDelDeps_formula_sound_of_noDeleteCrossPathsSet
     (dqbf : DQBF) (cs : ClauseStore)
     {s s₁ : CheckState} {vars : Array Var} {on_ : Var}
