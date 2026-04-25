@@ -30312,6 +30312,245 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
     skCand rfl hpool
 
+private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_residual_closed_le
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+    ∃ skStop,
+      PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+      deleteWitnessFiberCountSet s.formula vars on_ skStop ≤
+        deleteWitnessFiberCountSet s.formula vars on_ skCand ∧
+      (PatchPoolSelfSameStartCursorTailResidual
+          s vars on_ startPos skBase skStop ∨
+        PatchPoolSelfStableTailResidual
+          s vars on_ startPos skBase skStop ∨
+        PatchPoolSelfFirstStartTailResidual
+          s vars on_ startPos skBase skStop ∨
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop ∨
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop) := by
+  classical
+  let P : Nat → Prop := fun n =>
+    ∀ skCur,
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      PatchPoolCandidate s vars on_ startPos skBase skCur →
+      (∃ sk',
+        (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+        deleteWitnessFiberCountSet s.formula vars on_ sk' <
+          deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+      ∃ skStop,
+        PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+        deleteWitnessFiberCountSet s.formula vars on_ skStop ≤ n ∧
+        (PatchPoolSelfSameStartCursorTailResidual
+            s vars on_ startPos skBase skStop ∨
+          PatchPoolSelfStableTailResidual
+            s vars on_ startPos skBase skStop ∨
+          PatchPoolSelfFirstStartTailResidual
+            s vars on_ startPos skBase skStop ∨
+          PatchPoolSelfBacktrackStableTailResidual
+            s vars on_ startPos skBase skStop ∨
+          PatchPoolSelfBacktrackFirstStartTailResidual
+            s vars on_ startPos skBase skStop)
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur hcount hpoolCur
+      let liftStrictResult {m : Nat}
+          (hlt : m < n) :
+          ((∃ sk',
+            (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+            deleteWitnessFiberCountSet s.formula vars on_ sk' <
+              deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+          ∃ skStop,
+            PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+            deleteWitnessFiberCountSet s.formula vars on_ skStop ≤ m ∧
+            (PatchPoolSelfSameStartCursorTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfStableTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfFirstStartTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfBacktrackStableTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfBacktrackFirstStartTailResidual
+                s vars on_ startPos skBase skStop)) →
+          (∃ sk',
+            (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+            deleteWitnessFiberCountSet s.formula vars on_ sk' <
+              deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+          ∃ skStop,
+            PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+            deleteWitnessFiberCountSet s.formula vars on_ skStop ≤ n ∧
+            (PatchPoolSelfSameStartCursorTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfStableTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfFirstStartTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfBacktrackStableTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfBacktrackFirstStartTailResidual
+                s vars on_ startPos skBase skStop) := by
+        intro hrec
+        rcases hrec with hgood | hterminal
+        · exact Or.inl hgood
+        · rcases hterminal with ⟨skStop, hpoolStop, hle, hcases⟩
+          exact Or.inr
+            ⟨skStop, hpoolStop, Nat.le_trans hle (Nat.le_of_lt hlt),
+              hcases⟩
+      let recurseStrict :
+          PatchPoolStrictStep s vars on_ startPos skBase skCur →
+          (∃ sk',
+            (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+            deleteWitnessFiberCountSet s.formula vars on_ sk' <
+              deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+          ∃ skStop,
+            PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+            deleteWitnessFiberCountSet s.formula vars on_ skStop ≤ n ∧
+            (PatchPoolSelfSameStartCursorTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfStableTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfFirstStartTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfBacktrackStableTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfBacktrackFirstStartTailResidual
+                s vars on_ startPos skBase skStop) := by
+        intro hstrict
+        rcases hstrict with ⟨skNext, hpoolNext, hlt_next⟩
+        have hlt_n :
+            deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+          simpa [hcount] using hlt_next
+        exact liftStrictResult hlt_n
+          (ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+            hlt_n skNext rfl hpoolNext)
+      let blockedPair :
+          SameStartComplementPathPair s vars on_ startPos →
+          SameStartComplementPathPairBlocked s vars on_ startPos := by
+        intro hsameStart
+        exact sameStartComplementPathPair_forces_opposite_nonpaths
+          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+          (on_ := on_) (startPos := startPos)
+          hfull hon_le hon_univ hpaths hsameStart
+      let terminalTail :
+          PatchPoolSelfStableStartOrConnectorTailBranch
+            s vars on_ startPos skBase skCur →
+          (∃ sk',
+            (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+            deleteWitnessFiberCountSet s.formula vars on_ sk' <
+              deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+          ∃ skStop,
+            PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+            deleteWitnessFiberCountSet s.formula vars on_ skStop ≤ n ∧
+            (PatchPoolSelfSameStartCursorTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfStableTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfFirstStartTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfBacktrackStableTailResidual
+                s vars on_ startPos skBase skStop ∨
+              PatchPoolSelfBacktrackFirstStartTailResidual
+                s vars on_ startPos skBase skStop) := by
+        intro hbranch
+        rcases patchPoolSelfStableStartOrConnectorTailBranch_split_terminal
+            (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+            (on_ := on_) (startPos := startPos) (skBase := skBase)
+            (skCand := skCur)
+            hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+            hpoolCur hallBase hbranch with
+          hstable | hrest
+        · exact Or.inr
+            ⟨skCur, hpoolCur, (by simpa [hcount]),
+              Or.inr (Or.inl hstable)⟩
+        · rcases hrest with hstart | hrest
+          · rcases patchPoolSelfStartTailResidual_first_or_same_start_cursor
+              (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+              (on_ := on_) (startPos := startPos) (skBase := skBase)
+              (skCand := skCur)
+              hfull hon_le hon_univ hpaths hclosed hgt hstart with
+              hfirst | hsameStart
+            · exact Or.inr
+                ⟨skCur, hpoolCur, (by simpa [hcount]),
+                  Or.inr (Or.inr (Or.inl hfirst))⟩
+            · exact Or.inr
+                ⟨skCur, hpoolCur, (by simpa [hcount]),
+                  Or.inl hsameStart⟩
+          · rcases hrest with hstrict | hrest
+            · exact recurseStrict hstrict
+            · rcases hrest with hsameStart | hrest
+              · exact Or.inr
+                  ⟨skCur, hpoolCur, (by simpa [hcount]),
+                    Or.inl
+                      (patchPoolSelfStableStartOrConnectorTailBranch_same_start_cursor
+                        hbranch (blockedPair hsameStart))⟩
+              · rcases hrest with hbackStable | hbackFirst
+                · exact Or.inr
+                    ⟨skCur, hpoolCur, (by simpa [hcount]),
+                      Or.inr (Or.inr (Or.inr (Or.inl hbackStable)))⟩
+                · exact Or.inr
+                    ⟨skCur, hpoolCur, (by simpa [hcount]),
+                      Or.inr (Or.inr (Or.inr (Or.inr hbackFirst)))⟩
+      rcases patchPoolCandidate_descent_or_residual_cases
+          (s := s) (vars := vars) (on_ := on_)
+          (startPos := startPos) (skBase := skBase) (skCand := skCur)
+          hon_univ hgt hexi hcontains hpoolCur hallBase with
+        hgood | hresidual
+      · exact Or.inl hgood
+      · rcases hresidual with hblocked | hstepOrExternal
+        · rcases patchPoolBlockedPathBranch_to_strict_tail_cursor_outcome_closed
+            (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+            (on_ := on_) (startPos := startPos) (skBase := skBase)
+            (skCand := skCur)
+            hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+            hpoolCur hallBase hblocked with
+            hstrict | htail
+          · exact recurseStrict hstrict
+          · rcases htail with hsameStartCursor | hbranch
+            · exact Or.inr
+                ⟨skCur, hpoolCur, (by simpa [hcount]),
+                  Or.inl hsameStartCursor⟩
+            · exact terminalTail hbranch
+        · rcases hstepOrExternal with hstep | hexternal
+          · rcases hstep with ⟨σ, flipVar, hmem, hwit, hpoolNext⟩
+            let skNext := patchDeleteWitnessAt s.formula flipVar σ skCur
+            have hlt_next :
+                deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+              have hlt_cur :
+                  deleteWitnessFiberCountSet s.formula vars on_ skNext <
+                    deleteWitnessFiberCountSet s.formula vars on_ skCur :=
+                deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+                  s.formula vars flipVar on_ σ skCur hmem
+                  (hexi flipVar hmem) (hcontains flipVar hmem) hwit
+              simpa [skNext, hcount] using hlt_cur
+            exact liftStrictResult hlt_next
+              (ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+                hlt_next skNext rfl hpoolNext)
+          · rcases hexternal with
+              ⟨σ, flipVar, hnot_mem, _hon_eq, _hwit, hexi_flip,
+                hcontains_flip, _hnoPath⟩
+            exact False.elim
+              (hnot_mem (hclosed flipVar hexi_flip hcontains_flip)))
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    skCand rfl hpool
+
 private theorem patchPoolSelfConnectorBacktrackResidualSized_to_descentOutcome_closed
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
