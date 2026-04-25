@@ -32518,6 +32518,192 @@ private theorem patchPoolClosedChaseStateSized_to_descentOutcome_closed
     hpair hbackStable hbackFirstStart
     (patchPoolClosedChaseStateSized_to_connectorBacktrackResidualSized hst)
 
+private theorem patchPoolClosedChaseState_to_descentOutcome_closed
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hst :
+      PatchPoolClosedChaseState
+        s vars on_ startPos skBase skCand) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases hst with
+    ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
+  rcases deletePurePath_to_exists_sized hpath with ⟨n, hpathSized⟩
+  exact patchPoolClosedChaseStateSized_to_descentOutcome_closed
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+    (startPos := startPos) (skBase := skBase) (skCand := skCand)
+    (n := n)
+    hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+    hpool hallBase hpair hbackStable hbackFirstStart
+    ⟨σ, cref, c, lit, cursor, hhead, hpathSized, hmem, hfalse, hnoOpp⟩
+
+private theorem patchPoolSelfSameStartCursorTailResidual_to_descentOutcome_closed
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpool : PatchPoolCandidate s vars on_ startPos skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hpair :
+      ∀ {startPos : Bool} {skBase : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        SameStartComplementPathPairBlocked s vars on_ startPos →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackStable :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hbackFirstStart :
+      ∀ {startPos : Bool} {skBase skStop : SkolemAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ skBase = true) →
+        PatchPoolCandidate s vars on_ startPos skBase skStop →
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop →
+        DeleteIndependenceDescentOutcome s vars on_ skBase)
+    (hsame :
+      PatchPoolSelfSameStartCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase :=
+  patchPoolClosedChaseState_to_descentOutcome_closed
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+    (startPos := startPos) (skBase := skBase) (skCand := skCand)
+    hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+    hpool hallBase hpair hbackStable hbackFirstStart
+    (patchPoolSelfSameStartCursorTailResidual_to_closedChaseState hsame)
+
+private theorem sameStartExitLiteralContinuation_of_backtrackTerminalHandlers_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hhandlers : BacktrackTerminalDescentHandlers s vars on_) :
+    SameStartExitLiteralContinuation s vars on_ := by
+  rcases hhandlers with ⟨hpair, hbackStable, hbackFirstStart⟩
+  intro startPos skBase skStop hall hpool hcase
+  exact patchPoolSelfSameStartCursorTailResidual_to_descentOutcome_closed
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+    (startPos := startPos) (skBase := skBase) (skCand := skStop)
+    hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+    hpool hall hpair hbackStable hbackFirstStart hcase
+
+private theorem stableCursorDescentHandler_of_backtrackTerminalHandlers_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hhandlers : BacktrackTerminalDescentHandlers s vars on_) :
+    StableCursorDescentHandler s vars on_ := by
+  rcases hhandlers with ⟨hpair, hbackStable, hbackFirstStart⟩
+  intro startPos skBase skStop hall hpool hcase
+  exact patchPoolClosedChaseState_to_descentOutcome_closed
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+    (startPos := startPos) (skBase := skBase) (skCand := skStop)
+    hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+    hpool hall hpair hbackStable hbackFirstStart
+    (patchPoolSelfStableCursorTailResidual_to_closedChaseState hcase)
+
+private theorem firstStartCursorDescentHandler_of_backtrackTerminalHandlers_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hhandlers : BacktrackTerminalDescentHandlers s vars on_) :
+    FirstStartCursorDescentHandler s vars on_ := by
+  rcases hhandlers with ⟨hpair, hbackStable, hbackFirstStart⟩
+  intro startPos skBase skStop hall hpool hcase
+  exact patchPoolClosedChaseState_to_descentOutcome_closed
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+    (startPos := startPos) (skBase := skBase) (skCand := skStop)
+    hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+    hpool hall hpair hbackStable hbackFirstStart
+    (patchPoolSelfFirstStartCursorTailResidual_to_closedChaseState hcase)
+
+private theorem pooledExitLiteralTerminalContinuations_of_backtrackTerminalHandlers_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hhandlers : BacktrackTerminalDescentHandlers s vars on_) :
+    PooledExitLiteralTerminalContinuations s vars on_ :=
+  ⟨sameStartExitLiteralContinuation_of_backtrackTerminalHandlers_closed
+      dqbf cs hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+      hhandlers,
+    stableCursorDescentHandler_of_backtrackTerminalHandlers_closed
+      dqbf cs hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+      hhandlers,
+    firstStartCursorDescentHandler_of_backtrackTerminalHandlers_closed
+      dqbf cs hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+      hhandlers⟩
+
 private theorem rankedBlockedHeadContinuation_of_backtrack_terminal_handlers_closed
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
