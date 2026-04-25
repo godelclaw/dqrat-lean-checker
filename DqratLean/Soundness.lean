@@ -29437,6 +29437,27 @@ private abbrev FlexibleRepairSameClauseTwoPatchConcreteProperSubsetResidualHandl
       s vars on_ skBase skCand skNext σ →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private abbrev FlexibleRepairSameClauseTwoPatchConcreteSplitResidualHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    (deleteWitnessFiberCountSet s.formula vars on_ skCand <
+        deleteWitnessFiberCountSet s.formula vars on_ skNext ∨
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand) →
+    FlexibleRepairSameClauseTwoPatchConcreteResidual
+      s vars on_ skBase skCand skNext σ →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
 private abbrev FlexibleRepairTrackedProperSubsetFalseRestart
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
@@ -29636,6 +29657,36 @@ private theorem flexibleRepairSameClauseTwoPatchConcreteProperSubsetResidualHand
     ⟨τ, hfalseNext⟩
   exact hrestart hall htrackedNext hproperNext hfalseNext
 
+private theorem flexibleRepairSameClauseTwoPatchConcreteSplitResidualHandler_of_concreteProperSubset
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhandler :
+      FlexibleRepairSameClauseTwoPatchConcreteProperSubsetResidualHandler
+        s vars on_) :
+    FlexibleRepairSameClauseTwoPatchConcreteSplitResidualHandler
+      s vars on_ := by
+  intro skBase skCand skNext σ hall htracked hfalse hfailure
+    hproperCand htrackedNext hltNext hproperNext _hsubsetCandNext
+    _hsplitCandNext hresidual
+  exact hhandler hall htracked hfalse hfailure hproperCand
+    htrackedNext hltNext hproperNext hresidual
+
+private theorem flexibleRepairSameClauseTwoPatchConcreteSplitResidualHandler_of_trackedRestart
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hrestart :
+      FlexibleRepairTrackedProperSubsetFalseRestart s vars on_) :
+    FlexibleRepairSameClauseTwoPatchConcreteSplitResidualHandler
+      s vars on_ := by
+  intro skBase skCand skNext σ hall _htracked _hfalse _hfailure
+    _hproperCand htrackedNext _hltNext hproperNext _hsubsetCandNext
+    _hsplitCandNext hresidual
+  rcases
+      flexibleRepairSameClauseTwoPatchConcreteResidual_false_matrix
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext) (σ := σ)
+        hresidual with
+    ⟨τ, hfalseNext⟩
+  exact hrestart hall htrackedNext hproperNext hfalseNext
+
 private theorem flexibleRepairPoolTrackedContinuation_of_two_patch_residual_frontier
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
@@ -29783,6 +29834,50 @@ private theorem flexibleRepairPoolTrackedContinuation_of_two_patch_concretePrope
           (flexibleRepairPoolTracked_false_matrix_current_properSubset
             htracked hall hfalse)
           htrackedNext hltNext hproperNext hresidualCase)
+
+private theorem flexibleRepairPoolTrackedContinuation_of_two_patch_concreteSplit_residual_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchConcreteSplitResidualHandler
+        s vars on_) :
+    FlexibleRepairPoolTrackedContinuation s vars on_ := by
+  exact flexibleRepairPoolTrackedContinuation_of_same_clause_flip_frontier
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+    (on_ := on_) hfull hon_le hon_univ hclosed hgt hexi hcontains
+    hpaths
+    (by
+      intro skBase skCand σ hall htracked hfalse hfailure
+      have htwo :
+          FlexibleRepairSameClauseTwoPolarityFailure
+            s vars on_ skBase skCand σ :=
+        flexibleRepairSameClauseFlipFailure_to_twoPolarityFailure
+          (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+          (skCand := skCand) (σ := σ) htracked.1 hall hfailure
+      rcases
+          flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_outcome_or_concrete_candidate_properSubset_residual
+            (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+            (skCand := skCand) (σ := σ)
+            hexi hcontains hall htracked htwo with
+        houtcome | hres
+      · exact Or.inl houtcome
+      · rcases hres with
+          ⟨skNext, htrackedNext, hltNext, hproperNext,
+            hsubsetCandNext, hsplitCandNext, hresidualCase⟩
+        exact hresidual hall htracked hfalse htwo
+          (flexibleRepairPoolTracked_false_matrix_current_properSubset
+            htracked hall hfalse)
+          htrackedNext hltNext hproperNext hsubsetCandNext
+          hsplitCandNext hresidualCase)
 
 private theorem flexibleRepairPoolTrackedContinuation_of_tracked_properSubset_false_restart
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
@@ -35103,6 +35198,29 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clos
         (dqbf := dqbf) (cs := cs) hfull hon_le hon_univ hclosed hgt
         hexi hcontains hpaths hresidual)
 
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_two_patch_concreteSplit_residual_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchConcreteSplitResidualHandler
+        s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_trackedRepairPoolContinuation
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (flexibleRepairPoolTrackedContinuation_of_two_patch_concreteSplit_residual_frontier
+        (dqbf := dqbf) (cs := cs) hfull hon_le hon_univ hclosed hgt
+        hexi hcontains hpaths hresidual)
+
 private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_tracked_properSubset_false_restart
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -35726,6 +35844,28 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clea
     DeleteIndependenceSetBridge s vars on_ := by
   exact
     deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_two_patch_concreteProperSubset_residual_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hresidual
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_two_patch_concreteSplit_residual_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchConcreteSplitResidualHandler
+        s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_two_patch_concreteSplit_residual_frontier
       dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
       (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
       hresidual
