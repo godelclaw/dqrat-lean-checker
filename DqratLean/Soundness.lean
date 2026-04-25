@@ -2519,6 +2519,53 @@ private theorem deleteWitnessFiberCountVar_le_of_list_subset
   rw [list_filter_eq_filter_filter_of_imp pNew pOld base himp]
   exact List.length_filter_le pNew (base.filter pOld)
 
+private theorem deleteWitnessFiberList_reverse_subset_of_count_eq
+    (f : DQBF) (of_ on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld)
+    (hcount :
+      deleteWitnessFiberCountVar f of_ on_ skNew =
+        deleteWitnessFiberCountVar f of_ on_ skOld) :
+    ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skOld →
+        args ∈ deleteWitnessFiberList f of_ on_ skNew := by
+  let base := allBoolArrays ((f.depset.getD of_ #[]).filter (· ≠ on_)).size
+  let pNew := deleteWitnessFiberPred f of_ on_ skNew
+  let pOld := deleteWitnessFiberPred f of_ on_ skOld
+  have himp : ∀ args, pNew args = true → pOld args = true :=
+    deleteWitnessFiberPred_imp_of_list_subset f of_ on_ skNew skOld hsubset
+  have hfilter :
+      base.filter pNew = (base.filter pOld).filter pNew :=
+    list_filter_eq_filter_filter_of_imp pNew pOld base himp
+  have hlen :
+      ((base.filter pOld).filter pNew).length =
+        (base.filter pOld).length := by
+    rw [← hfilter]
+    simpa [deleteWitnessFiberCountVar, deleteWitnessFiberList, base,
+      pNew, pOld] using hcount
+  have hall :
+      ∀ args, args ∈ base.filter pOld → pNew args = true :=
+    List.length_filter_eq_length_iff.mp hlen
+  intro args hmemOld
+  have hbase :
+      args ∈ allBoolArrays
+        ((f.depset.getD of_ #[]).filter (· ≠ on_)).size :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skOld args).1 hmemOld |>.1
+  have hold :
+      DeleteWitnessFiber f of_ on_ skOld args :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skOld args).1 hmemOld |>.2
+  have hpOld : pOld args = true :=
+    (deleteWitnessFiberPred_eq_true_iff f of_ on_ skOld args).2 hold
+  have hpNew : pNew args = true :=
+    hall args (by
+      rw [List.mem_filter]
+      exact ⟨by simpa [base] using hbase, hpOld⟩)
+  exact (mem_deleteWitnessFiberList_iff f of_ on_ skNew args).2
+    ⟨hbase,
+      (deleteWitnessFiberPred_eq_true_iff f of_ on_ skNew args).1 hpNew⟩
+
 private theorem deleteWitnessFiberCountVar_lt_of_list_subset_missing
     (f : DQBF) (of_ on_ : Var)
     (skNew skOld : SkolemAssignment)
@@ -2664,6 +2711,87 @@ private theorem deleteWitnessFiberCountSet_le_of_subset
   simpa [deleteWitnessFiberCountSet] using
     deleteWitnessFiberCountSetList_le_of_subset
       f vars.toList on_ skNew skOld hsubset
+
+private theorem deleteWitnessFiberCountSetList_reverse_subset_of_count_eq
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ of_, of_ ∈ vars → ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld)
+    (hcount :
+      deleteWitnessFiberCountSetList f vars on_ skNew =
+        deleteWitnessFiberCountSetList f vars on_ skOld) :
+    ∀ of_, of_ ∈ vars → ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skOld →
+        args ∈ deleteWitnessFiberList f of_ on_ skNew := by
+  revert hsubset hcount
+  induction vars with
+  | nil =>
+      intro _hsubset _hcount of_ hof
+      cases hof
+  | cons head rest ih =>
+      intro hsubset hcount of_ hof args hmemOld
+      have hhead_le :
+          deleteWitnessFiberCountVar f head on_ skNew ≤
+            deleteWitnessFiberCountVar f head on_ skOld :=
+        deleteWitnessFiberCountVar_le_of_list_subset
+          f head on_ skNew skOld
+          (fun args hmem =>
+            hsubset head (by simp) args hmem)
+      have htail_le :
+          deleteWitnessFiberCountSetList f rest on_ skNew ≤
+            deleteWitnessFiberCountSetList f rest on_ skOld :=
+        deleteWitnessFiberCountSetList_le_of_subset
+          f rest on_ skNew skOld
+          (fun of_ hof args hmem =>
+            hsubset of_ (List.mem_cons_of_mem head hof) args hmem)
+      have hhead_eq :
+          deleteWitnessFiberCountVar f head on_ skNew =
+            deleteWitnessFiberCountVar f head on_ skOld := by
+        by_cases hEq :
+            deleteWitnessFiberCountVar f head on_ skNew =
+              deleteWitnessFiberCountVar f head on_ skOld
+        · exact hEq
+        have hhead_lt :
+            deleteWitnessFiberCountVar f head on_ skNew <
+              deleteWitnessFiberCountVar f head on_ skOld :=
+          Nat.lt_of_le_of_ne hhead_le hEq
+        have hsum_lt :
+            deleteWitnessFiberCountSetList f (head :: rest) on_ skNew <
+              deleteWitnessFiberCountSetList f (head :: rest) on_ skOld := by
+          simpa [deleteWitnessFiberCountSetList] using
+            Nat.add_lt_add_of_lt_of_le hhead_lt htail_le
+        exact False.elim ((Nat.ne_of_lt hsum_lt) hcount)
+      have htail_eq :
+          deleteWitnessFiberCountSetList f rest on_ skNew =
+            deleteWitnessFiberCountSetList f rest on_ skOld := by
+        simpa [deleteWitnessFiberCountSetList, hhead_eq] using hcount
+      cases List.mem_cons.mp hof with
+      | inl hhead =>
+        subst of_
+        exact deleteWitnessFiberList_reverse_subset_of_count_eq
+          f head on_ skNew skOld
+          (fun args hmem =>
+            hsubset head (by simp) args hmem)
+          hhead_eq args hmemOld
+      | inr htail =>
+        exact ih
+          (fun of_ hof args hmem =>
+            hsubset of_ (List.mem_cons_of_mem head hof) args hmem)
+          htail_eq of_ htail args hmemOld
+
+private theorem deleteWitnessFiberSetSubset_antisymm_of_count_eq
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skNew skOld : SkolemAssignment}
+    (hsubset : DeleteWitnessFiberSetSubset f vars on_ skNew skOld)
+    (hcount :
+      deleteWitnessFiberCountSet f vars on_ skNew =
+        deleteWitnessFiberCountSet f vars on_ skOld) :
+    DeleteWitnessFiberSetSubset f vars on_ skOld skNew := by
+  simpa [DeleteWitnessFiberSetSubset] using
+    deleteWitnessFiberCountSetList_reverse_subset_of_count_eq
+      f vars.toList on_ skNew skOld hsubset
+      (by simpa [deleteWitnessFiberCountSet] using hcount)
 
 private theorem deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
     (f : DQBF) (vars : Array Var) (patched on_ : Var)
@@ -21492,6 +21620,384 @@ private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_can
       hleft_base_wit (hexi rightLit.var hright_var)
       (hcontains rightLit.var hright_var) hright_base_wit
   exact ⟨sk₂, htracked₂, hlt, hproper⟩
+
+private theorem flexibleRepairSameClauseTwoPatchCandidate_tracked_properSubset_core
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    {leftLit rightLit : Literal}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hleft_var : leftLit.var ∈ vars.toList)
+    (hleft_true : s.formula.litValue σ skBase leftLit = true)
+    (hleft_false : s.formula.litValue σ skCand leftLit = false)
+    (hleft_no_path :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) leftLit)
+    (hright_var : rightLit.var ∈ vars.toList)
+    (hright_true :
+      s.formula.litValue (flipUniv on_ σ) skBase rightLit = true)
+    (hright_false :
+      s.formula.litValue (flipUniv on_ σ) skCand rightLit = false)
+    (hright_no_path :
+      ¬ DeletePurePath s on_ (mkLit on_ (σ on_)) rightLit) :
+    leftLit.var ≠ rightLit.var ∧
+      let sk₁ := patchDeleteWitnessAt s.formula leftLit.var σ skBase
+      let sk₂ :=
+        patchDeleteWitnessAt s.formula rightLit.var (flipUniv on_ σ) sk₁
+      FlexibleRepairPoolTracked s vars on_ skBase sk₂ ∧
+        deleteWitnessFiberCountSet s.formula vars on_ sk₂ <
+          deleteWitnessFiberCountSet s.formula vars on_ skBase ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ sk₂
+          skBase := by
+  rcases htracked with ⟨_hpool, hfoot, _hlive⟩
+  have hleft_changed :
+      s.formula.varValue σ skCand leftLit.var ≠
+        s.formula.varValue σ skBase leftLit.var :=
+    litValue_true_false_implies_varValue_ne
+      s.formula σ skBase skCand leftLit hleft_true hleft_false
+  have hright_changed :
+      s.formula.varValue (flipUniv on_ σ) skCand rightLit.var ≠
+        s.formula.varValue (flipUniv on_ σ) skBase rightLit.var :=
+    litValue_true_false_implies_varValue_ne
+      s.formula (flipUniv on_ σ) skBase skCand rightLit
+      hright_true hright_false
+  rcases hfoot leftLit.var σ hleft_changed with
+    ⟨_hleft_mem, hleft_base_wit, hleft_fiber⟩
+  rcases hfoot rightLit.var (flipUniv on_ σ) hright_changed with
+    ⟨_hright_mem, hright_base_wit, _hright_fiber⟩
+  have hdistinct : leftLit.var ≠ rightLit.var := by
+    intro hsameVar
+    have hright_changed_left :
+        s.formula.varValue (flipUniv on_ σ) skCand leftLit.var ≠
+          s.formula.varValue (flipUniv on_ σ) skBase leftLit.var := by
+      simpa [hsameVar] using hright_changed
+    have hfull_eq :
+        fullDepArgs s.formula leftLit.var (flipUniv on_ σ) =
+          fullDepArgs s.formula leftLit.var σ :=
+      hleft_fiber (flipUniv on_ σ)
+        (deleteDepArgs_flipUniv s.formula leftLit.var on_ σ)
+        hright_changed_left
+    exact (fullDepArgs_flipUniv_ne_of_contains
+      s.formula leftLit.var on_ σ (hcontains leftLit.var hleft_var))
+      hfull_eq
+  have hleft_base_eq :
+      leftLit =
+        mkLit leftLit.var
+          (s.formula.varValue σ skBase leftLit.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula leftLit.var σ skBase leftLit rfl hleft_true
+  have hright_base_eq :
+      rightLit =
+        mkLit rightLit.var
+          (s.formula.varValue (flipUniv on_ σ) skBase rightLit.var) :=
+    lit_eq_mkLit_varValue_of_var_and_true
+      s.formula rightLit.var (flipUniv on_ σ) skBase rightLit
+      rfl hright_true
+  have hleft_noPathSeed :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+        (mkLit leftLit.var (s.formula.varValue σ skBase leftLit.var)) := by
+    intro hpath
+    rw [← hleft_base_eq] at hpath
+    exact hleft_no_path hpath
+  let sk₁ := patchDeleteWitnessAt s.formula leftLit.var σ skBase
+  have htracked₁ :
+      FlexibleRepairPoolTracked s vars on_ skBase sk₁ := by
+    dsimp [sk₁]
+    exact flexibleRepairPoolTracked_initial_patch
+      (s := s) (vars := vars) (on_ := on_) (of_ := leftLit.var)
+      (sk := skBase) (σSeed := σ)
+      hexi hcontains hleft_var hleft_base_wit hleft_noPathSeed
+  have hright_wit₁ :
+      DeleteDepWitness s.formula rightLit.var on_ sk₁
+        (flipUniv on_ σ) := by
+    dsimp [sk₁]
+    exact (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+      s.formula leftLit.var rightLit.var on_ σ (flipUniv on_ σ)
+      skBase (Ne.symm hdistinct)).2 hright_base_wit
+  have hright_val_eq :
+      s.formula.varValue (flipUniv on_ σ) sk₁ rightLit.var =
+        s.formula.varValue (flipUniv on_ σ) skBase rightLit.var := by
+    dsimp [sk₁]
+    exact varValue_patchDeleteWitnessAt_eq_of_ne
+      s.formula leftLit.var σ (flipUniv on_ σ) skBase
+      (Ne.symm hdistinct)
+  have hright_start_eq :
+      mkLit on_ (!((flipUniv on_ σ) on_)) =
+        mkLit on_ (σ on_) := by
+    simp [flipUniv]
+  have hright_end_eq :
+      mkLit rightLit.var
+          (s.formula.varValue (flipUniv on_ σ) sk₁ rightLit.var) =
+        rightLit := by
+    rw [hright_val_eq]
+    exact hright_base_eq.symm
+  have hright_noPathSeed :
+      ¬ DeletePurePath s on_
+        (mkLit on_ (!((flipUniv on_ σ) on_)))
+        (mkLit rightLit.var
+          (s.formula.varValue (flipUniv on_ σ) sk₁ rightLit.var)) := by
+    intro hpath
+    rw [hright_start_eq, hright_end_eq] at hpath
+    exact hright_no_path hpath
+  let sk₂ :=
+    patchDeleteWitnessAt s.formula rightLit.var (flipUniv on_ σ) sk₁
+  have htracked₂ :
+      FlexibleRepairPoolTracked s vars on_ skBase sk₂ := by
+    dsimp [sk₂]
+    exact flexibleRepairPoolTracked_patch_step
+      (s := s) (vars := vars) (on_ := on_) (patched := rightLit.var)
+      (skBase := skBase) (skCand := sk₁) (σSeed := flipUniv on_ σ)
+      hexi hcontains htracked₁ hright_var hright_wit₁ hright_noPathSeed
+  have hlt :
+      deleteWitnessFiberCountSet s.formula vars on_ sk₂ <
+        deleteWitnessFiberCountSet s.formula vars on_ skBase := by
+    dsimp [sk₂, sk₁]
+    exact deleteWitnessFiberCountSet_second_distinct_patch_lt
+      s.formula vars leftLit.var rightLit.var on_ σ (flipUniv on_ σ)
+      skBase hleft_var (Ne.symm hdistinct)
+      (hexi leftLit.var hleft_var) (hcontains leftLit.var hleft_var)
+      hleft_base_wit (hexi rightLit.var hright_var)
+      (hcontains rightLit.var hright_var) hright_base_wit
+  have hproper :
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ sk₂ skBase := by
+    dsimp [sk₂, sk₁]
+    exact deleteWitnessFiberSetProperSubset_second_distinct_patch
+      s.formula vars leftLit.var rightLit.var on_ σ (flipUniv on_ σ)
+      skBase hleft_var hright_var hdistinct
+      (hexi leftLit.var hleft_var) (hcontains leftLit.var hleft_var)
+      hleft_base_wit (hexi rightLit.var hright_var)
+      (hcontains rightLit.var hright_var) hright_base_wit
+  exact ⟨hdistinct, htracked₂, hlt, hproper⟩
+
+private theorem flexibleRepairSameClauseTwoPatchCandidate_current_subset_core
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    {leftLit rightLit : Literal}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hleft_var : leftLit.var ∈ vars.toList)
+    (hleft_true : s.formula.litValue σ skBase leftLit = true)
+    (hleft_false : s.formula.litValue σ skCand leftLit = false)
+    (hright_var : rightLit.var ∈ vars.toList)
+    (hright_true :
+      s.formula.litValue (flipUniv on_ σ) skBase rightLit = true)
+    (hright_false :
+      s.formula.litValue (flipUniv on_ σ) skCand rightLit = false) :
+    leftLit.var ≠ rightLit.var ∧
+      let sk₁ := patchDeleteWitnessAt s.formula leftLit.var σ skBase
+      let sk₂ :=
+        patchDeleteWitnessAt s.formula rightLit.var (flipUniv on_ σ) sk₁
+      DeleteWitnessFiberSetSubset s.formula vars on_ skCand sk₂ := by
+  classical
+  rcases htracked with ⟨hpool, hfoot, hlive⟩
+  have hleft_changed :
+      s.formula.varValue σ skCand leftLit.var ≠
+        s.formula.varValue σ skBase leftLit.var :=
+    litValue_true_false_implies_varValue_ne
+      s.formula σ skBase skCand leftLit hleft_true hleft_false
+  have hright_changed :
+      s.formula.varValue (flipUniv on_ σ) skCand rightLit.var ≠
+        s.formula.varValue (flipUniv on_ σ) skBase rightLit.var :=
+    litValue_true_false_implies_varValue_ne
+      s.formula (flipUniv on_ σ) skBase skCand rightLit
+      hright_true hright_false
+  rcases hfoot leftLit.var σ hleft_changed with
+    ⟨_hleft_mem, _hleft_base_wit, hleft_fiber⟩
+  have hdistinct : leftLit.var ≠ rightLit.var := by
+    intro hsameVar
+    have hright_changed_left :
+        s.formula.varValue (flipUniv on_ σ) skCand leftLit.var ≠
+          s.formula.varValue (flipUniv on_ σ) skBase leftLit.var := by
+      simpa [hsameVar] using hright_changed
+    have hfull_eq :
+        fullDepArgs s.formula leftLit.var (flipUniv on_ σ) =
+          fullDepArgs s.formula leftLit.var σ :=
+      hleft_fiber (flipUniv on_ σ)
+        (deleteDepArgs_flipUniv s.formula leftLit.var on_ σ)
+        hright_changed_left
+    exact (fullDepArgs_flipUniv_ne_of_contains
+      s.formula leftLit.var on_ σ (hcontains leftLit.var hleft_var))
+      hfull_eq
+  let sk₁ := patchDeleteWitnessAt s.formula leftLit.var σ skBase
+  let sk₂ :=
+    patchDeleteWitnessAt s.formula rightLit.var (flipUniv on_ σ) sk₁
+  refine ⟨hdistinct, ?_⟩
+  dsimp [DeleteWitnessFiberSetSubset]
+  intro z hz args hmemCand
+  have hmemCandData :
+      args ∈ allBoolArrays
+          ((s.formula.depset.getD z #[]).filter (· ≠ on_)).size ∧
+        DeleteWitnessFiber s.formula z on_ skCand args :=
+    (mem_deleteWitnessFiberList_iff s.formula z on_ skCand args).1 hmemCand
+  have hfiberBase :
+      DeleteWitnessFiber s.formula z on_ skBase args :=
+    hpool.2.1 z hz args hmemCandData.2
+  have hmemBase :
+      args ∈ deleteWitnessFiberList s.formula z on_ skBase :=
+    (mem_deleteWitnessFiberList_iff s.formula z on_ skBase args).2
+      ⟨hmemCandData.1, hfiberBase⟩
+  by_cases hz_left : z = leftLit.var
+  · subst z
+    have hnot_target :
+        args ≠ deleteDepArgs s.formula leftLit.var on_ σ := by
+      intro htarget
+      rcases hmemCandData.2 with ⟨τ, hτargs, hwitCandτ⟩
+      have hτargs' :
+          deleteDepArgs s.formula leftLit.var on_ σ =
+            deleteDepArgs s.formula leftLit.var on_ τ := by
+        calc
+          deleteDepArgs s.formula leftLit.var on_ σ = args := htarget.symm
+          _ = deleteDepArgs s.formula leftLit.var on_ τ := hτargs.symm
+      have hsame :
+          s.formula.varValue σ skCand leftLit.var =
+            s.formula.varValue σ skBase leftLit.var :=
+        hlive leftLit.var τ σ hleft_var hwitCandτ hτargs'
+      exact hleft_changed hsame
+    have hpatchLeftFiber :
+        DeleteWitnessFiber s.formula leftLit.var on_ sk₁ args := by
+      rcases hfiberBase with ⟨τ, hτargs, hwitBaseτ⟩
+      refine ⟨τ, hτargs, ?_⟩
+      have hargs_ne :
+          deleteDepArgs s.formula leftLit.var on_ τ ≠
+            deleteDepArgs s.formula leftLit.var on_ σ := by
+        intro heq
+        exact hnot_target (hτargs.symm.trans heq)
+      exact (deleteDepWitness_patchDeleteWitnessAt_iff_of_deleteDepArgs_ne
+        s.formula leftLit.var on_ σ τ skBase
+        (hexi leftLit.var hleft_var) hargs_ne).2 hwitBaseτ
+    have hpatchLeft :
+        args ∈ deleteWitnessFiberList s.formula leftLit.var on_ sk₁ :=
+      (mem_deleteWitnessFiberList_iff s.formula leftLit.var on_ sk₁ args).2
+        ⟨hmemCandData.1, hpatchLeftFiber⟩
+    rw [deleteWitnessFiberList_patchDeleteWitnessAt_eq_of_ne
+      s.formula rightLit.var leftLit.var on_ (flipUniv on_ σ) sk₁
+      hdistinct]
+    exact hpatchLeft
+  · by_cases hz_right : z = rightLit.var
+    · subst z
+      have hnot_target :
+          args ≠ deleteDepArgs s.formula rightLit.var on_
+            (flipUniv on_ σ) := by
+        intro htarget
+        rcases hmemCandData.2 with ⟨τ, hτargs, hwitCandτ⟩
+        have hτargs' :
+            deleteDepArgs s.formula rightLit.var on_ (flipUniv on_ σ) =
+              deleteDepArgs s.formula rightLit.var on_ τ := by
+          calc
+            deleteDepArgs s.formula rightLit.var on_ (flipUniv on_ σ) =
+                args := htarget.symm
+            _ = deleteDepArgs s.formula rightLit.var on_ τ := hτargs.symm
+        have hsame :
+            s.formula.varValue (flipUniv on_ σ) skCand rightLit.var =
+              s.formula.varValue (flipUniv on_ σ) skBase rightLit.var :=
+          hlive rightLit.var τ (flipUniv on_ σ) hright_var hwitCandτ
+            hτargs'
+        exact hright_changed hsame
+      have hfiberSk₁ :
+          DeleteWitnessFiber s.formula rightLit.var on_ sk₁ args :=
+        (deleteWitnessFiber_patchDeleteWitnessAt_iff_of_ne
+          s.formula leftLit.var rightLit.var on_ σ skBase args
+          (Ne.symm hdistinct)).2 hfiberBase
+      have hpatchRightFiber :
+          DeleteWitnessFiber s.formula rightLit.var on_ sk₂ args := by
+        rcases hfiberSk₁ with ⟨τ, hτargs, hwitSk₁τ⟩
+        refine ⟨τ, hτargs, ?_⟩
+        have hargs_ne :
+            deleteDepArgs s.formula rightLit.var on_ τ ≠
+              deleteDepArgs s.formula rightLit.var on_ (flipUniv on_ σ) := by
+          intro heq
+          exact hnot_target (hτargs.symm.trans heq)
+        exact (deleteDepWitness_patchDeleteWitnessAt_iff_of_deleteDepArgs_ne
+          s.formula rightLit.var on_ (flipUniv on_ σ) τ sk₁
+          (hexi rightLit.var hright_var) hargs_ne).2 hwitSk₁τ
+      exact
+        (mem_deleteWitnessFiberList_iff s.formula rightLit.var on_ sk₂ args).2
+          ⟨hmemCandData.1, hpatchRightFiber⟩
+    · have hlistSk₁ :
+          args ∈ deleteWitnessFiberList s.formula z on_ sk₁ := by
+        dsimp [sk₁]
+        rw [deleteWitnessFiberList_patchDeleteWitnessAt_eq_of_ne
+          s.formula leftLit.var z on_ σ skBase hz_left]
+        exact hmemBase
+      rw [deleteWitnessFiberList_patchDeleteWitnessAt_eq_of_ne
+        s.formula rightLit.var z on_ (flipUniv on_ σ) sk₁ hz_right]
+      exact hlistSk₁
+
+private theorem flexibleRepairSameClauseTwoPatchCandidate_current_count_le_core
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    {leftLit rightLit : Literal}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hleft_var : leftLit.var ∈ vars.toList)
+    (hleft_true : s.formula.litValue σ skBase leftLit = true)
+    (hleft_false : s.formula.litValue σ skCand leftLit = false)
+    (hright_var : rightLit.var ∈ vars.toList)
+    (hright_true :
+      s.formula.litValue (flipUniv on_ σ) skBase rightLit = true)
+    (hright_false :
+      s.formula.litValue (flipUniv on_ σ) skCand rightLit = false) :
+    leftLit.var ≠ rightLit.var ∧
+      let sk₁ := patchDeleteWitnessAt s.formula leftLit.var σ skBase
+      let sk₂ :=
+        patchDeleteWitnessAt s.formula rightLit.var (flipUniv on_ σ) sk₁
+      deleteWitnessFiberCountSet s.formula vars on_ skCand ≤
+        deleteWitnessFiberCountSet s.formula vars on_ sk₂ := by
+  rcases flexibleRepairSameClauseTwoPatchCandidate_current_subset_core
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ) (leftLit := leftLit)
+      (rightLit := rightLit)
+      hexi hcontains htracked hleft_var hleft_true hleft_false
+      hright_var hright_true hright_false with
+    ⟨hdistinct, hsubset⟩
+  exact ⟨hdistinct, deleteWitnessFiberCountSet_le_of_subset hsubset⟩
+
+private theorem flexibleRepairSameClauseTwoPatchCandidate_current_subset_split_core
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    {leftLit rightLit : Literal}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hleft_var : leftLit.var ∈ vars.toList)
+    (hleft_true : s.formula.litValue σ skBase leftLit = true)
+    (hleft_false : s.formula.litValue σ skCand leftLit = false)
+    (hright_var : rightLit.var ∈ vars.toList)
+    (hright_true :
+      s.formula.litValue (flipUniv on_ σ) skBase rightLit = true)
+    (hright_false :
+      s.formula.litValue (flipUniv on_ σ) skCand rightLit = false) :
+    leftLit.var ≠ rightLit.var ∧
+      let sk₁ := patchDeleteWitnessAt s.formula leftLit.var σ skBase
+      let sk₂ :=
+        patchDeleteWitnessAt s.formula rightLit.var (flipUniv on_ σ) sk₁
+      (deleteWitnessFiberCountSet s.formula vars on_ skCand <
+          deleteWitnessFiberCountSet s.formula vars on_ sk₂ ∨
+        DeleteWitnessFiberSetSubset s.formula vars on_ sk₂ skCand) := by
+  rcases flexibleRepairSameClauseTwoPatchCandidate_current_subset_core
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ) (leftLit := leftLit)
+      (rightLit := rightLit)
+      hexi hcontains htracked hleft_var hleft_true hleft_false
+      hright_var hright_true hright_false with
+    ⟨hdistinct, hsubset⟩
+  have hle :
+      deleteWitnessFiberCountSet s.formula vars on_ skCand ≤
+        deleteWitnessFiberCountSet s.formula vars on_
+          (patchDeleteWitnessAt s.formula rightLit.var (flipUniv on_ σ)
+            (patchDeleteWitnessAt s.formula leftLit.var σ skBase)) :=
+    deleteWitnessFiberCountSet_le_of_subset hsubset
+  refine ⟨hdistinct, ?_⟩
+  rcases Nat.lt_or_eq_of_le hle with hlt | heq
+  · exact Or.inl hlt
+  · exact Or.inr
+      (deleteWitnessFiberSetSubset_antisymm_of_count_eq hsubset heq)
 
 private theorem flexibleRepairSameClauseTwoPolarityFailure_current_subset_two_patch_candidate
     {s : CheckState} {vars : Array Var} {on_ : Var}
