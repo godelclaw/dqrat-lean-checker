@@ -31040,6 +31040,90 @@ private theorem sameClauseConcreteProperGrowth_missing_changed_footprint
   exact ⟨of_, σ, σSide, hof, hwitNext, hnotCand, hside, hwitBase,
     hchanged, hfiber⟩
 
+private theorem flexibleRepairSameClauseTwoPatchConcreteResidual_properGrowth_frontier
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (htrackedCand :
+      FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (htrackedNext :
+      FlexibleRepairPoolTracked s vars on_ skBase skNext)
+    (hproperCandNext :
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skNext)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchConcreteResidual
+        s vars on_ skBase skCand skNext σ) :
+    (∃ of_ σGrow σSide,
+      of_ ∈ vars.toList ∧
+      DeleteDepWitness s.formula of_ on_ skNext σGrow ∧
+      ¬ DeleteDepWitness s.formula of_ on_ skCand σGrow ∧
+      (σSide = σGrow ∨ σSide = flipUniv on_ σGrow) ∧
+      DeleteDepWitness s.formula of_ on_ skBase σSide ∧
+      s.formula.varValue σSide skCand of_ ≠
+        s.formula.varValue σSide skBase of_ ∧
+      ∀ τ,
+        deleteDepArgs s.formula of_ on_ τ =
+          deleteDepArgs s.formula of_ on_ σSide →
+        s.formula.varValue τ skCand of_ ≠
+          s.formula.varValue τ skBase of_ →
+        fullDepArgs s.formula of_ τ =
+          fullDepArgs s.formula of_ σSide) ∧
+    (∃ leftVar σSide,
+      leftVar ∈ vars.toList ∧
+      (σSide = σ ∨ σSide = flipUniv on_ σ) ∧
+      DeleteDepWitness s.formula leftVar on_ skBase σSide ∧
+      s.formula.varValue σSide skCand leftVar ≠
+        s.formula.varValue σSide skBase leftVar ∧
+      ∀ τ,
+        deleteDepArgs s.formula leftVar on_ τ =
+          deleteDepArgs s.formula leftVar on_ σSide →
+        s.formula.varValue τ skCand leftVar ≠
+          s.formula.varValue τ skBase leftVar →
+        fullDepArgs s.formula leftVar τ =
+          fullDepArgs s.formula leftVar σSide) ∧
+    (∃ rightVar σSide,
+      rightVar ∈ vars.toList ∧
+      (σSide = flipUniv on_ σ ∨ σSide = σ) ∧
+      DeleteDepWitness s.formula rightVar on_ skBase σSide ∧
+      s.formula.varValue σSide skCand rightVar ≠
+        s.formula.varValue σSide skBase rightVar ∧
+      ∀ τ,
+        deleteDepArgs s.formula rightVar on_ τ =
+          deleteDepArgs s.formula rightVar on_ σSide →
+        s.formula.varValue τ skCand rightVar ≠
+          s.formula.varValue τ skBase rightVar →
+        fullDepArgs s.formula rightVar τ =
+          fullDepArgs s.formula rightVar σSide) ∧
+    ((∃ leftVar τ,
+      leftVar ∈ vars.toList ∧
+      PatchChangedFiber s.formula s.clauses leftVar on_ σ τ
+        skBase ∧
+      ¬ DeleteDepWitness s.formula leftVar on_ skCand τ) ∨
+    ∃ leftVar rightVar τ,
+      leftVar ∈ vars.toList ∧
+      rightVar ∈ vars.toList ∧
+      let sk₁ := patchDeleteWitnessAt s.formula leftVar σ skBase
+      PatchChangedFiber s.formula s.clauses rightVar on_
+        (flipUniv on_ σ) τ sk₁ ∧
+      ¬ DeleteDepWitness s.formula rightVar on_ skCand τ) := by
+  exact
+    ⟨sameClauseConcreteProperGrowth_missing_changed_footprint
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext)
+        hexi htrackedCand htrackedNext hproperCandNext,
+      flexibleRepairSameClauseTwoPatchConcreteResidual_left_footprint
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext) (σ := σ)
+        htrackedCand hresidual,
+      flexibleRepairSameClauseTwoPatchConcreteResidual_right_footprint
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext) (σ := σ)
+        htrackedCand hresidual,
+      flexibleRepairSameClauseTwoPatchConcreteResidual_missing_candidate_side
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext) (σ := σ)
+        hexi hproperCandNext.1 hresidual⟩
+
 private abbrev FlexibleRepairTrackedProperSubsetFalseRestart
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
