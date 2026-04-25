@@ -1146,6 +1146,25 @@ private theorem DeleteIndependenceBridge.of_setBridge
   rcases hbridge htrue with ⟨sk, hall, hexhibit⟩
   exact ⟨sk, hall, hexhibit of_ hmem⟩
 
+private theorem ExhibitsDeleteIndependenceSet.of_subset
+    {f : DQBF} {small big : Array Var} {on_ : Var}
+    {sk : SkolemAssignment}
+    (hsubset : ∀ of_, of_ ∈ small.toList → of_ ∈ big.toList)
+    (hexhibit : ExhibitsDeleteIndependenceSet f big on_ sk) :
+    ExhibitsDeleteIndependenceSet f small on_ sk := by
+  intro of_ hof
+  exact hexhibit of_ (hsubset of_ hof)
+
+private theorem DeleteIndependenceSetBridge.of_subset
+    {st : CheckState} {small big : Array Var} {on_ : Var}
+    (hsubset : ∀ of_, of_ ∈ small.toList → of_ ∈ big.toList)
+    (hbridge : DeleteIndependenceSetBridge st big on_) :
+    DeleteIndependenceSetBridge st small on_ := by
+  intro htrue
+  rcases hbridge htrue with ⟨sk, hall, hexhibit⟩
+  exact ⟨sk, hall,
+    ExhibitsDeleteIndependenceSet.of_subset hsubset hexhibit⟩
+
 private theorem exhibitsDeleteIndependence_of_not_contains
     (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
     (hexi : f.isVarExistential of_ = true)
