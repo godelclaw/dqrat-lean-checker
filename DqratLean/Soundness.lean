@@ -30983,6 +30983,51 @@ private theorem patchPoolSelfFirstStartCursorTailResidual_to_closedChaseState
       _hotherNe, _hotherTrue, _hotherStart⟩
   exact ⟨σ, cref, c, lit, cursor, hhead, hpath, hmem, hfalse, hnoOpp⟩
 
+private theorem patchPoolSelfSameStartCursorTailResidual_to_closedChaseState
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hres :
+      PatchPoolSelfSameStartCursorTailResidual
+        s vars on_ startPos skBase skCand) :
+    PatchPoolClosedChaseState s vars on_ startPos skBase skCand := by
+  rcases patchPoolSelfSameStartCursorTailResidual_head hres with
+    ⟨σ, cref, c, lit, hhead, _hblocked⟩
+  rcases hhead with
+    ⟨hget, hclause_false, hno_compl, hlit_mem, hlit_var, hon_eq,
+      hlit_true, hlit_false, hwit, hflip_true, hbase_eq, hcand_eq,
+      hpath_cand, hno_opposite_base, hno_start_base, hall_self⟩
+  let cursor := mkLit lit.var (s.formula.varValue σ skCand lit.var)
+  have hhead' :
+      PatchPoolSelfTailHead
+        s vars on_ startPos skBase skCand σ cref c lit :=
+    ⟨hget, hclause_false, hno_compl, hlit_mem, hlit_var, hon_eq,
+      hlit_true, hlit_false, hwit, hflip_true, hbase_eq, hcand_eq,
+      hpath_cand, hno_opposite_base, hno_start_base, hall_self⟩
+  have hcursor_mem : cursor.var ∈ vars.toList := by
+    simpa [cursor, mkLit_var_early] using hlit_var
+  have hcursor_false :
+      s.formula.litValue (flipUniv on_ σ) skCand cursor = false := by
+    rw [show cursor =
+        mkLit lit.var (s.formula.varValue σ skCand lit.var) from rfl]
+    rw [← hcand_eq, litValue_negate_early, hflip_true]
+    rfl
+  have hnoOppCursor :
+      ¬ DeletePurePath s on_ (mkLit on_ startPos) cursor.negate := by
+    intro hpath
+    apply hno_start_base
+    have hcursor_eq : cursor = lit.negate := by
+      simpa [cursor] using hcand_eq.symm
+    have hcursor_neg_eq :
+        cursor.negate =
+          mkLit lit.var (s.formula.varValue σ skBase lit.var) := by
+      calc
+        cursor.negate = lit := by
+          rw [hcursor_eq, literal_negate_negate_local]
+        _ = mkLit lit.var (s.formula.varValue σ skBase lit.var) := hbase_eq
+    rwa [hcursor_neg_eq] at hpath
+  exact ⟨σ, cref, c, lit, cursor, hhead', hpath_cand, hcursor_mem,
+    hcursor_false, hnoOppCursor⟩
+
 private theorem patchPoolSelfStableTailResidual_to_closedChaseState
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {startPos : Bool} {skBase skCand : SkolemAssignment}
