@@ -2876,6 +2876,39 @@ private theorem deleteWitnessFiberSet_missingWitness_of_subset_count_lt
         ⟨hbase, hsmall⟩)
   exact ⟨of_, hof, args, hbig, hnotWitnessSmall⟩
 
+private theorem not_deleteDepWitness_of_not_deleteWitnessFiber_args
+    {f : DQBF} {of_ on_ : Var} {sk : SkolemAssignment}
+    {σ : UnivAssignment} {args : Array Bool}
+    (hnot :
+      ¬ DeleteWitnessFiber f of_ on_ sk args)
+    (hargs : deleteDepArgs f of_ on_ σ = args) :
+    ¬ DeleteDepWitness f of_ on_ sk σ := by
+  intro hwit
+  exact hnot ⟨σ, hargs, hwit⟩
+
+private theorem deleteWitnessFiberSet_missingAssignment_of_subset_count_lt
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skSmall skBig : SkolemAssignment}
+    (hsubset :
+      DeleteWitnessFiberSetSubset f vars on_ skSmall skBig)
+    (hlt :
+      deleteWitnessFiberCountSet f vars on_ skSmall <
+        deleteWitnessFiberCountSet f vars on_ skBig) :
+    ∃ of_, of_ ∈ vars.toList ∧ ∃ σ,
+      DeleteDepWitness f of_ on_ skBig σ ∧
+        ¬ DeleteDepWitness f of_ on_ skSmall σ := by
+  rcases deleteWitnessFiberSet_missingWitness_of_subset_count_lt
+      (f := f) (vars := vars) (on_ := on_)
+      (skSmall := skSmall) (skBig := skBig) hsubset hlt with
+    ⟨of_, hof, args, hbig, hnotSmall⟩
+  rcases hbig with ⟨σ, hargs, hwitBig⟩
+  have hnotSmallσ :
+      ¬ DeleteDepWitness f of_ on_ skSmall σ :=
+    not_deleteDepWitness_of_not_deleteWitnessFiber_args
+      (f := f) (of_ := of_) (on_ := on_) (sk := skSmall)
+      (σ := σ) (args := args) hnotSmall hargs
+  exact ⟨of_, hof, σ, hwitBig, hnotSmallσ⟩
+
 private theorem deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
     (f : DQBF) (vars : Array Var) (patched on_ : Var)
     (σ₀ : UnivAssignment) (sk : SkolemAssignment)
