@@ -2835,6 +2835,47 @@ private theorem deleteWitnessFiberSet_missing_of_subset_count_lt
       deleteWitnessFiberCountSet_eq_of_subset_subset hsubset hreverse
     exact False.elim ((Nat.ne_of_lt hlt) heq)
 
+private theorem deleteWitnessFiberSetProperSubset_of_subset_count_lt
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skSmall skBig : SkolemAssignment}
+    (hsubset :
+      DeleteWitnessFiberSetSubset f vars on_ skSmall skBig)
+    (hlt :
+      deleteWitnessFiberCountSet f vars on_ skSmall <
+        deleteWitnessFiberCountSet f vars on_ skBig) :
+    DeleteWitnessFiberSetProperSubset f vars on_ skSmall skBig :=
+  ⟨hsubset, deleteWitnessFiberSet_missing_of_subset_count_lt hsubset hlt⟩
+
+private theorem deleteWitnessFiberSet_missingWitness_of_subset_count_lt
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skSmall skBig : SkolemAssignment}
+    (hsubset :
+      DeleteWitnessFiberSetSubset f vars on_ skSmall skBig)
+    (hlt :
+      deleteWitnessFiberCountSet f vars on_ skSmall <
+        deleteWitnessFiberCountSet f vars on_ skBig) :
+    ∃ of_, of_ ∈ vars.toList ∧ ∃ args,
+      DeleteWitnessFiber f of_ on_ skBig args ∧
+        ¬ DeleteWitnessFiber f of_ on_ skSmall args := by
+  rcases deleteWitnessFiberSet_missing_of_subset_count_lt
+      (f := f) (vars := vars) (on_ := on_)
+      (skSmall := skSmall) (skBig := skBig) hsubset hlt with
+    ⟨of_, hof, args, hmemBig, hnotSmall⟩
+  have hbig :
+      DeleteWitnessFiber f of_ on_ skBig args :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skBig args).1 hmemBig |>.2
+  have hbase :
+      args ∈ allBoolArrays
+        ((f.depset.getD of_ #[]).filter (· ≠ on_)).size :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skBig args).1 hmemBig |>.1
+  have hnotWitnessSmall :
+      ¬ DeleteWitnessFiber f of_ on_ skSmall args := by
+    intro hsmall
+    exact hnotSmall
+      ((mem_deleteWitnessFiberList_iff f of_ on_ skSmall args).2
+        ⟨hbase, hsmall⟩)
+  exact ⟨of_, hof, args, hbig, hnotWitnessSmall⟩
+
 private theorem deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
     (f : DQBF) (vars : Array Var) (patched on_ : Var)
     (σ₀ : UnivAssignment) (sk : SkolemAssignment)
@@ -30263,6 +30304,33 @@ private theorem sameClauseConcreteNondecreasingResidual_split
     exact (deleteWitnessFiberCountSet_eq_of_subset_subset
       (f := s.formula) (vars := vars) (on_ := on_)
       hsubsetCandNext hsubsetNextCand).symm
+
+private theorem sameClauseConcreteNondecreasingResidual_proper_or_equiv
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skCand skNext : SkolemAssignment}
+    (hsubsetCandNext :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
+    (hsplit :
+      deleteWitnessFiberCountSet s.formula vars on_ skCand <
+          deleteWitnessFiberCountSet s.formula vars on_ skNext ∨
+        DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
+    (hnot_lt :
+      ¬ deleteWitnessFiberCountSet s.formula vars on_ skNext <
+        deleteWitnessFiberCountSet s.formula vars on_ skCand) :
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skNext ∨
+      (DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand ∧
+        deleteWitnessFiberCountSet s.formula vars on_ skNext =
+          deleteWitnessFiberCountSet s.formula vars on_ skCand) := by
+  rcases sameClauseConcreteNondecreasingResidual_split
+      (s := s) (vars := vars) (on_ := on_)
+      (skCand := skCand) (skNext := skNext)
+      hsubsetCandNext hsplit hnot_lt with
+    hlt | hequiv
+  · exact Or.inl
+      (deleteWitnessFiberSetProperSubset_of_subset_count_lt
+        (f := s.formula) (vars := vars) (on_ := on_)
+        hsubsetCandNext hlt)
+  · exact Or.inr hequiv
 
 private abbrev FlexibleRepairTrackedProperSubsetFalseRestart
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
