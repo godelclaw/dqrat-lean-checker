@@ -28867,6 +28867,26 @@ private theorem flexibleRepairStrictStep_apply_poolContinuation
   rcases hstrict with ⟨skNext, hpoolNext, _hltNext⟩
   exact hcontinue hall hpoolNext
 
+private abbrev FlexibleRepairPoolLocalStrictContinuation
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skStop : SkolemAssignment) : Prop :=
+  ∀ {skNext : SkolemAssignment},
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skStop →
+    FlexibleRepairPoolCandidate s vars on_ skBase skNext →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private theorem flexibleRepairStrictStep_apply_localStrictContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skStop : SkolemAssignment}
+    (hcontinue :
+      FlexibleRepairPoolLocalStrictContinuation
+        s vars on_ skBase skStop)
+    (hstrict : FlexibleRepairStrictStep s vars on_ skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases hstrict with ⟨skNext, hpoolNext, hltNext⟩
+  exact hcontinue hltNext hpoolNext
+
 private theorem flexibleRepairTrackedStrictStep_apply_trackedPoolContinuation
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skBase skCand : SkolemAssignment}
@@ -28877,6 +28897,72 @@ private theorem flexibleRepairTrackedStrictStep_apply_trackedPoolContinuation
     DeleteIndependenceDescentOutcome s vars on_ skBase := by
   rcases hstrict with ⟨skNext, htrackedNext, _hltNext⟩
   exact hcontinue hall htrackedNext
+
+private theorem sameStartExitLiteralContinuation_of_localStrictContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hcontinue :
+      FlexibleRepairPoolLocalStrictContinuation
+        s vars on_ skBase skStop)
+    (hpool : RepairPoolCandidate s vars on_ startPos skBase skStop)
+    (hcase :
+      PatchPoolSelfSameStartExitLiteralTerminalCase
+        s vars on_ startPos skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase :=
+  flexibleRepairStrictStep_apply_localStrictContinuation
+    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+    (skStop := skStop) hcontinue
+    (patchPoolSelfSameStartCursorTailResidual_flexible_step
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop)
+      hexi hcontains hpool hcase)
+
+private theorem stableExitLiteralContinuation_of_localStrictContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hcontinue :
+      FlexibleRepairPoolLocalStrictContinuation
+        s vars on_ skBase skStop)
+    (hpool : RepairPoolCandidate s vars on_ startPos skBase skStop)
+    (hcase :
+      PatchPoolSelfStableExitLiteralTerminalCase
+        s vars on_ startPos skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase :=
+  flexibleRepairStrictStep_apply_localStrictContinuation
+    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+    (skStop := skStop) hcontinue
+    (patchPoolSelfStableCursorTailResidual_flexible_step
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop)
+      hexi hcontains hpool hcase)
+
+private theorem firstStartExitLiteralContinuation_of_localStrictContinuation
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skStop : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hcontinue :
+      FlexibleRepairPoolLocalStrictContinuation
+        s vars on_ skBase skStop)
+    (hpool : RepairPoolCandidate s vars on_ startPos skBase skStop)
+    (hcase :
+      PatchPoolSelfFirstStartExitLiteralTerminalCase
+        s vars on_ startPos skBase skStop) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase :=
+  flexibleRepairStrictStep_apply_localStrictContinuation
+    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+    (skStop := skStop) hcontinue
+    (patchPoolSelfFirstStartCursorTailResidual_flexible_step
+      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+      (skBase := skBase) (skStop := skStop)
+      hexi hcontains hpool hcase)
 
 private theorem sameStartExitLiteralContinuation_of_flexibleRepairPoolContinuation
     {s : CheckState} {vars : Array Var} {on_ : Var}
