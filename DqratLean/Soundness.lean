@@ -30280,6 +30280,46 @@ private abbrev FlexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHand
       s vars on_ skBase skCand skNext σ →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private abbrev FlexibleRepairSameClauseTwoPatchConcreteProperGrowthResidualHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skNext →
+    FlexibleRepairSameClauseTwoPatchConcreteResidual
+      s vars on_ skBase skCand skNext σ →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev FlexibleRepairSameClauseTwoPatchConcreteEquivalentFootprintResidualHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext =
+      deleteWitnessFiberCountSet s.formula vars on_ skCand →
+    FlexibleRepairSameClauseTwoPatchConcreteResidual
+      s vars on_ skBase skCand skNext σ →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
 private theorem sameClauseConcreteNondecreasingResidual_split
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skCand skNext : SkolemAssignment}
@@ -30331,6 +30371,32 @@ private theorem sameClauseConcreteNondecreasingResidual_proper_or_equiv
         (f := s.formula) (vars := vars) (on_ := on_)
         hsubsetCandNext hlt)
   · exact Or.inr hequiv
+
+private theorem flexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHandler_of_properGrowth_or_equivalentFootprint
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hgrowth :
+      FlexibleRepairSameClauseTwoPatchConcreteProperGrowthResidualHandler
+        s vars on_)
+    (hequiv :
+      FlexibleRepairSameClauseTwoPatchConcreteEquivalentFootprintResidualHandler
+        s vars on_) :
+    FlexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHandler
+      s vars on_ := by
+  intro skBase skCand skNext σ hall htracked hfalse hfailure
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hsplitCandNext hnot_lt hresidual
+  rcases sameClauseConcreteNondecreasingResidual_proper_or_equiv
+      (s := s) (vars := vars) (on_ := on_)
+      (skCand := skCand) (skNext := skNext)
+      hsubsetCandNext hsplitCandNext hnot_lt with
+    hproperCandNext | hequivFootprint
+  · exact hgrowth hall htracked hfalse hfailure hproperCand
+      htrackedNext hltNextBase hproperNext hsubsetCandNext
+      hproperCandNext hresidual
+  · rcases hequivFootprint with ⟨hsubsetNextCand, hcountEq⟩
+    exact hequiv hall htracked hfalse hfailure hproperCand
+      htrackedNext hltNextBase hproperNext hsubsetCandNext
+      hsubsetNextCand hcountEq hresidual
 
 private abbrev FlexibleRepairTrackedProperSubsetFalseRestart
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
