@@ -26584,6 +26584,75 @@ private abbrev DeleteIndependenceDescentOutcome
     DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
     DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))
 
+private abbrev DeleteIndependenceDependentDescentOutcome
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase : SkolemAssignment) : Prop :=
+  (∃ sk',
+    (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+    deleteWitnessFiberCountSet s.formula vars on_ sk' <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+  (∃ badOf,
+    s.formula.isVarExistential badOf = true ∧
+    (s.formula.depset.getD badOf #[]).contains on_ = true ∧
+    ∃ pos : Bool,
+    (getReachable s (mkLit on_ true)).getD
+        (mkLit badOf pos).x false = true ∧
+    (getReachable s (mkLit on_ false)).getD
+        (mkLit badOf (!pos)).x false = true)
+
+private theorem deleteIndependenceDependentDescentOutcome_of_internal
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (houtcome :
+      (∃ sk',
+        (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+        deleteWitnessFiberCountSet s.formula vars on_ sk' <
+          deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+      (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+        DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+        DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))) :
+    DeleteIndependenceDependentDescentOutcome s vars on_ skBase := by
+  rcases houtcome with hgood | hbad
+  · exact Or.inl hgood
+  · rcases hbad with ⟨badOf, hbadMem, pos, hposPath, hnegPath⟩
+    have hposReach :
+        (getReachable s (mkLit on_ true)).getD
+          (mkLit badOf pos).x false = true :=
+      deletePurePathComplete_mkLit
+        (hfull := hfull) (pos := true) hon_le hon_univ
+        (mkLit badOf pos) hposPath
+    have hnegReach :
+        (getReachable s (mkLit on_ false)).getD
+          (mkLit badOf (!pos)).x false = true :=
+      deletePurePathComplete_mkLit
+        (hfull := hfull) (pos := false) hon_le hon_univ
+        (mkLit badOf (!pos)) hnegPath
+    exact Or.inr
+      ⟨badOf, hexi badOf hbadMem, hcontains badOf hbadMem,
+        pos, hposReach, hnegReach⟩
+
+private theorem DeleteIndependenceDescentOutcome.to_dependent
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (houtcome : DeleteIndependenceDescentOutcome s vars on_ skBase) :
+    DeleteIndependenceDependentDescentOutcome s vars on_ skBase :=
+  deleteIndependenceDependentDescentOutcome_of_internal
+    hfull hon_le hon_univ hexi hcontains houtcome
+
 private abbrev BlockedHeadContinuation
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   ∀ {startPos : Bool} {skBase skStop : SkolemAssignment}
@@ -34887,6 +34956,31 @@ private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
         (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
         (on_ := on_) (of_ := badOf) (pos := pos)
         hfull hon_le hon_univ hpaths hbadMem hposPath hnegPath)
+
+private theorem deleteWitness_descent_step_of_dependent_outcome_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    {sk : SkolemAssignment}
+    (houtcome : DeleteIndependenceDependentDescentOutcome s vars on_ sk) :
+    ∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk := by
+  rcases houtcome with hgood | hbad
+  · exact hgood
+  · rcases hbad with
+      ⟨badOf, hbadExi, hbadContains, pos, hposReach, hnegReach⟩
+    have hbadMem : badOf ∈ vars.toList :=
+      hclosed badOf hbadExi hbadContains
+    exact False.elim
+      (noDeleteCrossPathsSet_not_reachPos_lit_reachNeg_negate
+        (st := s) (vars := vars) (on_ := on_) (of_ := badOf)
+        (pos := pos) hpaths hbadMem ⟨hposReach, hnegReach⟩)
 
 private theorem deleteIndependenceSetBridge_of_deleteWitness_descent_step
     {s : CheckState} {vars : Array Var} {on_ : Var}
