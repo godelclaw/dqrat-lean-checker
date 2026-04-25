@@ -29781,6 +29781,29 @@ private abbrev FlexibleRepairSameClauseTwoPatchConcreteSplitResidualHandler
       s vars on_ skBase skCand skNext σ →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private abbrev FlexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    (deleteWitnessFiberCountSet s.formula vars on_ skCand <
+        deleteWitnessFiberCountSet s.formula vars on_ skNext ∨
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand) →
+    ¬ deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skCand →
+    FlexibleRepairSameClauseTwoPatchConcreteResidual
+      s vars on_ skBase skCand skNext σ →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
 private abbrev FlexibleRepairTrackedProperSubsetFalseRestart
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
@@ -29805,6 +29828,46 @@ private abbrev FlexibleRepairSameClauseCurrentStrictRestart
         deleteWitnessFiberCountSet s.formula vars on_ skNext <
           deleteWitnessFiberCountSet s.formula vars on_ skCand ∧
         ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+
+private theorem flexibleRepairSameClauseCurrentStrictRestart_of_concreteNondecreasingResidualHandler
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hhandler :
+      FlexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHandler
+        s vars on_) :
+    FlexibleRepairSameClauseCurrentStrictRestart s vars on_ := by
+  intro skBase skCand σ hall htracked hproperCand hfalse hfailure
+  have htwo :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ :=
+    flexibleRepairSameClauseFlipFailure_to_twoPolarityFailure
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ) htracked.1 hall hfailure
+  rcases
+      flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_outcome_or_concrete_candidate_properSubset_residual
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (σ := σ)
+        hexi hcontains hall htracked htwo with
+    houtcome | hresidual
+  · exact Or.inl (Or.inl houtcome)
+  · rcases hresidual with
+      ⟨skNext, htrackedNext, hltNextBase, hproperNext,
+        hsubsetCandNext, hsplitCandNext, hresidualCase⟩
+    by_cases hltCurrent :
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skCand
+    · refine Or.inr ⟨skNext, htrackedNext, hproperNext, hltCurrent, ?_⟩
+      exact
+        flexibleRepairSameClauseTwoPatchConcreteResidual_false_matrix
+          (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+          (skCand := skCand) (skNext := skNext) (σ := σ)
+          hresidualCase
+    · exact Or.inl
+        (hhandler hall htracked hfalse htwo hproperCand htrackedNext
+          hltNextBase hproperNext hsubsetCandNext hsplitCandNext
+          hltCurrent hresidualCase)
 
 private theorem flexibleRepairTrackedProperSubsetFalseRestart_of_sameClause_currentStrictRestart
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
