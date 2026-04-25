@@ -37778,6 +37778,64 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clos
       (flexibleRepairSameClauseCurrentStrictRestart_of_concreteNondecreasingResidualHandler
         hexi hcontains hresidual)
 
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_sameClause_residualRank_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (rank : SkolemAssignment → Nat)
+    (hrank_count :
+      ∀ {skNext skCur : SkolemAssignment},
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skCur →
+        rank skNext < rank skCur)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualRankDecrease
+        s vars on_ rank) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_tracked_properSubset_false_restart
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (flexibleRepairTrackedProperSubsetFalseRestart_of_concreteResidualRank
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+        rank hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+        hrank_count hresidual)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_sameClause_residualRank_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (rank : SkolemAssignment → Nat)
+    (hrank_count :
+      ∀ {skNext skCur : SkolemAssignment},
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skCur →
+        rank skNext < rank skCur)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualRankDecrease
+        s vars on_ rank) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_sameClause_residualRank_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      rank hrank_count hresidual
+
 private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledCursorTerminalHandlers
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
