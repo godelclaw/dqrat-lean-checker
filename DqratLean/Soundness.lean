@@ -30222,6 +30222,66 @@ private abbrev FlexibleRepairSameClauseCurrentStrictRestart
           deleteWitnessFiberCountSet s.formula vars on_ skCand ∧
         ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
 
+private theorem flexibleRepairSameClauseTrackedLocalContinuation_of_concreteNondecreasingResidualHandler
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hhandler :
+      FlexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHandler
+        s vars on_) :
+    FlexibleRepairSameClauseTrackedLocalContinuation s vars on_ := by
+  intro skBase skCand σ hall htracked hfalse hfailure hlocal
+  have htwo :
+      FlexibleRepairSameClauseTwoPolarityFailure
+        s vars on_ skBase skCand σ :=
+    flexibleRepairSameClauseFlipFailure_to_twoPolarityFailure
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ) htracked.1 hall hfailure
+  rcases
+      flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_outcome_or_concrete_candidate_properSubset_residual
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (σ := σ)
+        hexi hcontains hall htracked htwo with
+    houtcome | hresidual
+  · exact Or.inl houtcome
+  · rcases hresidual with
+      ⟨skNext, htrackedNext, hltNextBase, hproperNext,
+        hsubsetCandNext, hsplitCandNext, hresidualCase⟩
+    by_cases hltCurrent :
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skCand
+    · exact hlocal hltCurrent htrackedNext
+    · exact
+        hhandler hall htracked hfalse htwo
+          (flexibleRepairPoolTracked_false_matrix_current_properSubset
+            htracked hall hfalse)
+          htrackedNext hltNextBase hproperNext hsubsetCandNext
+          hsplitCandNext hltCurrent hresidualCase
+
+private theorem flexibleRepairPoolTrackedContinuation_of_same_clause_flip_local_concreteNondecreasingResidual_frontier
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hhandler :
+      FlexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHandler
+        s vars on_) :
+    FlexibleRepairPoolTrackedContinuation s vars on_ := by
+  exact
+    flexibleRepairPoolTrackedContinuation_of_same_clause_flip_local_frontier
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      (flexibleRepairSameClauseTrackedLocalContinuation_of_concreteNondecreasingResidualHandler
+        hexi hcontains hhandler)
+
 private theorem flexibleRepairSameClauseCurrentStrictRestart_of_concreteNondecreasingResidualHandler
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
