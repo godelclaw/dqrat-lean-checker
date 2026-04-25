@@ -2445,6 +2445,32 @@ private theorem deleteWitnessFiberSetProperSubset_subset
     DeleteWitnessFiberSetSubset f vars on_ skNew skOld :=
   h.1
 
+private theorem deleteWitnessFiberSetProperSubset_of_properSubset_subset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skA skB skC : SkolemAssignment}
+    (hAB : DeleteWitnessFiberSetProperSubset f vars on_ skA skB)
+    (hBC : DeleteWitnessFiberSetSubset f vars on_ skB skC) :
+    DeleteWitnessFiberSetProperSubset f vars on_ skA skC := by
+  constructor
+  · exact deleteWitnessFiberSetSubset_trans f vars on_ skA skB skC
+      hAB.1 hBC
+  · rcases hAB.2 with ⟨of_, hof, args, hmemB, hnotA⟩
+    exact ⟨of_, hof, args, hBC of_ hof args hmemB, hnotA⟩
+
+private theorem deleteWitnessFiberSetProperSubset_of_subset_properSubset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skA skB skC : SkolemAssignment}
+    (hAB : DeleteWitnessFiberSetSubset f vars on_ skA skB)
+    (hBC : DeleteWitnessFiberSetProperSubset f vars on_ skB skC) :
+    DeleteWitnessFiberSetProperSubset f vars on_ skA skC := by
+  constructor
+  · exact deleteWitnessFiberSetSubset_trans f vars on_ skA skB skC
+      hAB hBC.1
+  · rcases hBC.2 with ⟨of_, hof, args, hmemC, hnotB⟩
+    refine ⟨of_, hof, args, hmemC, ?_⟩
+    intro hmemA
+    exact hnotB (hAB of_ hof args hmemA)
+
 private theorem deleteWitnessFiberPred_imp_of_list_subset
     (f : DQBF) (of_ on_ : Var)
     (skNew skOld : SkolemAssignment)
@@ -2628,6 +2654,16 @@ private theorem deleteWitnessFiberCountSet_lt_of_properSubset
   simpa [deleteWitnessFiberCountSet] using
     deleteWitnessFiberCountSetList_lt_of_subset_missing
       f vars.toList on_ skNew skOld hproper.1 hproper.2
+
+private theorem deleteWitnessFiberCountSet_le_of_subset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skNew skOld : SkolemAssignment}
+    (hsubset : DeleteWitnessFiberSetSubset f vars on_ skNew skOld) :
+    deleteWitnessFiberCountSet f vars on_ skNew ≤
+      deleteWitnessFiberCountSet f vars on_ skOld := by
+  simpa [deleteWitnessFiberCountSet] using
+    deleteWitnessFiberCountSetList_le_of_subset
+      f vars.toList on_ skNew skOld hsubset
 
 private theorem deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
     (f : DQBF) (vars : Array Var) (patched on_ : Var)
