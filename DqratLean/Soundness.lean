@@ -30551,6 +30551,91 @@ private theorem patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_resid
   exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
     skCand rfl hpool
 
+private theorem patchPoolStrictStep_iterate_descent_or_terminal_cursor_tail_residual_closed_lt
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hstrict : PatchPoolStrictStep s vars on_ startPos skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+    ∃ skStop,
+      PatchPoolCandidate s vars on_ startPos skBase skStop ∧
+      deleteWitnessFiberCountSet s.formula vars on_ skStop <
+        deleteWitnessFiberCountSet s.formula vars on_ skCand ∧
+      (PatchPoolSelfSameStartCursorTailResidual
+          s vars on_ startPos skBase skStop ∨
+        PatchPoolSelfStableTailResidual
+          s vars on_ startPos skBase skStop ∨
+        PatchPoolSelfFirstStartTailResidual
+          s vars on_ startPos skBase skStop ∨
+        PatchPoolSelfBacktrackStableTailResidual
+          s vars on_ startPos skBase skStop ∨
+        PatchPoolSelfBacktrackFirstStartTailResidual
+          s vars on_ startPos skBase skStop) := by
+  rcases hstrict with ⟨skNext, hpoolNext, hltNext⟩
+  rcases patchPoolCandidate_iterate_descent_or_terminal_cursor_tail_residual_closed_le
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skNext)
+      hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      hpoolNext hallBase with
+    hgood | hterminal
+  · exact Or.inl hgood
+  · rcases hterminal with ⟨skStop, hpoolStop, hleStop, hcases⟩
+    exact Or.inr
+      ⟨skStop, hpoolStop, Nat.lt_of_le_of_lt hleStop hltNext, hcases⟩
+
+private theorem patchPoolStrictStep_apply_pooledTerminalDescentHandlers_closed
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hhandlers : PooledTerminalDescentHandlers s vars on_)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    (hstrict : PatchPoolStrictStep s vars on_ startPos skBase skCand) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  rcases hhandlers with
+    ⟨hpair, hstable, hfirstStart, hbackStable, hbackFirstStart⟩
+  rcases patchPoolStrictStep_iterate_descent_or_terminal_cursor_tail_residual_closed_lt
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skCand)
+      hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      hstrict hallBase with
+    hgood | hterminal
+  · exact Or.inl hgood
+  · rcases hterminal with ⟨skStop, hpoolStop, _hltStop, hcases⟩
+    rcases hcases with hsameStart | hrest
+    · exact hpair hallBase hpoolStop
+        (patchPoolSelfSameStartCursorTailResidual_blocked hsameStart)
+    · rcases hrest with hstableResidual | hrest
+      · exact hstable hallBase hpoolStop hstableResidual
+      · rcases hrest with hfirstResidual | hrest
+        · exact hfirstStart hallBase hpoolStop hfirstResidual
+        · rcases hrest with hbackStableResidual | hbackFirstResidual
+          · exact hbackStable hallBase hpoolStop hbackStableResidual
+          · exact hbackFirstStart hallBase hpoolStop hbackFirstResidual
+
 private theorem patchPoolSelfConnectorBacktrackResidualSized_to_descentOutcome_closed
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
@@ -30602,27 +30687,17 @@ private theorem patchPoolSelfConnectorBacktrackResidualSized_to_descentOutcome_c
           PatchPoolStrictStep s vars on_ startPos skBase skCand →
           DeleteIndependenceDescentOutcome s vars on_ skBase := by
         intro hstrict
-        rcases hstrict with ⟨skNext, hpoolNext, _hltNext⟩
-        rcases patchPoolCandidate_iterate_descent_or_terminal_tail_residual_closed
-            (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
-            (on_ := on_) (startPos := startPos) (skBase := skBase)
-            (skCand := skNext)
-            hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
-            hpoolNext hallBase with
-          hgood | hresidual
-        · exact Or.inl hgood
-        · rcases hresidual with hblockedPair | htail
-          · exact hpair hallBase hblockedPair
-          · rcases htail with ⟨skStop, hpoolStop, hcases⟩
-            rcases hcases with hstable | hrest
-            · exact hbackStable hallBase hpoolStop
-                (patchPoolSelfStableTailResidual_to_cursor hstable)
-            · rcases hrest with hfirst | hrest
-              · exact hbackFirstStart hallBase hpoolStop
-                  (patchPoolSelfFirstStartTailResidual_to_cursor hfirst)
-              · rcases hrest with hbackStableResidual | hbackFirstResidual
-                · exact hbackStable hallBase hpoolStop hbackStableResidual
-                · exact hbackFirstStart hallBase hpoolStop hbackFirstResidual
+        let hhandlers : BacktrackTerminalDescentHandlers s vars on_ :=
+          ⟨hpair, hbackStable, hbackFirstStart⟩
+        exact patchPoolStrictStep_apply_pooledTerminalDescentHandlers_closed
+          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+          (on_ := on_) (startPos := startPos) (skBase := skBase)
+          (skCand := skCand)
+          hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+          (pooledTerminalDescentHandlers_of_terminalDescentHandlers
+            (terminalDescentHandlers_of_backtrackTerminalDescentHandlers
+              hhandlers))
+          hallBase hstrict
       have htail :
           PatchPoolSelfBacktrackTailBranchSized
             s vars on_ startPos skBase skCand n :=
@@ -30737,27 +30812,17 @@ private theorem rankedBlockedHeadContinuation_of_backtrack_terminal_handlers_clo
       PatchPoolStrictStep s vars on_ startPos skBase skStop →
       DeleteIndependenceDescentOutcome s vars on_ skBase := by
     intro hstrict
-    rcases hstrict with ⟨skNext, hpoolNext, _hltNext⟩
-    rcases patchPoolCandidate_iterate_descent_or_terminal_tail_residual_closed
-        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
-        (on_ := on_) (startPos := startPos) (skBase := skBase)
-        (skCand := skNext)
-        hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
-        hpoolNext hall with
-      hgood | hresidual
-    · exact Or.inl hgood
-    · rcases hresidual with hblockedPair | htail
-      · exact hpair hall hblockedPair
-      · rcases htail with ⟨skStop', hpoolStop, hcases⟩
-        rcases hcases with hstable | hrest
-        · exact hbackStable hall hpoolStop
-            (patchPoolSelfStableTailResidual_to_cursor hstable)
-        · rcases hrest with hfirst | hrest
-          · exact hbackFirstStart hall hpoolStop
-              (patchPoolSelfFirstStartTailResidual_to_cursor hfirst)
-          · rcases hrest with hbackStableResidual | hbackFirstResidual
-            · exact hbackStable hall hpoolStop hbackStableResidual
-            · exact hbackFirstStart hall hpoolStop hbackFirstResidual
+    let hhandlers : BacktrackTerminalDescentHandlers s vars on_ :=
+      ⟨hpair, hbackStable, hbackFirstStart⟩
+    exact patchPoolStrictStep_apply_pooledTerminalDescentHandlers_closed
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skStop)
+      hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      (pooledTerminalDescentHandlers_of_terminalDescentHandlers
+        (terminalDescentHandlers_of_backtrackTerminalDescentHandlers
+          hhandlers))
+      hall hstrict
   rcases patchPoolBlockedValue_nonself_changed_strict_step_or_all_self
       (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
       (skBase := skBase) (skCand := skStop) (σ := σ)
@@ -33651,25 +33716,15 @@ private theorem blockedValue_continuation_of_terminal_handlers_closed
         DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
         DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos))) := by
     intro hstrict
-    rcases hstrict with ⟨skNext, hpoolNext, _hltNext⟩
-    rcases patchPoolCandidate_iterate_descent_or_terminal_tail_residual_closed
-        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
-        (on_ := on_) (startPos := startPos) (skBase := skBase)
-        (skCand := skNext)
-        hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
-        hpoolNext hall with
-      hgood | hresidual
-    · exact Or.inl hgood
-    · rcases hresidual with hblockedPair | htail
-      · exact hpair hall hblockedPair
-      · rcases htail with ⟨skStop', hpoolStop, hcases⟩
-        rcases hcases with hstableResidual | hrest
-        · exact hstable hall hpoolStop hstableResidual
-        · rcases hrest with hfirstResidual | hrest
-          · exact hfirstStart hall hpoolStop hfirstResidual
-          · rcases hrest with hbackStableResidual | hbackFirstResidual
-            · exact hbackStable hall hpoolStop hbackStableResidual
-            · exact hbackFirstStart hall hpoolStop hbackFirstResidual
+    let hhandlers : TerminalDescentHandlers s vars on_ :=
+      ⟨hpair, hstable, hfirstStart, hbackStable, hbackFirstStart⟩
+    exact patchPoolStrictStep_apply_pooledTerminalDescentHandlers_closed
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skStop)
+      hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      (pooledTerminalDescentHandlers_of_terminalDescentHandlers hhandlers)
+      hall hstrict
   rcases patchPoolBlockedValue_nonself_changed_strict_step_or_all_self
       (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
       (skBase := skBase) (skCand := skStop) (σ := σ)
@@ -33744,6 +33799,7 @@ private theorem blockedHeadContinuation_of_pooled_terminal_handlers_closed
     (hclosed : DeleteDependencyClosedSet s vars on_)
     (hhandlers : PooledTerminalDescentHandlers s vars on_) :
     BlockedHeadContinuation s vars on_ := by
+  let hhandlersAll : PooledTerminalDescentHandlers s vars on_ := hhandlers
   rcases hhandlers with
     ⟨hpair, hstable, hfirstStart, hbackStable, hbackFirstStart⟩
   intro startPos skBase skStop σ cref c lit hall hpool hget
@@ -33754,25 +33810,12 @@ private theorem blockedHeadContinuation_of_pooled_terminal_handlers_closed
       PatchPoolStrictStep s vars on_ startPos skBase skStop →
       DeleteIndependenceDescentOutcome s vars on_ skBase := by
     intro hstrict
-    rcases hstrict with ⟨skNext, hpoolNext, _hltNext⟩
-    rcases patchPoolCandidate_iterate_descent_or_terminal_tail_residual_closed
-        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
-        (on_ := on_) (startPos := startPos) (skBase := skBase)
-        (skCand := skNext)
-        hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
-        hpoolNext hall with
-      hgood | hresidual
-    · exact Or.inl hgood
-    · rcases hresidual with hblockedPair | htail
-      · exact hpair hall hpoolNext hblockedPair
-      · rcases htail with ⟨_skStop', hpoolStop, hcases⟩
-        rcases hcases with hstableResidual | hrest
-        · exact hstable hall hpoolStop hstableResidual
-        · rcases hrest with hfirstResidual | hrest
-          · exact hfirstStart hall hpoolStop hfirstResidual
-          · rcases hrest with hbackStableResidual | hbackFirstResidual
-            · exact hbackStable hall hpoolStop hbackStableResidual
-            · exact hbackFirstStart hall hpoolStop hbackFirstResidual
+    exact patchPoolStrictStep_apply_pooledTerminalDescentHandlers_closed
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skStop)
+      hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      hhandlersAll hall hstrict
   rcases patchPoolBlockedValue_nonself_changed_strict_step_or_all_self
       (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
       (skBase := skBase) (skCand := skStop) (σ := σ)
