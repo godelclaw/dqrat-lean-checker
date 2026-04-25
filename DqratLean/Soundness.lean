@@ -23181,6 +23181,95 @@ private theorem flexibleRepairSameClauseTwoPatchConcreteResidual_equivalent_witn
         (skCand := skCand) (skNext := skNext) (σ := σ)
         hexi hsubsetNextCand hresidual⟩
 
+private theorem flexibleRepairSameClauseTwoPatchConcreteResidual_equivalent_frontier
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hsubsetCandNext :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
+    (hsubsetNextCand :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
+    (hresidual :
+      FlexibleRepairSameClauseTwoPatchConcreteResidual
+        s vars on_ skBase skCand skNext σ) :
+    ∃ cref c leftLit rightLit τ,
+      s.clauses.getClause cref = some c ∧
+      leftLit ∈ c.lits.toList ∧
+      rightLit ∈ c.lits.toList ∧
+      leftLit.var ∈ vars.toList ∧
+      rightLit.var ∈ vars.toList ∧
+      leftLit.var ≠ rightLit.var ∧
+      DeleteDepWitness s.formula leftLit.var on_ skBase σ ∧
+      ¬ DeleteDepWitness s.formula leftLit.var on_ skCand σ ∧
+      ¬ DeleteDepWitness s.formula leftLit.var on_ skNext σ ∧
+      DeleteDepWitness s.formula rightLit.var on_ skBase
+        (flipUniv on_ σ) ∧
+      ¬ DeleteDepWitness s.formula rightLit.var on_ skCand
+        (flipUniv on_ σ) ∧
+      ¬ DeleteDepWitness s.formula rightLit.var on_ skNext
+        (flipUniv on_ σ) ∧
+      s.clauses.matrixValue s.formula τ skNext = false ∧
+      ((PatchChangedFiber s.formula s.clauses leftLit.var on_ σ τ
+            skBase ∧
+          ¬ DeleteDepWitness s.formula leftLit.var on_ skCand τ) ∨
+        (PatchChangedFiber s.formula s.clauses rightLit.var on_
+            (flipUniv on_ σ) τ
+            (patchDeleteWitnessAt s.formula leftLit.var σ skBase) ∧
+          ¬ DeleteDepWitness s.formula rightLit.var on_ skCand τ)) := by
+  rcases hresidual with
+    ⟨cref, c, leftLit, rightLit, τ, hget, hleft_mem,
+      hright_mem, hleft_var, hright_var, hdistinct, hleft_base,
+      hleft_not_live, hright_base, hright_not_live, hfalse,
+      hremoved⟩
+  have hleft_not_next :
+      ¬ DeleteDepWitness s.formula leftLit.var on_ skNext σ :=
+    deleteWitnessFiberSetSubset_not_deleteDepWitness
+      (f := s.formula) (vars := vars) (on_ := on_)
+      (of_ := leftLit.var) (skSmall := skNext)
+      (skBig := skCand) (σ := σ)
+      (hexi leftLit.var hleft_var) hsubsetNextCand hleft_var
+      hleft_not_live
+  have hright_not_next :
+      ¬ DeleteDepWitness s.formula rightLit.var on_ skNext
+        (flipUniv on_ σ) :=
+    deleteWitnessFiberSetSubset_not_deleteDepWitness
+      (f := s.formula) (vars := vars) (on_ := on_)
+      (of_ := rightLit.var) (skSmall := skNext)
+      (skBig := skCand) (σ := flipUniv on_ σ)
+      (hexi rightLit.var hright_var) hsubsetNextCand hright_var
+      hright_not_live
+  have hremovedCand :
+      (PatchChangedFiber s.formula s.clauses leftLit.var on_ σ τ
+            skBase ∧
+          ¬ DeleteDepWitness s.formula leftLit.var on_ skCand τ) ∨
+        (PatchChangedFiber s.formula s.clauses rightLit.var on_
+            (flipUniv on_ σ) τ
+            (patchDeleteWitnessAt s.formula leftLit.var σ skBase) ∧
+          ¬ DeleteDepWitness s.formula rightLit.var on_ skCand τ) := by
+    rcases hremoved with hleft | hright
+    · left
+      rcases hleft with ⟨hfiber, hnotNext⟩
+      exact ⟨hfiber,
+        deleteWitnessFiberSetSubset_not_deleteDepWitness
+          (f := s.formula) (vars := vars) (on_ := on_)
+          (of_ := leftLit.var) (skSmall := skCand)
+          (skBig := skNext) (σ := τ)
+          (hexi leftLit.var hleft_var) hsubsetCandNext hleft_var
+          hnotNext⟩
+    · right
+      rcases hright with ⟨hfiber, hnotNext⟩
+      exact ⟨hfiber,
+        deleteWitnessFiberSetSubset_not_deleteDepWitness
+          (f := s.formula) (vars := vars) (on_ := on_)
+          (of_ := rightLit.var) (skSmall := skCand)
+          (skBig := skNext) (σ := τ)
+          (hexi rightLit.var hright_var) hsubsetCandNext hright_var
+          hnotNext⟩
+  exact ⟨cref, c, leftLit, rightLit, τ, hget, hleft_mem,
+    hright_mem, hleft_var, hright_var, hdistinct, hleft_base,
+    hleft_not_live, hleft_not_next, hright_base, hright_not_live,
+    hright_not_next, hfalse, hremovedCand⟩
+
 private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_outcome_or_concrete_candidate_properSubset_residual
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
