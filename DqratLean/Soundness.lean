@@ -31618,59 +31618,6 @@ private theorem deleteIndependenceDescentOutcome_of_model_properSubset
   Or.inl ⟨skCand, hallCand,
     deleteWitnessFiberCountSet_lt_of_properSubset hproper⟩
 
-private theorem deleteIndependenceDescentOutcome_of_setBridge_count_pos
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase : SkolemAssignment}
-    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
-    (hbridge : DeleteIndependenceSetBridge s vars on_)
-    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (hpos : 0 < deleteWitnessFiberCountSet s.formula vars on_ skBase) :
-    DeleteIndependenceDescentOutcome s vars on_ skBase := by
-  rcases hbridge ⟨skBase, hallBase⟩ with
-    ⟨sk', hall', hexhibit⟩
-  left
-  refine ⟨sk', hall', ?_⟩
-  have hzero :
-      deleteWitnessFiberCountSet s.formula vars on_ sk' = 0 :=
-    (deleteWitnessFiberCountSet_zero_iff_exhibits
-      s.formula vars on_ sk' hexi).2 hexhibit
-  simpa [hzero] using hpos
-
-private theorem deleteIndependenceDescentOutcome_of_setBridge_poolCandidate
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {startPos : Bool} {skBase skStop : SkolemAssignment}
-    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
-    (hbridge : DeleteIndependenceSetBridge s vars on_)
-    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (hpool : PatchPoolCandidate s vars on_ startPos skBase skStop) :
-    DeleteIndependenceDescentOutcome s vars on_ skBase := by
-  exact deleteIndependenceDescentOutcome_of_setBridge_count_pos
-    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-    hexi hbridge hallBase
-    (Nat.lt_of_le_of_lt (Nat.zero_le _) hpool.1)
-
-private theorem pooledCursorTerminalDescentHandlers_of_setBridge
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
-    (hbridge : DeleteIndependenceSetBridge s vars on_) :
-    PooledCursorTerminalDescentHandlers s vars on_ := by
-  refine ⟨?_, ?_, ?_⟩
-  · intro startPos skBase skStop hall hpool _hblocked
-    exact deleteIndependenceDescentOutcome_of_setBridge_poolCandidate
-      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
-      (skBase := skBase) (skStop := skStop)
-      hexi hbridge hall hpool
-  · intro startPos skBase skStop hall hpool _hstable
-    exact deleteIndependenceDescentOutcome_of_setBridge_poolCandidate
-      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
-      (skBase := skBase) (skStop := skStop)
-      hexi hbridge hall hpool
-  · intro startPos skBase skStop hall hpool _hfirst
-    exact deleteIndependenceDescentOutcome_of_setBridge_poolCandidate
-      (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
-      (skBase := skBase) (skStop := skStop)
-      hexi hbridge hall hpool
-
 private theorem flexibleRepairTrackedStrictStep_apply_trackedProperSubsetFalseRestart
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skBase skCand : SkolemAssignment}
