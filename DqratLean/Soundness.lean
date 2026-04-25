@@ -24128,6 +24128,77 @@ private theorem computeDeps_indepOf_filter_contains_noExternalNoCrossDependentTa
       dqbf cs hfull hon hon_le hon_univ hrun)
     hexivars_complete hdep_gt
 
+private def computeDepsActiveDeletionVars
+    (s₁ : CheckState) (on_ : Var) : Array Var :=
+  (s₁.indepOf.getD (on_ - 1) #[]).filter fun of_ =>
+    (s₁.formula.depset.getD of_ #[]).contains on_
+
+private structure ComputeDepsActiveDeletionFacts
+    (s s₁ : CheckState) (vars : Array Var) (on_ : Var) : Prop where
+  sameFC : SameFC s s₁
+  hexi : ∀ of_ ∈ vars.toList, s₁.formula.isVarExistential of_ = true
+  gt_on : ∀ of_ ∈ vars.toList, on_ < of_
+  contains_on : ∀ of_ ∈ vars.toList,
+    (s₁.formula.depset.getD of_ #[]).contains on_ = true
+  no_cross_paths : NoDeleteCrossPathsSet s vars on_
+  no_cross_dep_closed : DeleteDependencyNoCrossDepClosedSet s vars on_
+
+private theorem computeDeps_activeDeletionFacts_filter_contains
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁) :
+    ComputeDepsActiveDeletionFacts s s₁
+      (computeDepsActiveDeletionVars s₁ on_) on_ := by
+  classical
+  have hsame_spec := computeDeps_sameFC_spec on_ s s ⟨rfl, rfl⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hsame_spec
+  rw [hrun] at hsame_spec
+  rcases hsame_spec with ⟨hformula, hclauses⟩
+  have hsame : SameFC s s₁ := ⟨hformula, hclauses⟩
+  refine
+    { sameFC := hsame
+      hexi := ?_
+      gt_on := ?_
+      contains_on := ?_
+      no_cross_paths := ?_
+      no_cross_dep_closed := ?_ }
+  · simpa [computeDepsActiveDeletionVars] using
+      isVarExistential_filter_contains
+        (s := s₁) (vars := s₁.indepOf.getD (on_ - 1) #[])
+        (on_ := on_)
+        (computeDeps_indepOf_isVarExistential
+          dqbf cs hfull hon hon_le hon_univ hrun)
+  · simpa [computeDepsActiveDeletionVars] using
+      gt_on_filter_contains
+        (s := s₁) (vars := s₁.indepOf.getD (on_ - 1) #[])
+        (on_ := on_)
+        (computeDeps_indepOf_gt_on
+          dqbf cs hfull hon hon_le hon_univ hrun)
+  · simpa [computeDepsActiveDeletionVars] using
+      contains_on_filter_contains
+        (s := s₁) (vars := s₁.indepOf.getD (on_ - 1) #[])
+        (on_ := on_)
+  · intro of_ hof
+    have hof_s :
+        of_ ∈
+          ((s₁.indepOf.getD (on_ - 1) #[]).filter fun x =>
+            (s.formula.depset.getD x #[]).contains on_).toList := by
+      simpa [computeDepsActiveDeletionVars, hformula] using hof
+    exact
+      noDeleteCrossPathsSet_filter_contains
+        (s := s) (vars := s₁.indepOf.getD (on_ - 1) #[])
+        (on_ := on_)
+        (computeDeps_indepOf_noDeleteCrossPathsSet
+          dqbf cs hfull hon hon_le hon_univ hrun)
+        of_ hof_s
+  · simpa [computeDepsActiveDeletionVars] using
+      computeDeps_indepOf_filter_contains_noCrossDepClosedSet
+        dqbf cs hfull hon hon_le hon_univ hrun
+
 private theorem noCrossClosedSet_not_mem_of_exivars_gt_imp_not_noDeleteCrossPaths
     {s : CheckState} {vars : Array Var} {on_ of_ : Var}
     (hclosed : DeleteDependencyNoCrossClosedSet s vars on_)
@@ -36362,6 +36433,73 @@ private theorem deleteIndependenceSetBridge_of_noDeleteCrossPathsSet
     (deleteIndependenceSetBridge_of_noDeleteCrossPathsSet_self
       dqbf cs hfull hon hon_le hon_univ hexi_s hgt hpaths)
     hsame
+
+private theorem computeDeps_forceDelDeps_formula_sound_of_external_reach_patch_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hexivars_complete :
+      ∀ x, s.formula.isVarExistential x = true →
+        x ∈ s.formula.exivars.toList)
+    (hdep_gt :
+      ∀ x, s.formula.isVarExistential x = true →
+        (s.formula.depset.getD x #[]).contains on_ = true →
+        on_ < x)
+    (hsameClause :
+      ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+        (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+        FlexibleRepairPoolCandidate s
+          (computeDepsActiveDeletionVars s₁ on_) on_ skBase skCand →
+        s.clauses.matrixValue s.formula σ skCand = false →
+        FlexibleRepairSameClauseFlipFailure s
+          (computeDepsActiveDeletionVars s₁ on_) on_ skBase skCand σ →
+        DeleteIndependenceDescentOutcome s
+          (computeDepsActiveDeletionVars s₁ on_) on_ skBase)
+    (hexternal :
+      FlexibleRepairExternalReachPatchFailureContinuation s
+        (computeDepsActiveDeletionVars s₁ on_) on_)
+    (htrue : DQBFTrue s₁.formula s₁.clauses) :
+    DQBFTrue
+      (forceDelDeps s₁.formula (computeDepsActiveDeletionVars s₁ on_) on_)
+      s₁.clauses := by
+  classical
+  let vars := computeDepsActiveDeletionVars s₁ on_
+  have hfacts :
+      ComputeDepsActiveDeletionFacts s s₁ vars on_ := by
+    simpa [vars] using
+      computeDeps_activeDeletionFacts_filter_contains
+        dqbf cs hfull hon hon_le hon_univ hrun
+  have hexi_s :
+      ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true := by
+    intro of_ hof
+    simpa [hfacts.sameFC.1] using hfacts.hexi of_ hof
+  have hcontains_s :
+      ∀ of_ ∈ vars.toList,
+        (s.formula.depset.getD of_ #[]).contains on_ = true := by
+    intro of_ hof
+    simpa [hfacts.sameFC.1] using hfacts.contains_on of_ hof
+  have hbridge_s : DeleteIndependenceSetBridge s vars on_ :=
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_external_reach_patch_frontier
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hexi_s hfacts.gt_on hcontains_s
+      hfacts.no_cross_paths hfacts.no_cross_dep_closed
+      hexivars_complete hdep_gt
+      (by
+        intro skBase skCand σ hall hpool hfalse hfailure
+        simpa [vars] using
+          hsameClause hall (by simpa [vars] using hpool) hfalse
+            (by simpa [vars] using hfailure))
+      (by
+        change FlexibleRepairExternalReachPatchFailureContinuation s
+          (computeDepsActiveDeletionVars s₁ on_) on_
+        exact hexternal)
+  have hbridge_s₁ : DeleteIndependenceSetBridge s₁ vars on_ :=
+    DeleteIndependenceSetBridge.of_sameFC hbridge_s hfacts.sameFC
+  exact DQBFTrue_forceDelDeps_of_setBridge hfacts.hexi hbridge_s₁ htrue
 
 private theorem forceDelDeps_formula_sound_of_noDeleteCrossPathsSet
     (dqbf : DQBF) (cs : ClauseStore)
