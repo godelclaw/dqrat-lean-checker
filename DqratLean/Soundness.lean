@@ -38580,6 +38580,56 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clea
       (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
       hresidual
 
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_sameClause_properGrowth_or_equivalentFootprint_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgrowth :
+      FlexibleRepairSameClauseTwoPatchConcreteProperGrowthResidualHandler
+        s vars on_)
+    (hequiv :
+      FlexibleRepairSameClauseTwoPatchConcreteEquivalentFootprintResidualHandler
+        s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_sameClause_nondecreasing_residual_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (flexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHandler_of_properGrowth_or_equivalentFootprint
+        hgrowth hequiv)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_sameClause_properGrowth_or_equivalentFootprint_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoExternal : NoExternalDependentTail s vars on_)
+    (hgrowth :
+      FlexibleRepairSameClauseTwoPatchConcreteProperGrowthResidualHandler
+        s vars on_)
+    (hequiv :
+      FlexibleRepairSameClauseTwoPatchConcreteEquivalentFootprintResidualHandler
+        s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_sameClause_properGrowth_or_equivalentFootprint_frontier
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths
+      (deleteDependencyClosedSet_of_noExternalDependentTail hnoExternal)
+      hgrowth hequiv
+
 /-- Conditional descent skeleton under the deliberately too-strong assumption
     that every local patch preserves the matrix. Keep this out of the trusted
     dependency-removal chain; `deleteBridge_fixedWitnessPatchRouteTooStrong`
