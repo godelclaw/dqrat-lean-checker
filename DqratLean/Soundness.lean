@@ -2793,6 +2793,17 @@ private theorem deleteWitnessFiberSetSubset_antisymm_of_count_eq
       f vars.toList on_ skNew skOld hsubset
       (by simpa [deleteWitnessFiberCountSet] using hcount)
 
+private theorem deleteWitnessFiberCountSet_eq_of_subset_subset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skA skB : SkolemAssignment}
+    (hAB : DeleteWitnessFiberSetSubset f vars on_ skA skB)
+    (hBA : DeleteWitnessFiberSetSubset f vars on_ skB skA) :
+    deleteWitnessFiberCountSet f vars on_ skA =
+      deleteWitnessFiberCountSet f vars on_ skB := by
+  exact Nat.le_antisymm
+    (deleteWitnessFiberCountSet_le_of_subset hAB)
+    (deleteWitnessFiberCountSet_le_of_subset hBA)
+
 private theorem deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
     (f : DQBF) (vars : Array Var) (patched on_ : Var)
     (σ₀ : UnivAssignment) (sk : SkolemAssignment)
@@ -30197,6 +30208,31 @@ private abbrev FlexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHand
       s vars on_ skBase skCand skNext σ →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private theorem sameClauseConcreteNondecreasingResidual_split
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skCand skNext : SkolemAssignment}
+    (hsubsetCandNext :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
+    (hsplit :
+      deleteWitnessFiberCountSet s.formula vars on_ skCand <
+          deleteWitnessFiberCountSet s.formula vars on_ skNext ∨
+        DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
+    (_hnot_lt :
+      ¬ deleteWitnessFiberCountSet s.formula vars on_ skNext <
+        deleteWitnessFiberCountSet s.formula vars on_ skCand) :
+    deleteWitnessFiberCountSet s.formula vars on_ skCand <
+        deleteWitnessFiberCountSet s.formula vars on_ skNext ∨
+      (DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand ∧
+        deleteWitnessFiberCountSet s.formula vars on_ skNext =
+          deleteWitnessFiberCountSet s.formula vars on_ skCand) := by
+  rcases hsplit with hlt | hsubsetNextCand
+  · exact Or.inl hlt
+  · right
+    refine ⟨hsubsetNextCand, ?_⟩
+    exact (deleteWitnessFiberCountSet_eq_of_subset_subset
+      (f := s.formula) (vars := vars) (on_ := on_)
+      hsubsetCandNext hsubsetNextCand).symm
+
 private abbrev FlexibleRepairTrackedProperSubsetFalseRestart
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
@@ -37526,6 +37562,27 @@ private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clos
     deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_pooledBacktrackTerminalHandlers
       dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
       (pooledBacktrackTerminalDescentHandlers_of_backtrackTerminalDescentHandlers
+        hhandlers)
+
+private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_backtrackExitLiteralTerminalHandlers
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hhandlers : BacktrackTerminalDescentHandlers s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  exact
+    deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_closed_exitLiteralTerminalContinuations
+      dqbf cs hfull hon_le hon_univ hexi hgt hcontains hpaths hclosed
+      (pooledExitLiteralTerminalContinuations_of_backtrackTerminalHandlers_closed
+        dqbf cs hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
         hhandlers)
 
 private theorem deleteIndependenceSetBridge_of_active_noDeleteCrossPathsSet_clean_backtrack_terminal_frontier
