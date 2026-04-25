@@ -31506,6 +31506,23 @@ private theorem flexibleRepairSameClauseTwoPatchConcreteSplitResidualHandler_of_
     ⟨τ, hfalseNext⟩
   exact hrestart hall htrackedNext hproperNext hfalseNext
 
+private theorem flexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHandler_of_trackedRestart
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hrestart :
+      FlexibleRepairTrackedProperSubsetFalseRestart s vars on_) :
+    FlexibleRepairSameClauseTwoPatchConcreteNondecreasingResidualHandler
+      s vars on_ := by
+  intro skBase skCand skNext σ hall _htracked _hfalse _hfailure
+    _hproperCand htrackedNext _hltNext hproperNext _hsubsetCandNext
+    _hsplitCandNext _hnot_lt hresidual
+  rcases
+      flexibleRepairSameClauseTwoPatchConcreteResidual_false_matrix
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext) (σ := σ)
+        hresidual with
+    ⟨τ, hfalseNext⟩
+  exact hrestart hall htrackedNext hproperNext hfalseNext
+
 private theorem flexibleRepairPoolTrackedContinuation_of_two_patch_residual_frontier
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
@@ -33683,6 +33700,32 @@ private theorem pooledExitLiteralTerminalContinuations_of_backtrackTerminalHandl
     firstStartCursorDescentHandler_of_backtrackTerminalHandlers_closed
       dqbf cs hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
       hhandlers⟩
+
+private theorem pooledCursorTerminalDescentHandlers_of_backtrackTerminalHandlers_closed
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hclosed : DeleteDependencyClosedSet s vars on_)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hhandlers : BacktrackTerminalDescentHandlers s vars on_) :
+    PooledCursorTerminalDescentHandlers s vars on_ := by
+  rcases hhandlers with ⟨hpair, hbackStable, hbackFirstStart⟩
+  let hhandlers' : BacktrackTerminalDescentHandlers s vars on_ :=
+    ⟨hpair, hbackStable, hbackFirstStart⟩
+  exact
+    ⟨pooledSameStartPairDescentHandler_of_sameStartPairDescentHandler hpair,
+      stableCursorDescentHandler_of_backtrackTerminalHandlers_closed
+        dqbf cs hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+        hhandlers',
+      firstStartCursorDescentHandler_of_backtrackTerminalHandlers_closed
+        dqbf cs hfull hon_le hon_univ hpaths hclosed hgt hexi hcontains
+        hhandlers'⟩
 
 private theorem rankedBlockedHeadContinuation_of_backtrack_terminal_handlers_closed
     (dqbf : DQBF) (cs : ClauseStore)
