@@ -22415,6 +22415,10 @@ private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_out
         deleteWitnessFiberCountSet s.formula vars on_ skNext <
           deleteWitnessFiberCountSet s.formula vars on_ skBase ∧
         DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext ∧
+        (deleteWitnessFiberCountSet s.formula vars on_ skCand <
+            deleteWitnessFiberCountSet s.formula vars on_ skNext ∨
+          DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand) ∧
         FlexibleRepairSameClauseTwoPatchConcreteResidual
           s vars on_ skBase skCand skNext σ := by
   rcases hfailure with
@@ -22422,6 +22426,8 @@ private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_out
       _hclause_flip_false, _hno_compl, hleft_mem, hleft_var,
       hleft_true, hleft_false, hleft_no_path, hright_mem,
       hright_var, hright_true, hright_false, hright_no_path⟩
+  have htrackedOrig :
+      FlexibleRepairPoolTracked s vars on_ skBase skCand := htracked
   rcases htracked with ⟨_hpool, hfoot, hlive⟩
   have hleft_changed :
       s.formula.varValue σ skCand leftLit.var ≠
@@ -22551,6 +22557,28 @@ private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_out
       (hexi leftLit.var hleft_var) (hcontains leftLit.var hleft_var)
       hleft_base_wit (hexi rightLit.var hright_var)
       (hcontains rightLit.var hright_var) hright_base_wit
+  have hsubsetCand₂ :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skCand sk₂ := by
+    rcases flexibleRepairSameClauseTwoPatchCandidate_current_subset_core
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (σ := σ) (leftLit := leftLit)
+        (rightLit := rightLit)
+        hexi hcontains htrackedOrig hleft_var hleft_true hleft_false
+        hright_var hright_true hright_false with
+      ⟨_hdistinct, hsubset⟩
+    simpa [sk₂, sk₁] using hsubset
+  have hsplitCand₂ :
+      deleteWitnessFiberCountSet s.formula vars on_ skCand <
+          deleteWitnessFiberCountSet s.formula vars on_ sk₂ ∨
+        DeleteWitnessFiberSetSubset s.formula vars on_ sk₂ skCand := by
+    rcases flexibleRepairSameClauseTwoPatchCandidate_current_subset_split_core
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (σ := σ) (leftLit := leftLit)
+        (rightLit := rightLit)
+        hexi hcontains htrackedOrig hleft_var hleft_true hleft_false
+        hright_var hright_true hright_false with
+      ⟨_hdistinct, hsplit⟩
+    simpa [sk₂, sk₁] using hsplit
   rcases deleteWitness_descent_step_or_second_distinct_patch_failure
       (s := s) (vars := vars) (on_ := on_) (of_ := leftLit.var)
       (nextOf := rightLit.var) (sk := skBase) (σ₀ := σ)
@@ -22623,8 +22651,9 @@ private theorem flexibleRepairSameClauseTwoPolarityFailure_tracked_two_patch_out
             (hcontains rightLit.var hright_var) hright_wit₁ hfiber
         refine ⟨hfiber, ?_⟩
         simpa [sk₂] using hno_second
-    exact ⟨sk₂, htracked₂, hlt₂, hproper₂, cref, c, leftLit,
-      rightLit, τ, hget, hleft_mem, hright_mem, hleft_var,
+    exact ⟨sk₂, htracked₂, hlt₂, hproper₂, hsubsetCand₂,
+      hsplitCand₂, cref, c, leftLit, rightLit, τ, hget, hleft_mem,
+      hright_mem, hleft_var,
       hright_var, hdistinct, hleft_base_wit, hleft_not_live,
       hright_base_wit, hright_not_live, by
         simpa [sk₂, sk₁] using hfalse, hremoved⟩
@@ -29748,6 +29777,7 @@ private theorem flexibleRepairPoolTrackedContinuation_of_two_patch_concretePrope
       · exact Or.inl houtcome
       · rcases hres with
           ⟨skNext, htrackedNext, hltNext, hproperNext,
+            _hsubsetCandNext, _hsplitCandNext,
             hresidualCase⟩
         exact hresidual hall htracked hfalse htwo
           (flexibleRepairPoolTracked_false_matrix_current_properSubset
