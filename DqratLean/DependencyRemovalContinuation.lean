@@ -75,6 +75,61 @@ abbrev DependencyRemovalSameClauseConcreteNondecreasingResidualHandler
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand
 
 /-!
+The TeX proof measures progress by the finite set of remaining dependency
+witnesses.  Most Lean branches use exactly that count.  One residual branch can
+preserve the count while changing the detailed repair footprint, so Lean also
+records the more general ranked form: a caller may provide any natural-valued
+rank that strictly decreases in the nondecreasing residual case.
+-/
+
+abbrev DependencyRemovalSameClauseConcreteNondecreasingResidualRankDecrease
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (rank : SkolemAssignment → Nat) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    (deleteWitnessFiberCountSet s.formula vars on_ skCand <
+        deleteWitnessFiberCountSet s.formula vars on_ skNext ∨
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand) →
+    ¬ deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skCand →
+    DependencyRemovalExactTwoPatchResidual
+      s vars on_ skBase skCand skNext σ →
+    rank skNext < rank skCand
+
+/-!
+A same-clause ranked repair is the induction step with this more general
+measure.  It either finishes the dependency-removal descent, or returns a
+failed tracked candidate with strictly smaller rank.
+-/
+
+abbrev DependencyRemovalSameClauseRankedRepair
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (rank : SkolemAssignment → Nat) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseFlipFailure
+      s vars on_ skBase skCand σ →
+    DependencyRemovalDescentOutcome s vars on_ skBase ∨
+      ∃ skNext,
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        rank skNext < rank skCand ∧
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+
+/-!
 Inside this residual, the footprint relation between the current candidate
 \(f'\) and the two-patch candidate \(f''\) has two possible shapes.
 
