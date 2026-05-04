@@ -6399,6 +6399,147 @@ theorem dependencyRemoval_removedCurrentWitnessFrontierObservation_of_subsetNext
         htrackedNext hof hbaseτ hnotNextτ⟩
 
 /-!
+The equivalent-footprint case is the bookkeeping situation where every witness
+fiber present in the two-patch candidate is already present in the current
+candidate.  Therefore any residual package that still says "this is a witness
+for `skNext` but not for `skCand`" is impossible in that branch.
+-/
+
+theorem dependencyRemoval_subsetNextCand_forbids_next_not_current_witness
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {skCand skNext : SkolemAssignment} {τ : UnivAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hsubsetNextCand :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
+    (hof : of_ ∈ vars.toList)
+    (hwitNext : DeleteDepWitness s.formula of_ on_ skNext τ)
+    (hnotCand : ¬ DeleteDepWitness s.formula of_ on_ skCand τ) :
+    False :=
+  dependencyRemoval_subsetNextCand_forbids_newWitness
+    (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+    (skCand := skCand) (skNext := skNext) (τ := τ)
+    (hexi of_ hof) hsubsetNextCand hof hwitNext hnotCand
+
+theorem dependencyRemoval_equivalentFootprint_forbids_currentTrueObservedResidual
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand skNext : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hsubsetNextCand :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
+    (hres :
+      DependencyRemovalProperGrowthCurrentTrueObservedResidual
+        s vars on_ skBase skCand skNext) :
+    False := by
+  rcases hres with
+    ⟨_cref, _c, _changed, flipLit, τ, _σSide, _hget,
+      _hnextFalse, _hcurrentTrue, _hchangedMem, _hchangedVar,
+      _hchangedTrue, _hchangedNextFalse, _hchangedNextFlipFalse,
+      _hchangedNoPath, _hnoCompl, _hflipMem, hflipVar,
+      _hflipNextFalse, _hflipNextTrue, hwitNext, hnotCand,
+      _hexiFlip, _hcontainsFlip, _hside, _hbaseSide, _hnotSide,
+      _hchangedCurrent, _hnoPathCurrent, _holdFalse, _hfiber,
+      _hflipCandTrue, _hflipCandFlipTrue⟩
+  exact
+    dependencyRemoval_subsetNextCand_forbids_next_not_current_witness
+      (s := s) (vars := vars) (on_ := on_) (of_ := flipLit.var)
+      (skCand := skCand) (skNext := skNext) (τ := τ)
+      hexi hsubsetNextCand hflipVar hwitNext hnotCand
+
+theorem dependencyRemoval_equivalentFootprint_forbids_currentFalseResidual
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand skNext : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hsubsetNextCand :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
+    (hres :
+      DependencyRemovalProperGrowthCurrentFalseResidual
+        s vars on_ skBase skCand skNext) :
+    False := by
+  rcases hres with
+    ⟨_cref, _c, _changed, flipLit, τ, _hget, _hnextFalse,
+      _hchangedMem, _hchangedVar, _hchangedTrue, _hchangedNextFalse,
+      _hchangedNextFlipFalse, _hchangedNoPath, _hnoCompl,
+      _hflipMem, hflipVar, _hflipNextFalse, _hflipNextTrue,
+      hwitNext, hnotCand, _hflipCandFalse, _hflipCandFlipFalse,
+      _hnoPathCurrent⟩
+  exact
+    dependencyRemoval_subsetNextCand_forbids_next_not_current_witness
+      (s := s) (vars := vars) (on_ := on_) (of_ := flipLit.var)
+      (skCand := skCand) (skNext := skNext) (τ := τ)
+      hexi hsubsetNextCand hflipVar hwitNext hnotCand
+
+theorem dependencyRemoval_equivalentFootprint_forbids_currentBothSidesFalseResidual
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand skNext : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hsubsetNextCand :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
+    (hres :
+      DependencyRemovalProperGrowthCurrentBothSidesFalseResidual
+        s vars on_ skBase skCand skNext) :
+    False := by
+  rcases hres with
+    ⟨_cref, _c, _changed, flipLit, τ, _hget, _hnextFalse,
+      _hchangedMem, _hchangedVar, _hchangedTrue, _hchangedNextFalse,
+      _hchangedNextFlipFalse, _hchangedNoPath, _hnoCompl,
+      _hflipMem, hflipVar, _hflipNextFalse, _hflipNextTrue,
+      hwitNext, hnotCand, _hflipCandFalse, _hflipCandFlipFalse,
+      _hnoPathCurrent, _hcurrentFalse, _hcurrentFlipFalse⟩
+  exact
+    dependencyRemoval_subsetNextCand_forbids_next_not_current_witness
+      (s := s) (vars := vars) (on_ := on_) (of_ := flipLit.var)
+      (skCand := skCand) (skNext := skNext) (τ := τ)
+      hexi hsubsetNextCand hflipVar hwitNext hnotCand
+
+theorem dependencyRemoval_equivalentFootprint_forbids_forwardLiveTailResidual
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand skNext : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hsubsetNextCand :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
+    (hres :
+      DependencyRemovalProperGrowthForwardLiveTailResidual
+        s vars on_ skBase skCand skNext) :
+    False := by
+  rcases hres with
+    ⟨_cref, _c, _changed, flipLit, _liveLit, τ, _hget,
+      _hnextFalse, _hchangedMem, _hchangedVar, _hchangedTrue,
+      _hchangedNextFalse, _hchangedNextFlipFalse, _hchangedNoPath,
+      _hnoCompl, _hflipMem, hflipVar, _hflipNextFalse,
+      _hflipNextTrue, hwitNext, hnotCand, _hflipCandFalse,
+      _hflipCandFlipFalse, _hnoPathCurrent, _hcurrentTrue,
+      _hliveMem, _hliveVar, _hliveBaseWitness, _hliveCandTrue,
+      _hliveNextFalse, _hliveNoPath⟩
+  exact
+    dependencyRemoval_subsetNextCand_forbids_next_not_current_witness
+      (s := s) (vars := vars) (on_ := on_) (of_ := flipLit.var)
+      (skCand := skCand) (skNext := skNext) (τ := τ)
+      hexi hsubsetNextCand hflipVar hwitNext hnotCand
+
+theorem dependencyRemoval_equivalentFootprint_forbids_forwardSameLiteralObstruction
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand skNext : SkolemAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hsubsetNextCand :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
+    (hres :
+      DependencyRemovalProperGrowthForwardLiveSameLiteralObstruction
+        s vars on_ skBase skCand skNext) :
+    False := by
+  rcases hres with
+    ⟨_cref, _c, _changed, flipLit, τ, _hget, _hnextFalse,
+      _hchangedMem, _hchangedVar, _hchangedTrue, _hchangedNextFalse,
+      _hchangedNextFlipFalse, _hchangedNoPath, _hnoCompl,
+      _hflipMem, hflipVar, _hflipNextFalse, _hflipNextTrue,
+      hwitNext, hnotCand, _hflipCandFalse, _hflipCandFlipFalse,
+      _hnoPathCurrent, _hcurrentTrue, _hchangedCandTrue⟩
+  exact
+    dependencyRemoval_subsetNextCand_forbids_next_not_current_witness
+      (s := s) (vars := vars) (on_ := on_) (of_ := flipLit.var)
+      (skCand := skCand) (skNext := skNext) (τ := τ)
+      hexi hsubsetNextCand hflipVar hwitNext hnotCand
+
+/-!
 The current-true live-tail case now has a sharper statement.  Either the live
 literal is still a current witness and gives the next strict patch directly, or
 the only remaining data is the removed-current-witness observation above.
@@ -6796,6 +6937,312 @@ theorem dependencyRemoval_currentFrontier_searchStep
                   hsameNext
 
 /-!
+In the equivalent-footprint branch, the `currentBothSidesFalse` search
+constructor cannot occur: that package still contains a witness for `skNext`
+which is absent from `skCand`.  The removed-current-witness constructor is
+also stronger here, because the equivalent-footprint subset carries the
+absence from `skCand` forward to `skNext`.
+-/
+
+inductive DependencyRemovalEquivalentFootprintSearchStep
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand skNext : SkolemAssignment) : Prop where
+  | local :
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand →
+      DependencyRemovalEquivalentFootprintSearchStep
+        s vars on_ skBase skCand skNext
+  | removedNextWitness :
+      DependencyRemovalRemovedCurrentWitnessFrontierObservation
+        s vars on_ skBase skNext →
+      DependencyRemovalEquivalentFootprintSearchStep
+        s vars on_ skBase skCand skNext
+  | nextSameClauseFailure :
+      (∃ τ, FlexibleRepairSameClauseFlipFailure
+        s vars on_ skBase skNext τ) →
+      DependencyRemovalEquivalentFootprintSearchStep
+        s vars on_ skBase skCand skNext
+
+theorem dependencyRemoval_equivalentFootprint_searchStep
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (htrackedNext :
+      FlexibleRepairPoolTracked s vars on_ skBase skNext)
+    (hsubsetCandNext :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
+    (hsubsetNextCand :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
+    (hexact :
+      DependencyRemovalExactTwoPatchResidual
+        s vars on_ skBase skCand skNext σ) :
+    DependencyRemovalEquivalentFootprintSearchStep
+      s vars on_ skBase skCand skNext := by
+  rcases
+      dependencyRemoval_currentFrontier_searchStep
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+        (on_ := on_) (skBase := skBase) (skCand := skCand)
+        (skNext := skNext) (σ := σ)
+        hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+        hallBase htracked htrackedNext hsubsetCandNext hexact with
+    hlocal | hremoved | hboth | hsameNext
+  · exact DependencyRemovalEquivalentFootprintSearchStep.local hlocal
+  · exact DependencyRemovalEquivalentFootprintSearchStep.removedNextWitness
+      (dependencyRemoval_removedCurrentWitnessFrontierObservation_of_subsetNextCand
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext)
+        hexi htrackedNext hsubsetNextCand hremoved)
+  · exact False.elim
+      (dependencyRemoval_equivalentFootprint_forbids_currentBothSidesFalseResidual
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext)
+        hexi hsubsetNextCand hboth)
+  · exact DependencyRemovalEquivalentFootprintSearchStep.nextSameClauseFailure
+      hsameNext
+
+/-!
+The ranked proof can now expose the two nondecreasing frontier cases without
+collapsing them back into one opaque obligation.  Proper growth keeps the
+new-witness frontier.  Equivalent footprint gets the smaller search step above,
+where the only non-local branches are a removed witness for `skNext` or a
+same-clause failure at `skNext`.
+-/
+
+abbrev DependencyRemovalSameClauseConcreteProperGrowthFrontierRankProgress
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (rank : SkolemAssignment → Nat) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skNext →
+    DependencyRemovalProperGrowthFrontier
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalExactTwoPatchResidual
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
+      rank skNext < rank skCand
+
+abbrev DependencyRemovalSameClauseConcreteEquivalentFootprintFrontierRankProgress
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (rank : SkolemAssignment → Nat) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext =
+      deleteWitnessFiberCountSet s.formula vars on_ skCand →
+    DependencyRemovalEquivalentFootprintFrontier
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalExactTwoPatchResidual
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
+      rank skNext < rank skCand
+
+abbrev DependencyRemovalEquivalentFootprintSearchStepRankProgressDischarge
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (rank : SkolemAssignment → Nat) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext =
+      deleteWitnessFiberCountSet s.formula vars on_ skCand →
+    DependencyRemovalEquivalentFootprintFrontier
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalExactTwoPatchResidual
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalEquivalentFootprintSearchStep
+      s vars on_ skBase skCand skNext →
+    DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
+      rank skNext < rank skCand
+
+abbrev DependencyRemovalEquivalentFootprintReducedRankProgressDischarge
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (rank : SkolemAssignment → Nat) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext =
+      deleteWitnessFiberCountSet s.formula vars on_ skCand →
+    DependencyRemovalEquivalentFootprintFrontier
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalExactTwoPatchResidual
+      s vars on_ skBase skCand skNext σ →
+    (DependencyRemovalRemovedCurrentWitnessFrontierObservation
+        s vars on_ skBase skNext →
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
+        rank skNext < rank skCand) ∧
+    ((∃ τ, FlexibleRepairSameClauseFlipFailure
+        s vars on_ skBase skNext τ) →
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
+        rank skNext < rank skCand)
+
+theorem dependencyRemoval_equivalentFootprintSearchStepRankProgressDischarge_of_reducedDischarge
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {rank : SkolemAssignment → Nat}
+    (hreduced :
+      DependencyRemovalEquivalentFootprintReducedRankProgressDischarge
+        s vars on_ rank) :
+    DependencyRemovalEquivalentFootprintSearchStepRankProgressDischarge
+      s vars on_ rank := by
+  intro skBase skCand skNext σ hallBase htracked hfalse htwo
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hsubsetNextCand hcountEq hfrontier hexact hstep
+  rcases hreduced hallBase htracked hfalse htwo hproperCand
+      htrackedNext hltNextBase hproperNext hsubsetCandNext
+      hsubsetNextCand hcountEq hfrontier hexact with
+    ⟨hremovedNext, hsameNext⟩
+  rcases hstep with hlocal | hremoved | hsame
+  · exact Or.inl hlocal
+  · exact hremovedNext hremoved
+  · exact hsameNext hsame
+
+theorem dependencyRemoval_sameClauseConcreteEquivalentFootprintFrontierRankProgress_of_searchStepDischarge
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (rank : SkolemAssignment → Nat)
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hsearch :
+      DependencyRemovalEquivalentFootprintSearchStepRankProgressDischarge
+        s vars on_ rank) :
+    DependencyRemovalSameClauseConcreteEquivalentFootprintFrontierRankProgress
+      s vars on_ rank := by
+  intro skBase skCand skNext σ hallBase htracked hfalse htwo
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hsubsetNextCand hcountEq hfrontier hexact
+  exact hsearch hallBase htracked hfalse htwo hproperCand
+    htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hsubsetNextCand hcountEq hfrontier hexact
+    (dependencyRemoval_equivalentFootprint_searchStep
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (skBase := skBase) (skCand := skCand)
+      (skNext := skNext) (σ := σ)
+      hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      hallBase htracked htrackedNext hsubsetCandNext hsubsetNextCand
+      hexact)
+
+theorem dependencyRemoval_sameClauseConcreteEquivalentFootprintFrontierRankProgress_of_reducedDischarge
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (rank : SkolemAssignment → Nat)
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hreduced :
+      DependencyRemovalEquivalentFootprintReducedRankProgressDischarge
+        s vars on_ rank) :
+    DependencyRemovalSameClauseConcreteEquivalentFootprintFrontierRankProgress
+      s vars on_ rank :=
+  dependencyRemoval_sameClauseConcreteEquivalentFootprintFrontierRankProgress_of_searchStepDischarge
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+    rank hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+    (dependencyRemoval_equivalentFootprintSearchStepRankProgressDischarge_of_reducedDischarge
+      (s := s) (vars := vars) (on_ := on_) (rank := rank)
+      hreduced)
+
+theorem dependencyRemoval_sameClauseConcreteNondecreasingContextRankProgress_of_frontierRankProgress
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {rank : SkolemAssignment → Nat}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hproper :
+      DependencyRemovalSameClauseConcreteProperGrowthFrontierRankProgress
+        s vars on_ rank)
+    (hequiv :
+      DependencyRemovalSameClauseConcreteEquivalentFootprintFrontierRankProgress
+        s vars on_ rank) :
+    DependencyRemovalSameClauseConcreteNondecreasingContextRankProgress
+      s vars on_ rank := by
+  intro skBase skCand skNext σ hallBase htracked hfalse htwo
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hsplitCandNext hnot_lt hexact _hcontext
+  rcases dependencyRemoval_sameClauseConcreteNondecreasingResidual_split
+      (s := s) (vars := vars) (on_ := on_)
+      (skCand := skCand) (skNext := skNext)
+      hsubsetCandNext hsplitCandNext hnot_lt with
+    hproperCandNext | hequivFootprint
+  · exact hproper hallBase htracked hfalse htwo hproperCand
+      htrackedNext hltNextBase hproperNext hsubsetCandNext
+      hproperCandNext
+      (dependencyRemoval_exactTwoPatchResidual_properGrowthFrontier_data
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext) (σ := σ)
+        hexi htracked htrackedNext hproperCandNext hexact)
+      hexact
+  · rcases hequivFootprint with ⟨hsubsetNextCand, hcountEq⟩
+    exact hequiv hallBase htracked hfalse htwo hproperCand
+      htrackedNext hltNextBase hproperNext hsubsetCandNext
+      hsubsetNextCand hcountEq
+      (dependencyRemoval_exactTwoPatchResidual_equivalentFrontier_data
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext) (σ := σ)
+        hexi hsubsetCandNext hsubsetNextCand hexact)
+      hexact
+
+/-!
 A later finite-rank argument only has to consume the named frontier state.  This
 keeps the search theorem above proof-relevant while avoiding another lossy
 collapse of the residual cases.
@@ -7184,6 +7631,40 @@ theorem dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths_contextR
     (dependencyRemoval_sameClauseConcreteNondecreasingResidualRankProgress_of_contextProgress
       (s := s) (vars := vars) (on_ := on_) rank hexi hcontext)
 
+theorem dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths_frontierRankProgress
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (rank : SkolemAssignment → Nat)
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hrank_count :
+      ∀ {skNext skCur : SkolemAssignment},
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skCur →
+        rank skNext < rank skCur)
+    (hproper :
+      DependencyRemovalSameClauseConcreteProperGrowthFrontierRankProgress
+        s vars on_ rank)
+    (hequiv :
+      DependencyRemovalSameClauseConcreteEquivalentFootprintFrontierRankProgress
+        s vars on_ rank) :
+    DeleteIndependenceSetBridge s vars on_ :=
+  dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths_contextRankProgress
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+    rank hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+    hrank_count
+    (dependencyRemoval_sameClauseConcreteNondecreasingContextRankProgress_of_frontierRankProgress
+      (s := s) (vars := vars) (on_ := on_) (rank := rank)
+      hexi hproper hequiv)
+
 /-!
 The residual handler has now been split into the two concrete frontier cases:
 proper growth of the current-to-two-patch witness footprint, and equivalent
@@ -7364,6 +7845,44 @@ abbrev DependencyRemovalCurrentFrontierRemovedWitnessRankProgressDischarge
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
       rank skNext < rank skCand
 
+theorem dependencyRemoval_sameClauseConcreteProperGrowthFrontierRankProgress_of_currentFrontierReducedDischarge
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (rank : SkolemAssignment → Nat)
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hreduced :
+      DependencyRemovalCurrentFrontierReducedRankProgressDischarge
+        s vars on_ rank) :
+    DependencyRemovalSameClauseConcreteProperGrowthFrontierRankProgress
+      s vars on_ rank := by
+  intro skBase skCand skNext σ hallBase htracked hfalse htwo
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    _hproperCandNext hfrontier hexact
+  rcases hreduced hallBase htracked hfalse htwo hproperCand
+      htrackedNext hltNextBase hproperNext hsubsetCandNext
+      hfrontier.2.2.2 hexact with
+    ⟨hremoved, hboth, hsameNext⟩
+  rcases dependencyRemoval_currentFrontier_searchStep
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (skBase := skBase) (skCand := skCand)
+      (skNext := skNext) (σ := σ)
+      hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      hallBase htracked htrackedNext hsubsetCandNext hexact with
+    hlocal | hremovedCase | hbothCase | hsameNextCase
+  · exact Or.inl hlocal
+  · exact hremoved hremovedCase
+  · exact hboth hbothCase
+  · exact hsameNext hsameNextCase
+
 theorem dependencyRemoval_currentFrontierReducedRankProgressDischarge_of_removedWitnessDischarge
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {rank : SkolemAssignment → Nat}
@@ -7474,6 +7993,45 @@ theorem dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths_reducedR
     hrank_count
     (dependencyRemoval_currentFrontierSearchStepRankProgressDischarge_of_reducedDischarge
       (s := s) (vars := vars) (on_ := on_) (rank := rank) hhard)
+
+theorem dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths_properCurrent_reducedEquivalentRankProgress
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (rank : SkolemAssignment → Nat)
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hrank_count :
+      ∀ {skNext skCur : SkolemAssignment},
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+        deleteWitnessFiberCountSet s.formula vars on_ skCur →
+        rank skNext < rank skCur)
+    (hproperReduced :
+      DependencyRemovalCurrentFrontierReducedRankProgressDischarge
+        s vars on_ rank)
+    (hequivReduced :
+      DependencyRemovalEquivalentFootprintReducedRankProgressDischarge
+        s vars on_ rank) :
+    DeleteIndependenceSetBridge s vars on_ :=
+  dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths_frontierRankProgress
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+    rank hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+    hrank_count
+    (dependencyRemoval_sameClauseConcreteProperGrowthFrontierRankProgress_of_currentFrontierReducedDischarge
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) rank hfull hon_le hon_univ hclosed hgt hexi
+      hcontains hpaths hproperReduced)
+    (dependencyRemoval_sameClauseConcreteEquivalentFootprintFrontierRankProgress_of_reducedDischarge
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) rank hfull hon_le hon_univ hclosed hgt hexi
+      hcontains hpaths hequivReduced)
 
 theorem dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths_removedWitnessRankProgress
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
