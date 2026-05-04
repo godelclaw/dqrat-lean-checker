@@ -6423,6 +6423,218 @@ theorem dependencyRemoval_forwardLiveTail_strictStep_or_removedObservation
           htracked hliveVar hliveBaseWitness hliveCandWitness⟩
 
 /-!
+At this point the residual clause chase has a better production boundary than a
+single unnamed "hard case" hypothesis.  Lean keeps the concrete frontier states
+that still need more argument, and it immediately discharges the branches that
+already match the TeX repair step.
+
+The constructors mean:
+
+* `local`: the current candidate either already satisfies the matrix or has a
+  strict tracked patch.
+* `removedTail`: a live tail literal was a witness for the original Skolem
+  functions but is no longer a current witness.
+* `currentTrueSameLiteral`: the current-true live literal is the changed literal
+  itself, so the simple tail patch orientation is unavailable.
+* `currentBothSidesFalse`: the same residual clause is false for the current
+  candidate on both \(u\)-sides, with the residual provenance preserved.
+* `forwardSameLiteral`: the forward-live literal is the changed literal itself.
+* `nextSameClauseFailure`: the same-clause failure has moved to the two-patch
+  candidate.
+-/
+
+inductive DependencyRemovalCurrentFrontierSearchStep
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand skNext : SkolemAssignment) : Prop where
+  | local :
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand →
+      DependencyRemovalCurrentFrontierSearchStep s vars on_ skBase skCand skNext
+  | removedTail :
+      DependencyRemovalLiveTailRemovedObservation s vars on_ skBase skCand skNext →
+      DependencyRemovalCurrentFrontierSearchStep s vars on_ skBase skCand skNext
+  | currentTrueSameLiteral :
+      DependencyRemovalProperGrowthCurrentTrueLiveSameLiteralObstruction
+        s vars on_ skBase skCand skNext →
+      DependencyRemovalCurrentFrontierSearchStep s vars on_ skBase skCand skNext
+  | currentBothSidesFalse :
+      DependencyRemovalProperGrowthCurrentBothSidesFalseResidual
+        s vars on_ skBase skCand skNext →
+      DependencyRemovalCurrentFrontierSearchStep s vars on_ skBase skCand skNext
+  | forwardSameLiteral :
+      DependencyRemovalProperGrowthForwardLiveSameLiteralObstruction
+        s vars on_ skBase skCand skNext →
+      DependencyRemovalCurrentFrontierSearchStep s vars on_ skBase skCand skNext
+  | nextSameClauseFailure :
+      (∃ τ, FlexibleRepairSameClauseFlipFailure
+        s vars on_ skBase skNext τ) →
+      DependencyRemovalCurrentFrontierSearchStep s vars on_ skBase skCand skNext
+
+theorem dependencyRemoval_currentFrontier_searchStep
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (htrackedNext :
+      FlexibleRepairPoolTracked s vars on_ skBase skNext)
+    (hsubsetCandNext :
+      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
+    (hexact :
+      DependencyRemovalExactTwoPatchResidual
+        s vars on_ skBase skCand skNext σ) :
+    DependencyRemovalCurrentFrontierSearchStep
+      s vars on_ skBase skCand skNext := by
+  have hnoPair :
+      ∀ {badOf : Var} {pos : Bool},
+        badOf ∈ vars.toList →
+        DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) →
+        DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)) →
+        False := by
+    intro badOf pos hof hposPath hnegPath
+    exact noDeleteCrossPathsSet_forbids_deletePurePath_pair
+      (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
+      (on_ := on_) (of_ := badOf) (pos := pos)
+      hfull hon_le hon_univ hpaths hof hposPath hnegPath
+  rcases
+      dependencyRemoval_properGrowthResidual_refinedSideSplit_or_blockedPathBranch
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext) (σ := σ)
+        hon_univ hclosed hgt hexi hcontains hallBase htracked
+        htrackedNext hsubsetCandNext hexact with
+    hlocal | hrest
+  · exact DependencyRemovalCurrentFrontierSearchStep.local hlocal
+  · rcases hrest with htrue | hrest
+    · have hlive :
+          DependencyRemovalProperGrowthCurrentTrueLiveResidual
+            s vars on_ skBase skCand skNext :=
+        dependencyRemoval_properGrowthCurrentTrueObserved_liveResidual
+          (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+          (skCand := skCand) (skNext := skNext)
+          htracked htrackedNext htrue
+      rcases
+          dependencyRemoval_properGrowthCurrentTrueLive_tailNoPath_or_sameLiteral
+            (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+            (skCand := skCand) (skNext := skNext)
+            hon_univ hexi hcontains hlive with
+        htail | hsame
+      · rcases
+            dependencyRemoval_currentTrueLiveTail_strictStep_or_removedObservation
+              (s := s) (vars := vars) (on_ := on_)
+              (skBase := skBase) (skCand := skCand)
+              (skNext := skNext)
+              hexi hcontains hnoPair htracked htail with
+          hstrict | hremoved
+        · exact DependencyRemovalCurrentFrontierSearchStep.local
+            (Or.inr hstrict)
+        · exact DependencyRemovalCurrentFrontierSearchStep.removedTail hremoved
+      · exact DependencyRemovalCurrentFrontierSearchStep.currentTrueSameLiteral hsame
+    · rcases hrest with hboth | hrest
+      · exact DependencyRemovalCurrentFrontierSearchStep.currentBothSidesFalse hboth
+      · rcases hrest with htail | hrest
+        · rcases
+              dependencyRemoval_forwardLiveTail_strictStep_or_removedObservation
+                (s := s) (vars := vars) (on_ := on_)
+                (skBase := skBase) (skCand := skCand)
+                (skNext := skNext)
+                hexi hcontains hnoPair htracked htail with
+            hstrict | hremoved
+          · exact DependencyRemovalCurrentFrontierSearchStep.local
+              (Or.inr hstrict)
+          · exact DependencyRemovalCurrentFrontierSearchStep.removedTail hremoved
+        · rcases hrest with hsameForward | hrest
+          · exact
+              DependencyRemovalCurrentFrontierSearchStep.forwardSameLiteral
+                hsameForward
+          · rcases hrest with hblocked | hsameNext
+            · rcases hblocked with ⟨startPos, hblockedBranch⟩
+              exact DependencyRemovalCurrentFrontierSearchStep.local
+                (Or.inr
+                  (dependencyRemoval_blockedPathBranch_trackedStrictStep
+                    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                    (on_ := on_) (skBase := skBase) (skCand := skCand)
+                    (startPos := startPos)
+                    hfull hon_le hon_univ hexi hcontains hpaths htracked
+                    hblockedBranch))
+            · exact
+                DependencyRemovalCurrentFrontierSearchStep.nextSameClauseFailure
+                  hsameNext
+
+/-!
+A later finite-rank argument only has to consume the named frontier state.  This
+keeps the search theorem above proof-relevant while avoiding another lossy
+collapse of the residual cases.
+-/
+
+abbrev DependencyRemovalCurrentFrontierSearchStepRankProgressDischarge
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (rank : SkolemAssignment → Nat) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    DependencyRemovalCurrentResidualFrontier
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalExactTwoPatchResidual
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalCurrentFrontierSearchStep
+      s vars on_ skBase skCand skNext →
+    DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
+      rank skNext < rank skCand
+
+theorem dependencyRemoval_sameClauseConcreteCurrentFrontier_rankProgress_of_searchStepDischarge
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (rank : SkolemAssignment → Nat)
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hsearch :
+      DependencyRemovalCurrentFrontierSearchStepRankProgressDischarge
+        s vars on_ rank) :
+    DependencyRemovalSameClauseConcreteCurrentFrontierRankProgress
+      s vars on_ rank := by
+  intro skBase skCand skNext σ hallBase htracked hfalse htwo
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hcurrent hexact
+  have hstep :
+      DependencyRemovalCurrentFrontierSearchStep
+        s vars on_ skBase skCand skNext :=
+    dependencyRemoval_currentFrontier_searchStep
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (skBase := skBase) (skCand := skCand)
+      (skNext := skNext) (σ := σ)
+      hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      hallBase htracked htrackedNext hsubsetCandNext hexact
+  exact hsearch hallBase htracked hfalse htwo hproperCand
+    htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hcurrent hexact hstep
+
+/-!
 The proof above used a simplified local descent hypothesis.  The following two
 Lean statements connect the actual repair pool constructed earlier in the file
 to the same final conclusion.
@@ -6878,6 +7090,30 @@ abbrev DependencyRemovalCurrentFrontierRemovedTailRankProgressDischarge
       DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
         rank skNext < rank skCand)
 
+theorem dependencyRemoval_currentFrontierSearchStepRankProgressDischarge_of_removedTailDischarge
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {rank : SkolemAssignment → Nat}
+    (hhard :
+      DependencyRemovalCurrentFrontierRemovedTailRankProgressDischarge
+        s vars on_ rank) :
+    DependencyRemovalCurrentFrontierSearchStepRankProgressDischarge
+      s vars on_ rank := by
+  intro skBase skCand skNext σ hallBase htracked hfalse htwo
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hcurrent hexact hstep
+  rcases hhard hallBase htracked hfalse htwo hproperCand
+      htrackedNext hltNextBase hproperNext hsubsetCandNext hcurrent
+      hexact with
+    ⟨hremovedTail, hcurrentTrueSame, hboth, hforwardSame, hsameNext⟩
+  rcases hstep with
+    hlocal | hremoved | hsame | hbothCase | hsameForward | hsameNextCase
+  · exact Or.inl hlocal
+  · exact hremovedTail hremoved
+  · exact hcurrentTrueSame hsame
+  · exact hboth hbothCase
+  · exact hforwardSame hsameForward
+  · exact hsameNext hsameNextCase
+
 theorem dependencyRemoval_sameClauseConcreteCurrentFrontier_rankProgress_of_removedTailDischarge
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
@@ -6896,61 +7132,13 @@ theorem dependencyRemoval_sameClauseConcreteCurrentFrontier_rankProgress_of_remo
       DependencyRemovalCurrentFrontierRemovedTailRankProgressDischarge
         s vars on_ rank) :
     DependencyRemovalSameClauseConcreteCurrentFrontierRankProgress
-      s vars on_ rank := by
-  have hnoPair :
-      ∀ {badOf : Var} {pos : Bool},
-        badOf ∈ vars.toList →
-        DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) →
-        DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)) →
-        False := by
-    intro badOf pos hof hposPath hnegPath
-    exact noDeleteCrossPathsSet_forbids_deletePurePath_pair
-      (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
-      (on_ := on_) (of_ := badOf) (pos := pos)
-      hfull hon_le hon_univ hpaths hof hposPath hnegPath
-  intro skBase skCand skNext σ hallBase htracked hfalse htwo
-    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
-    hcurrent hexact
-  have hcase :
-      DependencyRemovalCurrentFrontierRankProgressDischarge
-        s vars on_ rank := by
-    intro skBase skCand skNext σ hallBase htracked hfalse htwo
-      hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
-      hcurrent hexact
-    rcases hhard hallBase htracked hfalse htwo hproperCand
-        htrackedNext hltNextBase hproperNext hsubsetCandNext
-        hcurrent hexact with
-      ⟨hremovedTail, hcurrentTrueSame, hboth,
-        hforwardSame, hsameNext⟩
-    refine ⟨?_, hcurrentTrueSame, hboth, ?_, hforwardSame,
-      hsameNext⟩
-    · intro htail
-      rcases
-          dependencyRemoval_currentTrueLiveTail_strictStep_or_removedObservation
-            (s := s) (vars := vars) (on_ := on_)
-            (skBase := skBase) (skCand := skCand)
-            (skNext := skNext)
-            hexi hcontains hnoPair htracked htail with
-        hstrict | hremoved
-      · exact Or.inl (Or.inr hstrict)
-      · exact hremovedTail hremoved
-    · intro htail
-      rcases
-          dependencyRemoval_forwardLiveTail_strictStep_or_removedObservation
-            (s := s) (vars := vars) (on_ := on_)
-            (skBase := skBase) (skCand := skCand)
-            (skNext := skNext)
-            hexi hcontains hnoPair htracked htail with
-        hstrict | hremoved
-      · exact Or.inl (Or.inr hstrict)
-      · exact hremovedTail hremoved
-  exact
-    (dependencyRemoval_sameClauseConcreteCurrentFrontier_rankProgress_of_caseDischarge
-      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
-      (on_ := on_) rank hfull hon_le hon_univ hclosed hgt hexi
-      hcontains hpaths hcase)
-      hallBase htracked hfalse htwo hproperCand htrackedNext
-      hltNextBase hproperNext hsubsetCandNext hcurrent hexact
+      s vars on_ rank :=
+  dependencyRemoval_sameClauseConcreteCurrentFrontier_rankProgress_of_searchStepDischarge
+    (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+    (on_ := on_) rank hfull hon_le hon_univ hclosed hgt hexi
+    hcontains hpaths
+    (dependencyRemoval_currentFrontierSearchStepRankProgressDischarge_of_removedTailDischarge
+      (s := s) (vars := vars) (on_ := on_) (rank := rank) hhard)
 
 theorem dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths_removedTailRankProgress
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
