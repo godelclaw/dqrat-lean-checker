@@ -79,6 +79,34 @@ abbrev DependencyRemovalRankedFalseStep
         ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
 
 /-!
+The frontier proof sometimes needs one more piece of state than the candidate
+itself.  In the TeX argument this is still the same finite descent: we are
+tracking a search state, and the next failed state must have a smaller
+measure.  Lean records this with a Boolean phase and a rank that may also
+depend on the original satisfying Skolem set.
+
+The starting phase is `false`.  The proof below does not assign mathematical
+meaning to the phases; later lemmas use them to distinguish the ordinary failed
+candidate from a frontier continuation where a same-clause failure has moved
+to the two-patch candidate.
+-/
+
+abbrev DependencyRemovalPhasedRankedFalseStep
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (rank : Bool → SkolemAssignment → SkolemAssignment → Nat) : Prop :=
+  ∀ {phase : Bool} {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    DependencyRemovalDescentOutcome s vars on_ skBase ∨
+      ∃ phaseNext skNext,
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        rank phaseNext skBase skNext < rank phase skBase skCand ∧
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+
+/-!
 This is the formal induction behind "eventually terminates."  The proof is a
 strong induction over the rank of the current failed candidate.  In the step
 case, if the local proof returns a lower-ranked failed candidate, the induction
@@ -114,6 +142,43 @@ theorem dependencyRemoval_trackedFalseRestart_of_rankedFalseStep
           rfl htrackedNext hproperNext hfalseNext)
   exact hP (rank skCand) (skCur := skCand) (τ := σ) rfl htracked
     hproper hfalse
+
+/-!
+The same induction works for the phased search-state rank.  This is the finite
+termination wrapper needed when the next state is not just a new candidate but
+also a different kind of residual search state.
+-/
+
+theorem dependencyRemoval_trackedFalseRestart_of_phasedRankedFalseStep
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (rank : Bool → SkolemAssignment → SkolemAssignment → Nat)
+    (hstep : DependencyRemovalPhasedRankedFalseStep s vars on_ rank) :
+    DependencyRemovalTrackedFalseRestart s vars on_ := by
+  intro skBase skCand σ hall htracked hproper hfalse
+  let P : Nat → Prop := fun n =>
+    ∀ {phase : Bool} {skCur : SkolemAssignment} {τ : UnivAssignment},
+      rank phase skBase skCur = n →
+      FlexibleRepairPoolTracked s vars on_ skBase skCur →
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCur skBase →
+      s.clauses.matrixValue s.formula τ skCur = false →
+      DependencyRemovalDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih phase skCur τ hrank htrackedCur hproperCur hfalseCur
+      rcases hstep (phase := phase) hall htrackedCur hproperCur hfalseCur with
+        houtcome | hnext
+      · exact houtcome
+      · rcases hnext with
+          ⟨phaseNext, skNext, htrackedNext, hproperNext,
+            hrankNext, ρ, hfalseNext⟩
+        have hlt_n : rank phaseNext skBase skNext < n := by
+          simpa [hrank] using hrankNext
+        exact ih (rank phaseNext skBase skNext) hlt_n
+          (phase := phaseNext) (skCur := skNext) (τ := ρ)
+          rfl htrackedNext hproperNext hfalseNext)
+  exact hP (rank false skBase skCand) (phase := false)
+    (skCur := skCand) (τ := σ) rfl htracked hproper hfalse
 
 /-!
 When the measure is exactly the number of remaining witness fibers, a failed
