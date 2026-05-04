@@ -545,48 +545,6 @@ theorem dependencyRemoval_currentResidualPatchFootprint_noPurePath
     hbaseSide, hchanged, hnoPath, hfiber⟩
 
 /-!
-The same residual footprint also proves the "flipped side agrees" observation
-used immediately before the proof searches the false clause for the next
-existential literal.
--/
-
-theorem dependencyRemoval_currentResidualPatchFootprint_flipSide_agreesWithBase
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hpatch :
-      DependencyRemovalCurrentResidualPatchFootprint
-        s vars on_ skBase skCand skNext σ) :
-    ∃ patched τ σSide,
-      patched ∈ vars.toList ∧
-      ¬ DeleteDepWitness s.formula patched on_ skCand τ ∧
-      (σSide = τ ∨ σSide = flipUniv on_ τ) ∧
-      DeleteDepWitness s.formula patched on_ skBase σSide ∧
-      s.formula.varValue σSide skCand patched ≠
-        s.formula.varValue σSide skBase patched ∧
-      s.formula.varValue (flipUniv on_ σSide) skCand patched =
-        s.formula.varValue (flipUniv on_ σSide) skBase patched := by
-  rcases hpatch with
-    ⟨patched, τ, σSide, hof, hnotCand, _hbaseτ, hside,
-      hbaseSide, hchanged, _hfiber⟩
-  have hnotSide :
-      ¬ DeleteDepWitness s.formula patched on_ skCand σSide := by
-    rcases hside with hside | hside
-    · simpa [hside] using hnotCand
-    · intro hwitSide
-      have hwitτ :
-          DeleteDepWitness s.formula patched on_ skCand τ := by
-        exact
-          (dependencyRemoval_deleteDepWitness_flipUniv_iff
-            s.formula patched on_ skCand τ).1 (by
-              simpa [hside] using hwitSide)
-      exact hnotCand hwitτ
-  exact ⟨patched, τ, σSide, hof, hnotCand, hside, hbaseSide,
-    hchanged,
-    dependencyRemoval_removedChangedBaseWitness_flipSide_agreesWithBase
-      s.formula patched on_ skBase skCand σSide
-      hbaseSide hnotSide hchanged⟩
-
-/-!
 The preceding agreement statement is exactly what the TeX proof uses to say
 that the old literal is false on the flipped assignment.  The next lemma keeps
 that as a single auditable package: a residual patch footprint gives the
@@ -693,222 +651,6 @@ theorem dependencyRemoval_currentFrontier_flipObservation
       (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
       (skCand := skCand) (skNext := skNext) (σ := σ)
       hexi htracked hcurrent)
-
-theorem dependencyRemoval_properGrowthFrontier_patchNoPurePath
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (hfrontier :
-      DependencyRemovalProperGrowthFrontier
-        s vars on_ skBase skCand skNext σ) :
-    ∃ patched τ σSide,
-      patched ∈ vars.toList ∧
-      ¬ DeleteDepWitness s.formula patched on_ skCand τ ∧
-      DeleteDepWitness s.formula patched on_ skBase τ ∧
-      (σSide = τ ∨ σSide = flipUniv on_ τ) ∧
-      DeleteDepWitness s.formula patched on_ skBase σSide ∧
-      s.formula.varValue σSide skCand patched ≠
-        s.formula.varValue σSide skBase patched ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(σSide on_)))
-        (mkLit patched (s.formula.varValue σSide skBase patched)) ∧
-      ∀ ρ,
-        deleteDepArgs s.formula patched on_ ρ =
-          deleteDepArgs s.formula patched on_ σSide →
-        s.formula.varValue ρ skCand patched ≠
-          s.formula.varValue ρ skBase patched →
-        fullDepArgs s.formula patched ρ =
-          fullDepArgs s.formula patched σSide :=
-  dependencyRemoval_currentResidualPatchFootprint_noPurePath
-    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-    (skCand := skCand) (skNext := skNext) (σ := σ)
-    htracked
-    (dependencyRemoval_properGrowthFrontier_patchFootprint
-      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-      (skCand := skCand) (skNext := skNext) (σ := σ)
-      hexi htracked hfrontier)
-
-theorem dependencyRemoval_equivalentFrontier_patchNoPurePath
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (hfrontier :
-      DependencyRemovalEquivalentFootprintFrontier
-        s vars on_ skBase skCand skNext σ) :
-    ∃ patched τ σSide,
-      patched ∈ vars.toList ∧
-      ¬ DeleteDepWitness s.formula patched on_ skCand τ ∧
-      DeleteDepWitness s.formula patched on_ skBase τ ∧
-      (σSide = τ ∨ σSide = flipUniv on_ τ) ∧
-      DeleteDepWitness s.formula patched on_ skBase σSide ∧
-      s.formula.varValue σSide skCand patched ≠
-        s.formula.varValue σSide skBase patched ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(σSide on_)))
-        (mkLit patched (s.formula.varValue σSide skBase patched)) ∧
-      ∀ ρ,
-        deleteDepArgs s.formula patched on_ ρ =
-          deleteDepArgs s.formula patched on_ σSide →
-        s.formula.varValue ρ skCand patched ≠
-          s.formula.varValue ρ skBase patched →
-        fullDepArgs s.formula patched ρ =
-          fullDepArgs s.formula patched σSide :=
-  dependencyRemoval_currentResidualPatchFootprint_noPurePath
-    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-    (skCand := skCand) (skNext := skNext) (σ := σ)
-    htracked
-    (dependencyRemoval_equivalentFrontier_patchFootprint
-      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-      (skCand := skCand) (skNext := skNext) (σ := σ)
-      hexi htracked hfrontier)
-
-/-!
-The proper-growth package has one extra piece of data: a witness that is
-present in the two-patch candidate but absent from the current candidate.
-This is the TeX situation where the chase has found a new dependency witness
-created by the attempted repair.  The tracked repair-pool invariant turns that
-into the same old-literal observation used in the rest of the proof: the
-current candidate differs from the original Skolem functions on one side, the
-old literal has no pure path from that side, and the old literal is false after
-flipping \(u\).
--/
-
-theorem dependencyRemoval_properGrowthFrontier_newWitness_flipObservation
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (htracked :
-      FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (hfrontier :
-      DependencyRemovalProperGrowthFrontier
-        s vars on_ skBase skCand skNext σ) :
-    ∃ of_ σGrow σSide,
-      of_ ∈ vars.toList ∧
-      DeleteDepWitness s.formula of_ on_ skNext σGrow ∧
-      ¬ DeleteDepWitness s.formula of_ on_ skCand σGrow ∧
-      (σSide = σGrow ∨ σSide = flipUniv on_ σGrow) ∧
-      DeleteDepWitness s.formula of_ on_ skBase σSide ∧
-      ¬ DeleteDepWitness s.formula of_ on_ skCand σSide ∧
-      s.formula.varValue σSide skCand of_ ≠
-        s.formula.varValue σSide skBase of_ ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(σSide on_)))
-        (mkLit of_ (s.formula.varValue σSide skBase of_)) ∧
-      s.formula.litValue (flipUniv on_ σSide) skCand
-        (mkLit of_ (s.formula.varValue σSide skBase of_)) =
-          false ∧
-      ∀ ρ,
-        deleteDepArgs s.formula of_ on_ ρ =
-          deleteDepArgs s.formula of_ on_ σSide →
-        s.formula.varValue ρ skCand of_ ≠
-          s.formula.varValue ρ skBase of_ →
-        fullDepArgs s.formula of_ ρ =
-          fullDepArgs s.formula of_ σSide := by
-  rcases hfrontier.1 with
-    ⟨of_, σGrow, σSide, hof, hwitNext, hnotCandGrow, hside,
-      hbaseSide, hchanged, hfiber⟩
-  rcases dependencyRemoval_changedValue_baseWitnessAndNoPath
-      (s := s) (vars := vars) (on_ := on_) (of_ := of_)
-      (skBase := skBase) (skCand := skCand) (σ := σSide)
-      htracked hchanged with
-    ⟨_hof, _hbaseSide, hnoPath⟩
-  have hnotCandSide :
-      ¬ DeleteDepWitness s.formula of_ on_ skCand σSide := by
-    rcases hside with hside | hside
-    · simpa [hside] using hnotCandGrow
-    · intro hwitSide
-      have hwitGrow :
-          DeleteDepWitness s.formula of_ on_ skCand σGrow :=
-        (dependencyRemoval_deleteDepWitness_flipUniv_iff
-          s.formula of_ on_ skCand σGrow).1 (by
-            simpa [hside] using hwitSide)
-      exact hnotCandGrow hwitGrow
-  have holdFalse :
-      s.formula.litValue (flipUniv on_ σSide) skCand
-        (mkLit of_ (s.formula.varValue σSide skBase of_)) = false :=
-    dependencyRemoval_removedChangedBaseWitness_oldLiteralFalseOnFlip
-      s.formula of_ on_ skBase skCand σSide
-      hbaseSide hnotCandSide hchanged
-  exact ⟨of_, σGrow, σSide, hof, hwitNext, hnotCandGrow, hside,
-    hbaseSide, hnotCandSide, hchanged, hnoPath, holdFalse, hfiber⟩
-
-/-!
-Both residual frontier cases therefore expose the same TeX-side observation:
-there is a concrete changed old literal, that old literal has no pure path
-from the opposite \(u\)-side, and it is false after the \(u\)-flip.
--/
-
-theorem dependencyRemoval_properGrowthFrontier_flipObservation
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (hfrontier :
-      DependencyRemovalProperGrowthFrontier
-        s vars on_ skBase skCand skNext σ) :
-    ∃ patched τ σSide,
-      patched ∈ vars.toList ∧
-      ¬ DeleteDepWitness s.formula patched on_ skCand τ ∧
-      DeleteDepWitness s.formula patched on_ skBase τ ∧
-      (σSide = τ ∨ σSide = flipUniv on_ τ) ∧
-      DeleteDepWitness s.formula patched on_ skBase σSide ∧
-      s.formula.varValue σSide skCand patched ≠
-        s.formula.varValue σSide skBase patched ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(σSide on_)))
-        (mkLit patched (s.formula.varValue σSide skBase patched)) ∧
-      s.formula.litValue (flipUniv on_ σSide) skCand
-        (mkLit patched (s.formula.varValue σSide skBase patched)) =
-          false ∧
-      ∀ ρ,
-        deleteDepArgs s.formula patched on_ ρ =
-          deleteDepArgs s.formula patched on_ σSide →
-        s.formula.varValue ρ skCand patched ≠
-          s.formula.varValue ρ skBase patched →
-        fullDepArgs s.formula patched ρ =
-          fullDepArgs s.formula patched σSide :=
-  dependencyRemoval_currentResidualPatchFootprint_flipObservation
-    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-    (skCand := skCand) (skNext := skNext) (σ := σ)
-    htracked
-    (dependencyRemoval_properGrowthFrontier_patchFootprint
-      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-      (skCand := skCand) (skNext := skNext) (σ := σ)
-      hexi htracked hfrontier)
-
-theorem dependencyRemoval_equivalentFrontier_flipObservation
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (hfrontier :
-      DependencyRemovalEquivalentFootprintFrontier
-        s vars on_ skBase skCand skNext σ) :
-    ∃ patched τ σSide,
-      patched ∈ vars.toList ∧
-      ¬ DeleteDepWitness s.formula patched on_ skCand τ ∧
-      DeleteDepWitness s.formula patched on_ skBase τ ∧
-      (σSide = τ ∨ σSide = flipUniv on_ τ) ∧
-      DeleteDepWitness s.formula patched on_ skBase σSide ∧
-      s.formula.varValue σSide skCand patched ≠
-        s.formula.varValue σSide skBase patched ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(σSide on_)))
-        (mkLit patched (s.formula.varValue σSide skBase patched)) ∧
-      s.formula.litValue (flipUniv on_ σSide) skCand
-        (mkLit patched (s.formula.varValue σSide skBase patched)) =
-          false ∧
-      ∀ ρ,
-        deleteDepArgs s.formula patched on_ ρ =
-          deleteDepArgs s.formula patched on_ σSide →
-        s.formula.varValue ρ skCand patched ≠
-          s.formula.varValue ρ skBase patched →
-        fullDepArgs s.formula patched ρ =
-          fullDepArgs s.formula patched σSide :=
-  dependencyRemoval_currentResidualPatchFootprint_flipObservation
-    (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-    (skCand := skCand) (skNext := skNext) (σ := σ)
-    htracked
-    (dependencyRemoval_equivalentFrontier_patchFootprint
-      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-      (skCand := skCand) (skNext := skNext) (σ := σ)
-      hexi htracked hfrontier)
 
 /-!
 The residual branch also needs the exact false clause, not only the fact that
@@ -1449,87 +1191,6 @@ theorem dependencyRemoval_exactTwoPatchResidual_otherWitness_or_sameClauseFalse
       (s := s) (on_ := on_) (sk := skNext) (σ := τ)
       (c := c) (baseLit := changed) hclauseFalse hchangedFlipFalse⟩
 
-/-!
-The current frontier and the exact residual are the two pieces Lean needs at
-this point in the TeX proof.  The current frontier supplies the old literal
-whose value was changed by the current candidate and shows that this old
-literal is false after the \(u\)-flip.  The exact residual supplies the still
-false two-patch clause and then performs the same "some other literal, or the
-same clause is false after the flip" split for that residual clause.
--/
-
-theorem dependencyRemoval_currentFrontier_exactResidual_otherWitnessPackage
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (hcurrent :
-      DependencyRemovalCurrentResidualFrontier
-        s vars on_ skBase skCand skNext σ)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ) :
-    ∃ patched τPatch σSide cref c changed τClause,
-      patched ∈ vars.toList ∧
-      ¬ DeleteDepWitness s.formula patched on_ skCand τPatch ∧
-      DeleteDepWitness s.formula patched on_ skBase τPatch ∧
-      (σSide = τPatch ∨ σSide = flipUniv on_ τPatch) ∧
-      DeleteDepWitness s.formula patched on_ skBase σSide ∧
-      s.formula.varValue σSide skCand patched ≠
-        s.formula.varValue σSide skBase patched ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(σSide on_)))
-        (mkLit patched (s.formula.varValue σSide skBase patched)) ∧
-      s.formula.litValue (flipUniv on_ σSide) skCand
-        (mkLit patched (s.formula.varValue σSide skBase patched)) =
-          false ∧
-      (∀ ρ,
-        deleteDepArgs s.formula patched on_ ρ =
-          deleteDepArgs s.formula patched on_ σSide →
-        s.formula.varValue ρ skCand patched ≠
-          s.formula.varValue ρ skBase patched →
-        fullDepArgs s.formula patched ρ =
-          fullDepArgs s.formula patched σSide) ∧
-      s.clauses.getClause cref = some c ∧
-      s.formula.clauseValue τClause skNext c.lits = false ∧
-      changed ∈ c.lits.toList ∧
-      changed.var ∈ vars.toList ∧
-      s.formula.litValue τClause skBase changed = true ∧
-      s.formula.litValue τClause skNext changed = false ∧
-      s.formula.litValue (flipUniv on_ τClause) skNext changed =
-        false ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(τClause on_))) changed ∧
-      ((∃ flipLit,
-        flipLit ∈ c.lits.toList ∧
-        flipLit ≠ changed ∧
-        s.formula.litValue τClause skNext flipLit = false ∧
-        s.formula.litValue (flipUniv on_ τClause) skNext flipLit =
-          true ∧
-        DeleteDepWitness s.formula flipLit.var on_ skNext τClause) ∨
-      s.formula.clauseValue (flipUniv on_ τClause) skNext c.lits =
-        false) := by
-  rcases dependencyRemoval_currentFrontier_flipObservation
-      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-      (skCand := skCand) (skNext := skNext) (σ := σ)
-      hexi htracked hcurrent with
-    ⟨patched, τPatch, σSide, hpatchedMem, hnotCand, hbasePatch,
-      hside, hbaseSide, hchangedCurrent, hnoPathCurrent,
-      holdFlipFalse, hfiberCurrent⟩
-  rcases
-      dependencyRemoval_exactTwoPatchResidual_otherWitness_or_sameClauseFalse
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (skNext := skNext) (σ := σ)
-        hexi hcontains hexact with
-    ⟨cref, c, changed, τClause, hget, hclauseFalse,
-      hchangedMem, hchangedVar, hchangedTrue, hchangedFalse,
-      hchangedFlipFalse, hchangedNoPath, hother⟩
-  exact ⟨patched, τPatch, σSide, cref, c, changed, τClause,
-    hpatchedMem, hnotCand, hbasePatch, hside, hbaseSide,
-    hchangedCurrent, hnoPathCurrent, holdFlipFalse, hfiberCurrent,
-    hget, hclauseFalse, hchangedMem, hchangedVar, hchangedTrue,
-    hchangedFalse, hchangedFlipFalse, hchangedNoPath, hother⟩
-
 /-- Here `baseLit` is the text's already-found literal `l_z`: it is true in
 the original satisfying Skolem set, false in the current candidate, and has no
 pure path from the flipped `on_` literal. The theorem proves the text's
@@ -1680,21 +1341,6 @@ theorem dependencyRemoval_sameClauseFailure_matrixFalse
   exact dependencyRemoval_matrixValue_false_of_false_clause
     s.formula s.clauses σ skCand hget hclauseFalse
 
-theorem dependencyRemoval_sameClauseFailure_flipMatrixFalse
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
-    (hfailure :
-      FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skCand σ) :
-    s.clauses.matrixValue s.formula (flipUniv on_ σ) skCand = false := by
-  rcases hfailure with
-    ⟨cref, c, _baseLit, hget, _hclauseFalse, hclauseFlipFalse,
-      _hnoCompl, _hbaseMem, _hbaseVar, _hbaseTrue, _hbaseFalse,
-      _hbaseNoPath⟩
-  exact dependencyRemoval_matrixValue_false_of_false_clause
-    s.formula s.clauses (flipUniv on_ σ) skCand hget
-    hclauseFlipFalse
-
 /-!
 Conversely, if the current candidate falsifies one concrete clause on both
 \(u\)-sides, that is exactly the same-clause failure used in the TeX proof.
@@ -1814,67 +1460,6 @@ next witness already transferred back to the current candidate.  The other
 branch keeps the same-clause failure for the two-patch candidate, where it can
 be fed into the next repair round.
 -/
-
-theorem dependencyRemoval_exactTwoPatchResidual_equivalentFlipWitnessCurrent_or_sameClauseFailureNext
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hsubsetNextCand :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ) :
-    (∃ cref c changed flipLit τ,
-      s.clauses.getClause cref = some c ∧
-      s.formula.clauseValue τ skNext c.lits = false ∧
-      changed ∈ c.lits.toList ∧
-      changed.var ∈ vars.toList ∧
-      s.formula.litValue τ skBase changed = true ∧
-      s.formula.litValue τ skNext changed = false ∧
-      s.formula.litValue (flipUniv on_ τ) skNext changed = false ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) changed ∧
-      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
-      flipLit ∈ c.lits.toList ∧
-      s.formula.litValue τ skNext flipLit = false ∧
-      s.formula.litValue (flipUniv on_ τ) skNext flipLit = true ∧
-      DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
-      s.formula.isVarExistential flipLit.var = true ∧
-      (s.formula.depset.getD flipLit.var #[]).contains on_ = true) ∨
-      ∃ τ, FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skNext τ := by
-  classical
-  rcases
-      dependencyRemoval_exactTwoPatchResidual_flipWitness_or_sameClauseFailureNext
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (skNext := skNext) (σ := σ)
-        hgt hexi hcontains hexact with
-    hflip | hsameClause
-  · rcases hflip with
-      ⟨cref, c, changed, flipLit, τ, hget, hclauseFalse,
-        hchangedMem, hchangedVar, hchangedTrue, hchangedFalse,
-        hchangedFlipFalse, hchangedNoPath, hnoCompl, hflipMem,
-        hflipFalse, hflipTrue, hwitNext, hexiFlip, hcontainsFlip⟩
-    have hflipVar : flipLit.var ∈ vars.toList :=
-      hclosed flipLit.var hexiFlip hcontainsFlip
-    have hwitCand :
-        DeleteDepWitness s.formula flipLit.var on_ skCand τ :=
-      Classical.byContradiction (fun hnotCand =>
-        (deleteWitnessFiberSetSubset_not_deleteDepWitness
-          (f := s.formula) (vars := vars) (on_ := on_)
-          (of_ := flipLit.var) (skSmall := skNext)
-          (skBig := skCand) (σ := τ)
-          hexiFlip hsubsetNextCand hflipVar hnotCand) hwitNext)
-    exact Or.inl
-      ⟨cref, c, changed, flipLit, τ, hget, hclauseFalse,
-        hchangedMem, hchangedVar, hchangedTrue, hchangedFalse,
-        hchangedFlipFalse, hchangedNoPath, hnoCompl, hflipMem,
-        hflipFalse, hflipTrue, hwitCand, hexiFlip, hcontainsFlip⟩
-  · exact Or.inr hsameClause
 
 /-!
                 Let
@@ -2059,35 +1644,6 @@ theorem dependencyRemoval_poolPatchStep_currentWitnesses_properSubset
   deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
     s.formula vars patched on_ σSeed skCand hpatched_mem
     hexiPatched hcontainsPatched hwit
-
-/-!
-The finite descent also uses the corresponding numeric decrease.  This theorem
-keeps the two readings together: the patch removes a proper subset of witness
-fibers, hence its counted witness measure decreases.
--/
-
-theorem dependencyRemoval_poolPatchStep_currentWitnesses_subset_and_count_lt
-    {s : CheckState} {vars : Array Var} {on_ patched : Var}
-    {skCand : SkolemAssignment} {σSeed : UnivAssignment}
-    (hpatched_mem : patched ∈ vars.toList)
-    (hexiPatched : s.formula.isVarExistential patched = true)
-    (hcontainsPatched :
-      (s.formula.depset.getD patched #[]).contains on_ = true)
-    (hwit : DeleteDepWitness s.formula patched on_ skCand σSeed) :
-    DeleteWitnessFiberSetSubset s.formula vars on_
-        (patchDeleteWitnessAt s.formula patched σSeed skCand) skCand ∧
-      deleteWitnessFiberCountSet s.formula vars on_
-          (patchDeleteWitnessAt s.formula patched σSeed skCand) <
-        deleteWitnessFiberCountSet s.formula vars on_ skCand := by
-  constructor
-  · exact
-      (dependencyRemoval_poolPatchStep_currentWitnesses_properSubset
-        (s := s) (vars := vars) (on_ := on_) (patched := patched)
-        (skCand := skCand) (σSeed := σSeed)
-        hpatched_mem hexiPatched hcontainsPatched hwit).1
-  · exact deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
-      s.formula vars patched on_ σSeed skCand hpatched_mem
-      hexiPatched hcontainsPatched hwit
 
 /-- The same local patch is also the strict descent step used by the induction:
 the witness fiber for `patched` at `σSeed` is removed from the current
@@ -2806,6 +2362,41 @@ theorem dependencyRemoval_pathBranch_trackedStrictStep
     hexi hcontains htracked hlitVar honEq hwit hflipTrue hbaseEq
     hnoStartBase
 
+/-- A blocked path branch is not terminal. The path certificate supplies the
+same data used in the TeX "other literal" chase: a changed existential literal
+whose flipped assignment is true, together with the no-start-path fact forced
+by the no-cross-path hypothesis. Patching that flipped witness is therefore a
+strict tracked repair step. -/
+theorem dependencyRemoval_blockedPathBranch_trackedStrictStep
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    {startPos : Bool} {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hbranch :
+      PatchPoolBlockedPathBranch s vars on_ startPos skBase skCand) :
+    FlexibleRepairTrackedStrictStep s vars on_ skBase skCand := by
+  rcases patchPoolBlockedPathBranch_value_path_certificate
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (startPos := startPos) (skBase := skBase)
+      (skCand := skCand)
+      hfull hon_le hon_univ hpaths hbranch with
+    ⟨σPath, _cref, _c, lit, _hget, _hclauseFalse, _hnoCompl,
+      _hlitMem, hlitVar, honEq, _hlitTrue, _hlitFalse, hwit,
+      hflipTrue, hbaseEq, _hcandEq, _hpathCand, _hnoOppositeBase,
+      hnoStartBase⟩
+  exact dependencyRemoval_trackedStrictStep_of_flipWitnessNoStartPath
+    (s := s) (vars := vars) (on_ := on_) (startPos := startPos)
+    (skBase := skBase) (skCand := skCand) (σ := σPath) (lit := lit)
+    hexi hcontains htracked hlitVar honEq hwit hflipTrue hbaseEq
+    hnoStartBase
+
 /-- A failed pool candidate either has an immediate strict repair step, has the
 path branch described above, or the same candidate also fails on the flipped
 universal assignment. This is the TeX case split around the literal `l_y`. -/
@@ -2854,43 +2445,6 @@ theorem dependencyRemoval_failedCandidate_strictStep_or_pathBranch_or_sameClause
   · exact Or.inr (Or.inr
       ⟨cref, c, baseLit, hget, hclauseFalse, hflipFalse, hnoCompl,
         hbaseMem, hbaseVar, hbaseTrue, hbaseFalse, hbaseNoPath⟩)
-
-/-- With no-cross-paths available, the path branch collapses to a strict repair
-step. After this theorem the only remaining non-step branch is the same clause
-remaining false on both sides of the `on_` flip. -/
-theorem dependencyRemoval_failedCandidate_strictStep_or_sameClauseFailure
-    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
-    {vars : Array Var} {on_ : Var}
-    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
-    (hfull : CheckState.FullCorrect dqbf cs s)
-    (hon_le : on_ ≤ s.formula.maxVar)
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hpaths : NoDeleteCrossPathsSet s vars on_)
-    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
-    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
-    FlexibleRepairStrictStep s vars on_ skBase skCand ∨
-      FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skCand σ := by
-  rcases dependencyRemoval_failedCandidate_strictStep_or_pathBranch_or_sameClauseFailure
-      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-      (skCand := skCand) (σ := σ)
-      hclosed hgt hexi hcontains hpool hallBase hfalse with
-    hstrict | hrest
-  · exact Or.inl hstrict
-  · rcases hrest with hbranch | hflipFalse
-    · exact Or.inl
-        (dependencyRemoval_pathBranch_strictStep
-          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
-          (on_ := on_) (skBase := skBase) (skCand := skCand) (σ := σ)
-          hfull hon_le hon_univ hexi hcontains hpaths hpool hbranch)
-    · exact Or.inr hflipFalse
 
 theorem dependencyRemoval_failedTrackedCandidate_trackedStrictStep_or_pathBranch_or_sameClauseFailure
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -4243,17 +3797,36 @@ theorem dependencyRemoval_sameClauseFailure_currentStrictStep_or_outcome_of_resi
           hsplitCandNext hltCurrent hexact
 
 /-!
-The previous theorem uses the plain witness count as its descent measure.  The
-only branch where that count is not enough is the nondecreasing two-patch
-residual.  Lean can still run the TeX finite-descent paragraph if that residual
-is shown to decrease some other natural-valued measure.  The next definition
-states exactly that local obligation, with the same hypotheses as the residual
-handler above and only the conclusion changed.
+The TeX proof measures progress by the finite set of remaining dependency
+witnesses.  The Lean residual split shows why the plain count is not always
+the whole story: the two-patch candidate may be proper-smaller than the
+original \(f\), but not smaller than the current \(f'\) by that count.
+
+The following rank form keeps the finite-descent paragraph honest.  If a
+nondecreasing residual does not lower the witness count, the proof may supply
+some stronger natural-valued rank that does decrease.  The induction theorem
+below is the same "eventually terminates" argument, but over that rank.
 -/
 
-abbrev DependencyRemovalSameClauseConcreteNondecreasingResidualMeasureDecrease
+abbrev DependencyRemovalSameClauseRankedRestart
     (s : CheckState) (vars : Array Var) (on_ : Var)
-    (measure : SkolemAssignment → Nat) : Prop :=
+    (rank : SkolemAssignment → Nat) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+    DependencyRemovalDescentOutcome s vars on_ skBase ∨
+      ∃ skNext,
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        rank skNext < rank skCand ∧
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+
+abbrev DependencyRemovalSameClauseConcreteNondecreasingResidualRankDecrease
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (rank : SkolemAssignment → Nat) : Prop :=
   ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
     (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
     FlexibleRepairPoolTracked s vars on_ skBase skCand →
@@ -4273,138 +3846,63 @@ abbrev DependencyRemovalSameClauseConcreteNondecreasingResidualMeasureDecrease
       deleteWitnessFiberCountSet s.formula vars on_ skCand →
     DependencyRemovalExactTwoPatchResidual
       s vars on_ skBase skCand skNext σ →
-    measure skNext < measure skCand
+    rank skNext < rank skCand
 
-/-!
-There is a useful sanity check on any proposed measure.  Because the measure is
-required to decrease whenever the ordinary witness count decreases, it is
-monotone in that count.  Therefore a residual where the two-patch candidate has
-strictly more current witness fibers cannot also decrease the same measure.
-
-So the measured route is only viable if the proper-growth residual is proved
-impossible; after that, the nondecreasing residual has the equivalent-footprint
-shape.
--/
-
-theorem dependencyRemoval_measureResidual_forbidsProperGrowth
+theorem dependencyRemoval_sameClauseRankedRestart_of_concreteResidualRank
     {s : CheckState} {vars : Array Var} {on_ : Var}
-    (measure : SkolemAssignment → Nat)
-    (hmeasure_count :
+    (rank : SkolemAssignment → Nat)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hrank_count :
       ∀ {skNext skCur : SkolemAssignment},
         deleteWitnessFiberCountSet s.formula vars on_ skNext <
           deleteWitnessFiberCountSet s.formula vars on_ skCur →
-        measure skNext < measure skCur)
-    (hmeasure_residual :
-      DependencyRemovalSameClauseConcreteNondecreasingResidualMeasureDecrease
-        s vars on_ measure)
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (htracked :
-      FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (hfalse : s.clauses.matrixValue s.formula σ skCand = false)
-    (htwo :
+        rank skNext < rank skCur)
+    (hresRank :
+      DependencyRemovalSameClauseConcreteNondecreasingResidualRankDecrease
+        s vars on_ rank) :
+    DependencyRemovalSameClauseRankedRestart s vars on_ rank := by
+  intro skBase skCand σ hallBase htracked hproperCand hfalse hfailure
+  have htwo :
       FlexibleRepairSameClauseTwoPolarityFailure
-        s vars on_ skBase skCand σ)
-    (hproperCand :
-      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hltNextBase :
-      deleteWitnessFiberCountSet s.formula vars on_ skNext <
-        deleteWitnessFiberCountSet s.formula vars on_ skBase)
-    (hproperNext :
-      DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase)
-    (hsubsetCandNext :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
-    (hsplitCandNext :
-      deleteWitnessFiberCountSet s.formula vars on_ skCand <
-          deleteWitnessFiberCountSet s.formula vars on_ skNext ∨
-        DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
-    (hnot_lt :
-      ¬ deleteWitnessFiberCountSet s.formula vars on_ skNext <
-        deleteWitnessFiberCountSet s.formula vars on_ skCand)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ)
-    (hgrowth :
-      deleteWitnessFiberCountSet s.formula vars on_ skCand <
-        deleteWitnessFiberCountSet s.formula vars on_ skNext) :
-    False := by
-  have hmeasureNextCand : measure skNext < measure skCand :=
-    hmeasure_residual hallBase htracked hfalse htwo hproperCand
-      htrackedNext hltNextBase hproperNext hsubsetCandNext hsplitCandNext
-      hnot_lt hexact
-  have hmeasureCandNext : measure skCand < measure skNext :=
-    hmeasure_count hgrowth
-  exact Nat.lt_asymm hmeasureNextCand hmeasureCandNext
-
-theorem dependencyRemoval_measureResidual_equivalentFootprint
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    (measure : SkolemAssignment → Nat)
-    (hmeasure_count :
-      ∀ {skNext skCur : SkolemAssignment},
+        s vars on_ skBase skCand σ :=
+    dependencyRemoval_sameClauseFailure_twoPolarity
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σ := σ) htracked.1 hallBase hfailure
+  rcases
+      dependencyRemoval_twoPolarity_twoPatch_model_or_concreteResidual
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (σ := σ)
+        hexi hcontains hallBase htracked htwo with
+    houtcome | hresidual
+  · exact Or.inl (Or.inl houtcome)
+  · rcases hresidual with
+      ⟨skNext, htrackedNext, hltNextBase, hproperNext,
+        hsubsetCandNext, hsplitCandNext, hexact⟩
+    have hfalseNext :
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false :=
+      dependencyRemoval_exactTwoPatchResidual_falseMatrix
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (skNext := skNext) (σ := σ)
+        hexact
+    by_cases hltCurrent :
         deleteWitnessFiberCountSet s.formula vars on_ skNext <
-          deleteWitnessFiberCountSet s.formula vars on_ skCur →
-        measure skNext < measure skCur)
-    (hmeasure_residual :
-      DependencyRemovalSameClauseConcreteNondecreasingResidualMeasureDecrease
-        s vars on_ measure)
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (htracked :
-      FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (hfalse : s.clauses.matrixValue s.formula σ skCand = false)
-    (htwo :
-      FlexibleRepairSameClauseTwoPolarityFailure
-        s vars on_ skBase skCand σ)
-    (hproperCand :
-      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hltNextBase :
-      deleteWitnessFiberCountSet s.formula vars on_ skNext <
-        deleteWitnessFiberCountSet s.formula vars on_ skBase)
-    (hproperNext :
-      DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase)
-    (hsubsetCandNext :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
-    (hsplitCandNext :
-      deleteWitnessFiberCountSet s.formula vars on_ skCand <
-          deleteWitnessFiberCountSet s.formula vars on_ skNext ∨
-        DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
-    (hnot_lt :
-      ¬ deleteWitnessFiberCountSet s.formula vars on_ skNext <
-        deleteWitnessFiberCountSet s.formula vars on_ skCand)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ) :
-    DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand ∧
-      deleteWitnessFiberCountSet s.formula vars on_ skNext =
-        deleteWitnessFiberCountSet s.formula vars on_ skCand := by
-  rcases hsplitCandNext with hgrowth | hsubsetNextCand
-  · exact False.elim
-      (dependencyRemoval_measureResidual_forbidsProperGrowth
-        (s := s) (vars := vars) (on_ := on_) measure
-        hmeasure_count hmeasure_residual hallBase htracked hfalse htwo
-        hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
-        (Or.inl hgrowth) hnot_lt hexact hgrowth)
-  · exact
-      ⟨hsubsetNextCand,
-        (deleteWitnessFiberCountSet_eq_of_subset_subset
-          (f := s.formula) (vars := vars) (on_ := on_)
-          hsubsetCandNext hsubsetNextCand).symm⟩
+          deleteWitnessFiberCountSet s.formula vars on_ skCand
+    · exact Or.inr
+        ⟨skNext, htrackedNext, hproperNext, hrank_count hltCurrent,
+          hfalseNext⟩
+    · exact Or.inr
+        ⟨skNext, htrackedNext, hproperNext,
+          hresRank hallBase htracked hfalse htwo hproperCand
+            htrackedNext hltNextBase hproperNext hsubsetCandNext
+            hsplitCandNext hltCurrent hexact,
+          hfalseNext⟩
 
-/-!
-The measured residual obligation gives a single ranked repair step.  Ordinary
-repair steps decrease the witness count, so the supplied measure also
-decreases by `hmeasure_count`.  In the nondecreasing same-clause residual, the
-separate residual hypothesis supplies the decrease directly.
--/
-
-theorem dependencyRemoval_rankedFalseStep_of_sameClauseResidualMeasureDecrease
+theorem dependencyRemoval_rankedFalseStep_of_sameClauseRankedRestart
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
-    (measure : SkolemAssignment → Nat)
+    (rank : SkolemAssignment → Nat)
     (hfull : CheckState.FullCorrect dqbf cs s)
     (hon_le : on_ ≤ s.formula.maxVar)
     (hon_univ : s.formula.isVarExistential on_ = false)
@@ -4415,27 +3913,24 @@ theorem dependencyRemoval_rankedFalseStep_of_sameClauseResidualMeasureDecrease
     (hcontains : ∀ x ∈ vars.toList,
       (s.formula.depset.getD x #[]).contains on_ = true)
     (hpaths : NoDeleteCrossPathsSet s vars on_)
-    (hmeasure_count :
+    (hrank_count :
       ∀ {skNext skCur : SkolemAssignment},
         deleteWitnessFiberCountSet s.formula vars on_ skNext <
           deleteWitnessFiberCountSet s.formula vars on_ skCur →
-        measure skNext < measure skCur)
-    (hmeasure_residual :
-      DependencyRemovalSameClauseConcreteNondecreasingResidualMeasureDecrease
-        s vars on_ measure) :
-    DependencyRemovalRankedFalseStep s vars on_ measure := by
+        rank skNext < rank skCur)
+    (hsameRank : DependencyRemovalSameClauseRankedRestart s vars on_ rank) :
+    DependencyRemovalRankedFalseStep s vars on_ rank := by
   classical
   intro skBase skCand σ hallBase htracked hproper hfalse
-  let handleStrict
-      (hstrict :
-        FlexibleRepairTrackedStrictStep s vars on_ skBase skCand) :
+  let handleStrict :
+      FlexibleRepairTrackedStrictStep s vars on_ skBase skCand →
       DependencyRemovalDescentOutcome s vars on_ skBase ∨
         ∃ skNext,
           FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
-          DeleteWitnessFiberSetProperSubset
-            s.formula vars on_ skNext skBase ∧
-          measure skNext < measure skCand ∧
+          DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+          rank skNext < rank skCand ∧
           ∃ τ, s.clauses.matrixValue s.formula τ skNext = false := by
+    intro hstrict
     rcases hstrict with ⟨skNext, htrackedNext, hltNext⟩
     by_cases hfailNext :
         ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false
@@ -4445,16 +3940,17 @@ theorem dependencyRemoval_rankedFalseStep_of_sameClauseResidualMeasureDecrease
             s.formula vars on_ skNext skBase :=
         dependencyRemoval_trackedFalseCandidate_hasProperSubset
           (s := s) (vars := vars) (on_ := on_)
-          (skBase := skBase) (skCand := skNext)
+          (skBase := skBase) (skCand := skNext) (σ := ρ)
           hallBase htrackedNext hfalseNext
       exact Or.inr
-        ⟨skNext, htrackedNext, hproperNext, hmeasure_count hltNext,
+        ⟨skNext, htrackedNext, hproperNext, hrank_count hltNext,
           ρ, hfalseNext⟩
-    · exact Or.inl (Or.inl
-        ⟨skNext,
+    · exact Or.inl
+        (Or.inl ⟨skNext,
           (by
             intro ρ
-            cases hval : s.clauses.matrixValue s.formula ρ skNext with
+            cases hval :
+                s.clauses.matrixValue s.formula ρ skNext with
             | false => exact False.elim (hfailNext ⟨ρ, hval⟩)
             | true => rfl),
           htrackedNext.1.1⟩)
@@ -4464,55 +3960,14 @@ theorem dependencyRemoval_rankedFalseStep_of_sameClauseResidualMeasureDecrease
         (on_ := on_) (skBase := skBase) (skCand := skCand) (σ := σ)
         hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
         htracked hallBase hfalse with
-    hstrict | hfailure
+    hstrict | hsameClause
   · exact handleStrict hstrict
-  · have htwo :
-        FlexibleRepairSameClauseTwoPolarityFailure
-          s vars on_ skBase skCand σ :=
-      dependencyRemoval_sameClauseFailure_twoPolarity
-        (s := s) (vars := vars) (on_ := on_)
-        (skBase := skBase) (skCand := skCand) (σ := σ)
-        htracked.1 hallBase hfailure
-    rcases
-        dependencyRemoval_twoPolarity_twoPatch_model_or_concreteResidual
-          (s := s) (vars := vars) (on_ := on_)
-          (skBase := skBase) (skCand := skCand) (σ := σ)
-          hexi hcontains hallBase htracked htwo with
-      houtcome | hresidual
-    · exact Or.inl (Or.inl houtcome)
-    · rcases hresidual with
-        ⟨skNext, htrackedNext, hltNextBase, hproperNext,
-          hsubsetCandNext, hsplitCandNext, hexact⟩
-      have hfalseNext :
-          ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false :=
-        dependencyRemoval_exactTwoPatchResidual_falseMatrix
-          (s := s) (vars := vars) (on_ := on_)
-          (skBase := skBase) (skCand := skCand)
-          (skNext := skNext) (σ := σ) hexact
-      by_cases hltCurrent :
-          deleteWitnessFiberCountSet s.formula vars on_ skNext <
-            deleteWitnessFiberCountSet s.formula vars on_ skCand
-      · exact Or.inr
-          ⟨skNext, htrackedNext, hproperNext,
-            hmeasure_count hltCurrent, hfalseNext⟩
-      · exact Or.inr
-          ⟨skNext, htrackedNext, hproperNext,
-            hmeasure_residual hallBase htracked hfalse htwo hproper
-              htrackedNext hltNextBase hproperNext hsubsetCandNext
-              hsplitCandNext hltCurrent hexact,
-            hfalseNext⟩
+  · exact hsameRank hallBase htracked hproper hfalse hsameClause
 
-/-!
-This is the corresponding finite-descent wrapper.  It says: ordinary strict
-patch steps may still decrease the witness count, but the same-clause residual
-may instead decrease the supplied measure.  The generic ranked-descent theorem
-then performs the finite induction.
--/
-
-theorem dependencyRemoval_trackedFalseRestart_of_sameClauseResidualMeasureDecrease
+theorem dependencyRemoval_trackedFalseRestart_of_sameClauseResidualRank
     {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
     {vars : Array Var} {on_ : Var}
-    (measure : SkolemAssignment → Nat)
+    (rank : SkolemAssignment → Nat)
     (hfull : CheckState.FullCorrect dqbf cs s)
     (hon_le : on_ ≤ s.formula.maxVar)
     (hon_univ : s.formula.isVarExistential on_ = false)
@@ -4523,53 +3978,24 @@ theorem dependencyRemoval_trackedFalseRestart_of_sameClauseResidualMeasureDecrea
     (hcontains : ∀ x ∈ vars.toList,
       (s.formula.depset.getD x #[]).contains on_ = true)
     (hpaths : NoDeleteCrossPathsSet s vars on_)
-    (hmeasure_count :
+    (hrank_count :
       ∀ {skNext skCur : SkolemAssignment},
         deleteWitnessFiberCountSet s.formula vars on_ skNext <
           deleteWitnessFiberCountSet s.formula vars on_ skCur →
-        measure skNext < measure skCur)
-    (hmeasure_residual :
-      DependencyRemovalSameClauseConcreteNondecreasingResidualMeasureDecrease
-        s vars on_ measure) :
+        rank skNext < rank skCur)
+    (hresRank :
+      DependencyRemovalSameClauseConcreteNondecreasingResidualRankDecrease
+        s vars on_ rank) :
     DependencyRemovalTrackedFalseRestart s vars on_ :=
   dependencyRemoval_trackedFalseRestart_of_rankedFalseStep
-    (s := s) (vars := vars) (on_ := on_) measure
-    (dependencyRemoval_rankedFalseStep_of_sameClauseResidualMeasureDecrease
+    (s := s) (vars := vars) (on_ := on_) rank
+    (dependencyRemoval_rankedFalseStep_of_sameClauseRankedRestart
       (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
-      measure hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
-      hmeasure_count hmeasure_residual)
-
-/-!
-If the same-clause failure reappears for the two-patch candidate, the
-equivalent-footprint branch should not recursively assume the same residual
-handler it is trying to prove.  Instead it may use the already established
-finite restart theorem: restarting from the two-patch candidate gives an
-outcome for the original Skolem set, which is one of the allowed local repair
-results for the current candidate.
--/
-
-theorem dependencyRemoval_sameClauseFailure_nextOutcome_of_restart
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {τ : UnivAssignment}
-    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_)
-    (hallBase : ∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hproperNext :
-      DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase)
-    (hfailureNext :
-      FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skNext τ) :
-    DependencyRemovalLocalRepairResult s vars on_ skBase skCand := by
-  have hfalseNext :
-      s.clauses.matrixValue s.formula τ skNext = false := by
-    rcases hfailureNext with
-      ⟨cref, c, _baseLit, hget, hclauseFalse, _hclauseFlipFalse,
-        _hnoCompl, _hbaseMem, _hbaseVar, _hbaseTrue, _hbaseFalse,
-        _hbaseNoPath⟩
-    exact dependencyRemoval_matrixValue_false_of_false_clause
-      s.formula s.clauses τ skNext hget hclauseFalse
-  exact Or.inl (hrestart hallBase htrackedNext hproperNext hfalseNext)
+      rank hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      hrank_count
+      (dependencyRemoval_sameClauseRankedRestart_of_concreteResidualRank
+        (s := s) (vars := vars) (on_ := on_) rank hexi hcontains
+        hrank_count hresRank))
 
 /-!
 This names the one equivalent-footprint branch still left open here.  The
@@ -4767,363 +4193,82 @@ abbrev DependencyRemovalProperGrowthNewWitnessObstruction
         fullDepArgs s.formula flipLit.var σSide
 
 /-!
-The new-witness obstruction still gives a useful local TeX fact.  In the
-residual false clause, `changed` is already known to have no pure path from
-the current \(u\)-side.  The clause is false for the two-patch candidate, so
-every other literal in it is false there.  If the new witness literal had a
-pure path to its original value on that same side, the same-clause tail would
-extend back to `changed`, contradicting the missing path.
-
-The tracked invariant for the two-patch candidate is what lets Lean call this
-the original value: because the new witness is live in `skNext`, `skNext` and
-`skBase` agree on both sides of its \(u\)-fiber.
+The new-witness obstruction also tells us what happened to the concrete
+residual clause.  If the current candidate changed the original value on the
+residual assignment itself, the newly found literal is already true for the
+current candidate, so that residual clause is not a current false clause.  If
+the change was on the flipped side, then the new literal is false for the
+current candidate on both sides, and the same-clause tail argument supplies
+the missing pure-path side condition for its current value.
 -/
 
-theorem dependencyRemoval_properGrowthNewWitness_tailOldLiteralNoPurePath
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment}
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hobs :
-      DependencyRemovalProperGrowthNewWitnessObstruction
-        s vars on_ skBase skCand skNext) :
-    ∃ (cref : CRef) (c : Clause) (changed flipLit : Literal)
-      (τ σSide : UnivAssignment),
-      s.clauses.getClause cref = some c ∧
-      s.formula.clauseValue τ skNext c.lits = false ∧
-      changed ∈ c.lits.toList ∧
-      changed.var ∈ vars.toList ∧
-      flipLit ∈ c.lits.toList ∧
-      flipLit.var ∈ vars.toList ∧
-      DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
-      DeleteDepWitness s.formula flipLit.var on_ skBase τ ∧
-      s.formula.varValue τ skBase flipLit.var = !flipLit.isPos ∧
-      s.formula.varValue (flipUniv on_ τ) skBase flipLit.var =
-        flipLit.isPos ∧
-      (σSide = τ ∨ σSide = flipUniv on_ τ) ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-        (mkLit flipLit.var
-          (s.formula.varValue τ skBase flipLit.var)) ∧
-      DependencyRemovalProperGrowthNewWitnessObstruction
-        s vars on_ skBase skCand skNext := by
-  classical
-  rcases hobs with
-    ⟨cref, c, changed, flipLit, τ, σSide, hget, hclauseFalse,
-      hchangedMem, hchangedVar, hchangedTrue, hchangedFalse,
-      hchangedFlipFalse, hchangedNoPath, hnoCompl, hflipMem,
-      hflipVar, hflipFalse, hflipTrue, hwitNext, hnotCand,
-      hexiFlip, hcontainsFlip, hside, hbaseSide, hnotSide,
-      hchangedCurrent, hnoPathCurrent, holdFalse, hfiber⟩
-  have hdistinct : flipLit.var ≠ changed.var := by
-    intro hsame
-    have hnotNeg : flipLit ≠ changed.negate := by
-      intro hEq
-      exact (hnoCompl changed hchangedMem) (by simpa [hEq] using hflipMem)
-    have hflipEqChanged : flipLit = changed :=
-      dependencyRemoval_literal_eq_of_same_var_and_not_negate
-        changed flipLit hsame.symm hnotNeg
-    have htrueChanged :
-        s.formula.litValue (flipUniv on_ τ) skNext changed = true := by
-      simpa [hflipEqChanged] using hflipTrue
-    rw [hchangedFlipFalse] at htrueChanged
-    cases htrueChanged
-  have hchangedMemMk :
-      mkLit changed.var changed.isPos ∈ c.lits.toList := by
-    rw [← dependencyRemoval_literal_eq_mkLit_var_isPos changed]
-    exact hchangedMem
-  have hflipMemMk :
-      mkLit flipLit.var flipLit.isPos ∈ c.lits.toList := by
-    rw [← dependencyRemoval_literal_eq_mkLit_var_isPos flipLit]
-    exact hflipMem
-  have hchangedNoPathMk :
-      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-        (mkLit changed.var changed.isPos) := by
-    rw [← dependencyRemoval_literal_eq_mkLit_var_isPos changed]
-    exact hchangedNoPath
-  have hothers :
-      ∀ l ∈ c.lits.toList, l ≠ mkLit changed.var changed.isPos →
-        s.formula.litValue τ skNext l = false := by
-    intro l hl _hne
-    exact dependencyRemoval_clauseValue_false_implies_lit_false
-      s.formula τ skNext c.lits hclauseFalse l hl
-  have htailNoPath :
-      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-        (mkLit flipLit.var (!flipLit.isPos)) :=
-    dependencyRemoval_sameClause_tailOldLiteralNoPurePath
-      (s := s) (vars := vars) (on_ := on_)
-      (of_ := changed.var) (nextOf := flipLit.var)
-      (sk := skNext) (σ := τ) (cref := cref) (c := c)
-      (pos := changed.isPos) (nextPos := flipLit.isPos)
-      hon_univ hexi hcontains hchangedVar hget hchangedMemMk
-      hchangedNoPathMk hdistinct hflipMemMk hothers
-  have hnextBase :
-      s.formula.varValue τ skNext flipLit.var =
-          s.formula.varValue τ skBase flipLit.var ∧
-        s.formula.varValue (flipUniv on_ τ) skNext flipLit.var =
-          s.formula.varValue (flipUniv on_ τ) skBase flipLit.var :=
-    dependencyRemoval_liveCandidateWitness_agreesWithBase
-      (s := s) (vars := vars) (on_ := on_)
-      (of_ := flipLit.var) (skBase := skBase)
-      (skCand := skNext) (σ := τ)
-      htrackedNext hflipVar hwitNext
-  have hnextValuePol :
-      s.formula.varValue τ skNext flipLit.var = !flipLit.isPos :=
-    dependencyRemoval_litValue_false_varValue_eq_not_isPos
-      s.formula τ skNext flipLit hflipFalse
-  have hbaseValuePol :
-      s.formula.varValue τ skBase flipLit.var = !flipLit.isPos :=
-    hnextBase.1.symm.trans hnextValuePol
-  have hnextFlipValuePol :
-      s.formula.varValue (flipUniv on_ τ) skNext flipLit.var =
-        flipLit.isPos :=
-    dependencyRemoval_litValue_true_varValue_eq_isPos
-      s.formula (flipUniv on_ τ) skNext flipLit hflipTrue
-  have hbaseFlipValuePol :
-      s.formula.varValue (flipUniv on_ τ) skBase flipLit.var =
-        flipLit.isPos :=
-    hnextBase.2.symm.trans hnextFlipValuePol
-  have hwitBaseτ :
-      DeleteDepWitness s.formula flipLit.var on_ skBase τ := by
-    unfold DeleteDepWitness
-    rw [hbaseValuePol, hbaseFlipValuePol]
-    cases flipLit.isPos <;> simp
-  have htailBase :
-      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-        (mkLit flipLit.var
-          (s.formula.varValue τ skBase flipLit.var)) := by
-    simpa [hbaseValuePol] using htailNoPath
-  exact
-    ⟨cref, c, changed, flipLit, τ, σSide, hget, hclauseFalse,
-      hchangedMem, hchangedVar, hflipMem, hflipVar, hwitNext,
-      hwitBaseτ, hbaseValuePol, hbaseFlipValuePol, hside, htailBase,
-      ⟨cref, c, changed, flipLit, τ, σSide, hget, hclauseFalse,
-        hchangedMem, hchangedVar, hchangedTrue, hchangedFalse,
-        hchangedFlipFalse, hchangedNoPath, hnoCompl, hflipMem,
-        hflipVar, hflipFalse, hflipTrue, hwitNext, hnotCand,
-        hexiFlip, hcontainsFlip, hside, hbaseSide, hnotSide,
-        hchangedCurrent, hnoPathCurrent, holdFalse, hfiber⟩⟩
+abbrev DependencyRemovalProperGrowthCurrentTrueObservedResidual
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand skNext : SkolemAssignment) : Prop :=
+  ∃ cref c changed flipLit τ σSide,
+    s.clauses.getClause cref = some c ∧
+    s.formula.clauseValue τ skNext c.lits = false ∧
+    s.formula.clauseValue τ skCand c.lits = true ∧
+    changed ∈ c.lits.toList ∧
+    changed.var ∈ vars.toList ∧
+    s.formula.litValue τ skBase changed = true ∧
+    s.formula.litValue τ skNext changed = false ∧
+    s.formula.litValue (flipUniv on_ τ) skNext changed = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) changed ∧
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+    flipLit ∈ c.lits.toList ∧
+    flipLit.var ∈ vars.toList ∧
+    s.formula.litValue τ skNext flipLit = false ∧
+    s.formula.litValue (flipUniv on_ τ) skNext flipLit = true ∧
+    DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
+    ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
+    s.formula.isVarExistential flipLit.var = true ∧
+    (s.formula.depset.getD flipLit.var #[]).contains on_ = true ∧
+    (σSide = τ ∨ σSide = flipUniv on_ τ) ∧
+    DeleteDepWitness s.formula flipLit.var on_ skBase σSide ∧
+    ¬ DeleteDepWitness s.formula flipLit.var on_ skCand σSide ∧
+    s.formula.varValue σSide skCand flipLit.var ≠
+      s.formula.varValue σSide skBase flipLit.var ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σSide on_)))
+      (mkLit flipLit.var
+        (s.formula.varValue σSide skBase flipLit.var)) ∧
+    s.formula.litValue (flipUniv on_ σSide) skCand
+      (mkLit flipLit.var
+        (s.formula.varValue σSide skBase flipLit.var)) = false ∧
+    (∀ ρ,
+      deleteDepArgs s.formula flipLit.var on_ ρ =
+        deleteDepArgs s.formula flipLit.var on_ σSide →
+      s.formula.varValue ρ skCand flipLit.var ≠
+        s.formula.varValue ρ skBase flipLit.var →
+      fullDepArgs s.formula flipLit.var ρ =
+        fullDepArgs s.formula flipLit.var σSide) ∧
+    s.formula.litValue τ skCand flipLit = true ∧
+    s.formula.litValue (flipUniv on_ τ) skCand flipLit = true
 
-/-!
-The same new-witness obstruction also gives the precise orientation of the
-current candidate.  The new witness is absent from the current candidate, so
-the current candidate has the same value on the two \(u\)-sides.  Since the
-original Skolem functions do have a witness there, the side where the current
-candidate differs from the original determines that the opposite side still
-agrees with the original.
-
-This is the Lean form of the TeX sentence saying that, on the flipped side,
-\(f'\) and \(f\) are equal.
--/
-
-theorem dependencyRemoval_properGrowthNewWitness_currentCandidate_orientation
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment}
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hobs :
-      DependencyRemovalProperGrowthNewWitnessObstruction
-        s vars on_ skBase skCand skNext) :
-    ∃ (flipLit : Literal) (τ σSide : UnivAssignment),
-      flipLit.var ∈ vars.toList ∧
-      DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
-      DeleteDepWitness s.formula flipLit.var on_ skBase τ ∧
-      ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
-      (σSide = τ ∨ σSide = flipUniv on_ τ) ∧
-      s.formula.varValue τ skCand flipLit.var =
-        s.formula.varValue (flipUniv on_ τ) skCand flipLit.var ∧
-      ((σSide = τ ∧
-          s.formula.varValue (flipUniv on_ τ) skCand flipLit.var =
-            s.formula.varValue (flipUniv on_ τ) skBase flipLit.var) ∨
-        (σSide = flipUniv on_ τ ∧
-          s.formula.varValue τ skCand flipLit.var =
-            s.formula.varValue τ skBase flipLit.var)) := by
-  rcases hobs with
-    ⟨_cref, _c, _changed, flipLit, τ, σSide, _hget,
-      _hclauseFalse, _hchangedMem, _hchangedVar, _hchangedTrue,
-      _hchangedFalse, _hchangedFlipFalse, _hchangedNoPath, _hnoCompl,
-      _hflipMem, hflipVar, hflipFalse, hflipTrue, hwitNext,
-      hnotCand, _hexiFlip, _hcontainsFlip, hside, _hbaseSide,
-      _hnotSide, hchangedCurrent, _hnoPathCurrent, _holdFalse,
-      _hfiber⟩
-  have hnextBase :
-      s.formula.varValue τ skNext flipLit.var =
-          s.formula.varValue τ skBase flipLit.var ∧
-        s.formula.varValue (flipUniv on_ τ) skNext flipLit.var =
-          s.formula.varValue (flipUniv on_ τ) skBase flipLit.var :=
-    dependencyRemoval_liveCandidateWitness_agreesWithBase
-      (s := s) (vars := vars) (on_ := on_)
-      (of_ := flipLit.var) (skBase := skBase)
-      (skCand := skNext) (σ := τ)
-      htrackedNext hflipVar hwitNext
-  have hnextValuePol :
-      s.formula.varValue τ skNext flipLit.var = !flipLit.isPos :=
-    dependencyRemoval_litValue_false_varValue_eq_not_isPos
-      s.formula τ skNext flipLit hflipFalse
-  have hbaseValuePol :
-      s.formula.varValue τ skBase flipLit.var = !flipLit.isPos :=
-    hnextBase.1.symm.trans hnextValuePol
-  have hnextFlipValuePol :
-      s.formula.varValue (flipUniv on_ τ) skNext flipLit.var =
-        flipLit.isPos :=
-    dependencyRemoval_litValue_true_varValue_eq_isPos
-      s.formula (flipUniv on_ τ) skNext flipLit hflipTrue
-  have hbaseFlipValuePol :
-      s.formula.varValue (flipUniv on_ τ) skBase flipLit.var =
-        flipLit.isPos :=
-    hnextBase.2.symm.trans hnextFlipValuePol
-  have hwitBaseτ :
-      DeleteDepWitness s.formula flipLit.var on_ skBase τ := by
-    unfold DeleteDepWitness
-    rw [hbaseValuePol, hbaseFlipValuePol]
-    cases flipLit.isPos <;> simp
-  have hcandEq :
-      s.formula.varValue τ skCand flipLit.var =
-        s.formula.varValue (flipUniv on_ τ) skCand flipLit.var := by
-    by_cases hEq :
-        s.formula.varValue τ skCand flipLit.var =
-          s.formula.varValue (flipUniv on_ τ) skCand flipLit.var
-    · exact hEq
-    · exact False.elim (hnotCand hEq)
-  exact
-    ⟨flipLit, τ, σSide, hflipVar, hwitNext, hwitBaseτ, hnotCand,
-      hside, hcandEq,
-      dependencyRemoval_removedBaseWitness_sideSplit_opposite_agrees
-        s.formula flipLit.var on_ skBase skCand τ σSide
-        hwitBaseτ hnotCand hside hchangedCurrent⟩
-
-/-!
-Equivalently, the current candidate makes the new-witness literal constant
-on the two \(u\)-sides.  If the current candidate changed the original value
-on the \(\tau\) side, that literal is true on both sides for the current
-candidate.  If it changed the original value on the flipped side, that literal
-is false on both sides for the current candidate.
--/
-
-theorem dependencyRemoval_properGrowthNewWitness_currentLiteralOrientation
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment}
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hobs :
-      DependencyRemovalProperGrowthNewWitnessObstruction
-        s vars on_ skBase skCand skNext) :
-    ∃ (flipLit : Literal) (τ σSide : UnivAssignment),
-      flipLit.var ∈ vars.toList ∧
-      DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
-      ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
-      ((σSide = τ ∧
-          s.formula.litValue τ skCand flipLit = true ∧
-          s.formula.litValue (flipUniv on_ τ) skCand flipLit =
-            true) ∨
-        (σSide = flipUniv on_ τ ∧
-          s.formula.litValue τ skCand flipLit = false ∧
-          s.formula.litValue (flipUniv on_ τ) skCand flipLit =
-            false)) := by
-  rcases hobs with
-    ⟨_cref, _c, _changed, flipLit, τ, σSide, _hget,
-      _hclauseFalse, _hchangedMem, _hchangedVar, _hchangedTrue,
-      _hchangedFalse, _hchangedFlipFalse, _hchangedNoPath, _hnoCompl,
-      _hflipMem, hflipVar, hflipFalse, hflipTrue, hwitNext,
-      hnotCand, _hexiFlip, _hcontainsFlip, hside, _hbaseSide,
-      _hnotSide, hchangedCurrent, _hnoPathCurrent, _holdFalse,
-      _hfiber⟩
-  have hnextBase :
-      s.formula.varValue τ skNext flipLit.var =
-          s.formula.varValue τ skBase flipLit.var ∧
-        s.formula.varValue (flipUniv on_ τ) skNext flipLit.var =
-          s.formula.varValue (flipUniv on_ τ) skBase flipLit.var :=
-    dependencyRemoval_liveCandidateWitness_agreesWithBase
-      (s := s) (vars := vars) (on_ := on_)
-      (of_ := flipLit.var) (skBase := skBase)
-      (skCand := skNext) (σ := τ)
-      htrackedNext hflipVar hwitNext
-  have hnextValuePol :
-      s.formula.varValue τ skNext flipLit.var = !flipLit.isPos :=
-    dependencyRemoval_litValue_false_varValue_eq_not_isPos
-      s.formula τ skNext flipLit hflipFalse
-  have hbaseValuePol :
-      s.formula.varValue τ skBase flipLit.var = !flipLit.isPos :=
-    hnextBase.1.symm.trans hnextValuePol
-  have hnextFlipValuePol :
-      s.formula.varValue (flipUniv on_ τ) skNext flipLit.var =
-        flipLit.isPos :=
-    dependencyRemoval_litValue_true_varValue_eq_isPos
-      s.formula (flipUniv on_ τ) skNext flipLit hflipTrue
-  have hbaseFlipValuePol :
-      s.formula.varValue (flipUniv on_ τ) skBase flipLit.var =
-        flipLit.isPos :=
-    hnextBase.2.symm.trans hnextFlipValuePol
-  have hwitBaseτ :
-      DeleteDepWitness s.formula flipLit.var on_ skBase τ := by
-    unfold DeleteDepWitness
-    rw [hbaseValuePol, hbaseFlipValuePol]
-    cases flipLit.isPos <;> simp
-  have hcandEq :
-      s.formula.varValue τ skCand flipLit.var =
-        s.formula.varValue (flipUniv on_ τ) skCand flipLit.var := by
-    by_cases hEq :
-        s.formula.varValue τ skCand flipLit.var =
-          s.formula.varValue (flipUniv on_ τ) skCand flipLit.var
-    · exact hEq
-    · exact False.elim (hnotCand hEq)
-  rcases
-      dependencyRemoval_removedBaseWitness_sideSplit_opposite_agrees
-        s.formula flipLit.var on_ skBase skCand τ σSide
-        hwitBaseτ hnotCand hside hchangedCurrent with
-    horient | horient
-  · rcases horient with ⟨hσSide, hagreeFlip⟩
-    subst σSide
-    have hcandτ :
-        s.formula.varValue τ skCand flipLit.var = flipLit.isPos := by
-      cases hpos : flipLit.isPos <;>
-        cases hcand : s.formula.varValue τ skCand flipLit.var <;>
-        simp [hpos, hcand, hbaseValuePol] at hchangedCurrent ⊢
-    have hcandFlip :
-        s.formula.varValue (flipUniv on_ τ) skCand flipLit.var =
-          flipLit.isPos := by
-      rw [hagreeFlip, hbaseFlipValuePol]
-    exact ⟨flipLit, τ, τ, hflipVar, hwitNext, hnotCand,
-      Or.inl
-        ⟨rfl,
-          dependencyRemoval_varValue_eq_isPos_litValue_true
-            s.formula τ skCand flipLit hcandτ,
-          dependencyRemoval_varValue_eq_isPos_litValue_true
-            s.formula (flipUniv on_ τ) skCand flipLit
-            hcandFlip⟩⟩
-  · rcases horient with ⟨hσSide, hagreeτ⟩
-    subst σSide
-    have hcandFlip :
-        s.formula.varValue (flipUniv on_ τ) skCand flipLit.var =
-          !flipLit.isPos := by
-      cases hpos : flipLit.isPos <;>
-        cases hcand :
-          s.formula.varValue (flipUniv on_ τ) skCand flipLit.var <;>
-        simp [hpos, hcand, hbaseFlipValuePol] at hchangedCurrent ⊢
-    have hcandτ :
-        s.formula.varValue τ skCand flipLit.var = !flipLit.isPos :=
-      hcandEq.trans hcandFlip
-    exact ⟨flipLit, τ, flipUniv on_ τ, hflipVar, hwitNext, hnotCand,
-      Or.inr
-        ⟨rfl,
-          dependencyRemoval_varValue_eq_not_isPos_litValue_false
-            s.formula τ skCand flipLit hcandτ,
-          dependencyRemoval_varValue_eq_not_isPos_litValue_false
-            s.formula (flipUniv on_ τ) skCand flipLit
-            hcandFlip⟩⟩
-
-/-!
-The previous orientation also tells us what happened to the concrete residual
-clause.  If the current candidate changed the original value on the residual
-assignment itself, the newly found literal is already true for the current
-candidate, so that residual clause is not a current false clause.  If the
-change was on the flipped side, then the new literal is false for the current
-candidate on both sides, and the same-clause tail argument supplies the missing
-pure-path side condition for its current value.
--/
+abbrev DependencyRemovalProperGrowthCurrentFalseResidual
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand skNext : SkolemAssignment) : Prop :=
+  ∃ cref c changed flipLit τ,
+    s.clauses.getClause cref = some c ∧
+    s.formula.clauseValue τ skNext c.lits = false ∧
+    changed ∈ c.lits.toList ∧
+    changed.var ∈ vars.toList ∧
+    s.formula.litValue τ skBase changed = true ∧
+    s.formula.litValue τ skNext changed = false ∧
+    s.formula.litValue (flipUniv on_ τ) skNext changed = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) changed ∧
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+    flipLit ∈ c.lits.toList ∧
+    flipLit.var ∈ vars.toList ∧
+    s.formula.litValue τ skNext flipLit = false ∧
+    s.formula.litValue (flipUniv on_ τ) skNext flipLit = true ∧
+    DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
+    ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
+    s.formula.litValue τ skCand flipLit = false ∧
+    s.formula.litValue (flipUniv on_ τ) skCand flipLit = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
+      (mkLit flipLit.var
+        (s.formula.varValue τ skCand flipLit.var))
 
 theorem dependencyRemoval_properGrowthNewWitness_currentClauseSideSplit
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -5137,39 +4282,10 @@ theorem dependencyRemoval_properGrowthNewWitness_currentClauseSideSplit
     (hobs :
       DependencyRemovalProperGrowthNewWitnessObstruction
         s vars on_ skBase skCand skNext) :
-    (∃ cref c changed flipLit τ,
-      s.clauses.getClause cref = some c ∧
-      s.formula.clauseValue τ skNext c.lits = false ∧
-      s.formula.clauseValue τ skCand c.lits = true ∧
-      changed ∈ c.lits.toList ∧
-      changed.var ∈ vars.toList ∧
-      flipLit ∈ c.lits.toList ∧
-      flipLit.var ∈ vars.toList ∧
-      DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
-      ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
-      s.formula.litValue τ skCand flipLit = true ∧
-      s.formula.litValue (flipUniv on_ τ) skCand flipLit = true) ∨
-    (∃ cref c changed flipLit τ,
-      s.clauses.getClause cref = some c ∧
-      s.formula.clauseValue τ skNext c.lits = false ∧
-      changed ∈ c.lits.toList ∧
-      changed.var ∈ vars.toList ∧
-      s.formula.litValue τ skBase changed = true ∧
-      s.formula.litValue τ skNext changed = false ∧
-      s.formula.litValue (flipUniv on_ τ) skNext changed = false ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) changed ∧
-      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
-      flipLit ∈ c.lits.toList ∧
-      flipLit.var ∈ vars.toList ∧
-      s.formula.litValue τ skNext flipLit = false ∧
-      s.formula.litValue (flipUniv on_ τ) skNext flipLit = true ∧
-      DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
-      ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
-      s.formula.litValue τ skCand flipLit = false ∧
-      s.formula.litValue (flipUniv on_ τ) skCand flipLit = false ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-        (mkLit flipLit.var
-          (s.formula.varValue τ skCand flipLit.var))) := by
+    DependencyRemovalProperGrowthCurrentTrueObservedResidual
+        s vars on_ skBase skCand skNext ∨
+      DependencyRemovalProperGrowthCurrentFalseResidual
+        s vars on_ skBase skCand skNext := by
   classical
   rcases hobs with
     ⟨cref, c, changed, flipLit, τ, σSide, hget,
@@ -5291,11 +4407,15 @@ theorem dependencyRemoval_properGrowthNewWitness_currentClauseSideSplit
       dependencyRemoval_varValue_eq_isPos_litValue_true
         s.formula (flipUniv on_ τ) skCand flipLit hcandFlip
     exact Or.inl
-      ⟨cref, c, changed, flipLit, τ, hget, hclauseFalse,
+      ⟨cref, c, changed, flipLit, τ, τ, hget, hclauseFalse,
         dependencyRemoval_clauseValue_true_of_mem_lit_true
           s.formula τ skCand hflipMem hlitτ,
-        hchangedMem, hchangedVar, hflipMem, hflipVar, hwitNext,
-        hnotCand, hlitτ, hlitFlip⟩
+        hchangedMem, hchangedVar, hchangedTrue, hchangedFalse,
+        hchangedFlipFalse, hchangedNoPath, hnoCompl, hflipMem,
+        hflipVar, hflipFalse, hflipTrue, hwitNext, hnotCand,
+        hexiFlip, hcontainsFlip, Or.inl rfl, hbaseSide, hnotSide,
+        hchangedCurrent, hnoPathCurrent, holdFalse, hfiber, hlitτ,
+        hlitFlip⟩
   · rcases horient with ⟨hσSide, hagreeτ⟩
     subst σSide
     have hcandFlip :
@@ -5327,112 +4447,6 @@ theorem dependencyRemoval_properGrowthNewWitness_currentClauseSideSplit
         hchangedFlipFalse, hchangedNoPath, hnoCompl, hflipMem,
         hflipVar, hflipFalse, hflipTrue, hwitNext, hnotCand,
         hlitτ, hlitFlip, htailCand⟩
-
-/-!
-The previous split has two concrete outcomes.  In the first one, the residual
-clause is false for the two-patch candidate but already true for the current
-candidate, because the new-witness literal is true on both \(u\)-sides for the
-current candidate.
--/
-
-abbrev DependencyRemovalProperGrowthCurrentTrueResidual
-    (s : CheckState) (vars : Array Var) (on_ : Var)
-    (skCand skNext : SkolemAssignment) : Prop :=
-  ∃ cref c changed flipLit τ,
-    s.clauses.getClause cref = some c ∧
-    s.formula.clauseValue τ skNext c.lits = false ∧
-    s.formula.clauseValue τ skCand c.lits = true ∧
-    changed ∈ c.lits.toList ∧
-    changed.var ∈ vars.toList ∧
-    flipLit ∈ c.lits.toList ∧
-    flipLit.var ∈ vars.toList ∧
-    DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
-    ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
-    s.formula.litValue τ skCand flipLit = true ∧
-    s.formula.litValue (flipUniv on_ τ) skCand flipLit = true
-
-/-!
-In the second outcome, the new-witness literal is false on both \(u\)-sides
-for the current candidate.  The same-clause tail argument gives the missing
-pure-path side condition for the current candidate's own value of that
-variable.  We keep the original changed literal and its missing path in this
-package because those are exactly what the next TeX step needs to reason about
-the residual clause.
--/
-
-abbrev DependencyRemovalProperGrowthCurrentFalseResidual
-    (s : CheckState) (vars : Array Var) (on_ : Var)
-    (skBase skCand skNext : SkolemAssignment) : Prop :=
-  ∃ cref c changed flipLit τ,
-    s.clauses.getClause cref = some c ∧
-    s.formula.clauseValue τ skNext c.lits = false ∧
-    changed ∈ c.lits.toList ∧
-    changed.var ∈ vars.toList ∧
-    s.formula.litValue τ skBase changed = true ∧
-    s.formula.litValue τ skNext changed = false ∧
-    s.formula.litValue (flipUniv on_ τ) skNext changed = false ∧
-    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) changed ∧
-    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
-    flipLit ∈ c.lits.toList ∧
-    flipLit.var ∈ vars.toList ∧
-    s.formula.litValue τ skNext flipLit = false ∧
-    s.formula.litValue (flipUniv on_ τ) skNext flipLit = true ∧
-    DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
-    ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
-    s.formula.litValue τ skCand flipLit = false ∧
-    s.formula.litValue (flipUniv on_ τ) skCand flipLit = false ∧
-    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-      (mkLit flipLit.var
-        (s.formula.varValue τ skCand flipLit.var))
-
-/-!
-If that current-false side case also has the same concrete clause false for
-the current candidate on both \(u\)-sides, then no new proper-growth reasoning
-is needed.  It is just the ordinary same-clause failure for the current
-candidate, with the changed base literal recovered from the original satisfying
-Skolem functions.
--/
-
-abbrev DependencyRemovalProperGrowthCurrentFalseSameClauseResidual
-    (s : CheckState) (vars : Array Var) (on_ : Var)
-    (skCand skNext : SkolemAssignment) : Prop :=
-  ∃ cref c changed flipLit τ,
-    s.clauses.getClause cref = some c ∧
-    s.formula.clauseValue τ skNext c.lits = false ∧
-    s.formula.clauseValue τ skCand c.lits = false ∧
-    s.formula.clauseValue (flipUniv on_ τ) skCand c.lits = false ∧
-    changed ∈ c.lits.toList ∧
-    changed.var ∈ vars.toList ∧
-    flipLit ∈ c.lits.toList ∧
-    flipLit.var ∈ vars.toList ∧
-    DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
-    ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
-    s.formula.litValue τ skCand flipLit = false ∧
-    s.formula.litValue (flipUniv on_ τ) skCand flipLit = false ∧
-    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-      (mkLit flipLit.var
-        (s.formula.varValue τ skCand flipLit.var))
-
-theorem dependencyRemoval_properGrowthCurrentFalseSameClauseResidual_failure
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment}
-    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (hres :
-      DependencyRemovalProperGrowthCurrentFalseSameClauseResidual
-        s vars on_ skCand skNext) :
-    ∃ τ, FlexibleRepairSameClauseFlipFailure
-      s vars on_ skBase skCand τ := by
-  rcases hres with
-    ⟨cref, c, _changed, _flipLit, τ, hget, _hnextFalse,
-      hcurrentFalse, hcurrentFlipFalse, _hchangedMem, _hchangedVar,
-      _hflipMem, _hflipVar, _hwitNext, _hnotCand, _hflipFalse,
-      _hflipFlipFalse, _hnoPath⟩
-  exact ⟨τ,
-    dependencyRemoval_currentClauseFalse_bothSides_sameClauseFailure
-      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-      (skCand := skCand) (σ := τ) (cref := cref) (c := c)
-      hallBase htracked hget hcurrentFalse hcurrentFlipFalse⟩
 
 /-!
 If the current-false proper-growth residual is not already a same-clause
@@ -5736,16 +4750,74 @@ abbrev DependencyRemovalProperGrowthCurrentFalseFlipLiveResidual
     s.formula.clauseValue τ skCand c.lits = false ∧
     s.formula.clauseValue (flipUniv on_ τ) skCand c.lits = true
 
-theorem dependencyRemoval_properGrowthCurrentFalseResidual_refineCurrentClause
+/-!
+The current-false branch must keep its residual provenance.  A bare
+same-clause failure would say only that `skCand` falsifies some clause on both
+universal sides; this package records that the clause is the same residual
+clause produced by the two-patch analysis, with the same `changed`, `flipLit`,
+and assignment data still available.
+-/
+
+abbrev DependencyRemovalProperGrowthCurrentBothSidesFalseResidual
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand skNext : SkolemAssignment) : Prop :=
+  ∃ cref c changed flipLit τ,
+    s.clauses.getClause cref = some c ∧
+    s.formula.clauseValue τ skNext c.lits = false ∧
+    changed ∈ c.lits.toList ∧
+    changed.var ∈ vars.toList ∧
+    s.formula.litValue τ skBase changed = true ∧
+    s.formula.litValue τ skNext changed = false ∧
+    s.formula.litValue (flipUniv on_ τ) skNext changed = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) changed ∧
+    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+    flipLit ∈ c.lits.toList ∧
+    flipLit.var ∈ vars.toList ∧
+    s.formula.litValue τ skNext flipLit = false ∧
+    s.formula.litValue (flipUniv on_ τ) skNext flipLit = true ∧
+    DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
+    ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
+    s.formula.litValue τ skCand flipLit = false ∧
+    s.formula.litValue (flipUniv on_ τ) skCand flipLit = false ∧
+    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
+      (mkLit flipLit.var
+        (s.formula.varValue τ skCand flipLit.var)) ∧
+    s.formula.clauseValue τ skCand c.lits = false ∧
+    s.formula.clauseValue (flipUniv on_ τ) skCand c.lits = false
+
+theorem dependencyRemoval_properGrowthCurrentBothSidesFalseResidual_sameClauseFailure
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skBase skCand skNext : SkolemAssignment}
     (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
     (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
     (hres :
+      DependencyRemovalProperGrowthCurrentBothSidesFalseResidual
+        s vars on_ skBase skCand skNext) :
+    ∃ τ, FlexibleRepairSameClauseFlipFailure
+      s vars on_ skBase skCand τ := by
+  rcases hres with
+    ⟨cref, c, _changed, _flipLit, τ, hget, _hnextFalse,
+      _hchangedMem, _hchangedVar, _hchangedTrue, _hchangedFalse,
+      _hchangedFlipFalse, _hchangedNoPath, _hnoCompl, _hflipMem,
+      _hflipVar, _hflipNextFalse, _hflipNextTrue, _hwitNext,
+      _hnotCand, _hflipCandFalse, _hflipCandFlipFalse,
+      _hnoPathCurrent, hcurrentFalse, hcurrentFlipFalse⟩
+  exact
+    ⟨τ,
+      dependencyRemoval_currentClauseFalse_bothSides_sameClauseFailure
+        (s := s) (vars := vars) (on_ := on_)
+        (skBase := skBase) (skCand := skCand) (σ := τ)
+        (cref := cref) (c := c)
+        hallBase htracked hget hcurrentFalse hcurrentFlipFalse⟩
+
+theorem dependencyRemoval_properGrowthCurrentFalseResidual_refineCurrentClause
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand skNext : SkolemAssignment}
+    (hres :
       DependencyRemovalProperGrowthCurrentFalseResidual
         s vars on_ skBase skCand skNext) :
-    (∃ τ, FlexibleRepairSameClauseFlipFailure
-      s vars on_ skBase skCand τ) ∨
+    DependencyRemovalProperGrowthCurrentBothSidesFalseResidual
+        s vars on_ skBase skCand skNext ∨
       DependencyRemovalProperGrowthCurrentFalseForwardLiveResidual
         s vars on_ skBase skCand skNext ∨
       DependencyRemovalProperGrowthCurrentFalseFlipLiveResidual
@@ -5778,12 +4850,12 @@ theorem dependencyRemoval_properGrowthCurrentFalseResidual_refineCurrentClause
     by_cases hcurrentFlipFalse :
         s.formula.clauseValue (flipUniv on_ τ) skCand c.lits = false
     · exact Or.inl
-        ⟨τ,
-          dependencyRemoval_currentClauseFalse_bothSides_sameClauseFailure
-            (s := s) (vars := vars) (on_ := on_)
-            (skBase := skBase) (skCand := skCand) (σ := τ)
-            (cref := cref) (c := c)
-            hallBase htracked hget hcurrentFalse hcurrentFlipFalse⟩
+        ⟨cref, c, changed, flipLit, τ, hget, hnextFalse,
+          hchangedMem, hchangedVar, hchangedTrue, hchangedFalse,
+          hchangedFlipFalse, hchangedNoPath, hnoCompl, hflipMem,
+          hflipVar, hflipNextFalse, hflipNextTrue, hwitNext,
+          hnotCand, hflipCandFalse, hflipCandFlipFalse,
+          hnoPathCurrent, hcurrentFalse, hcurrentFlipFalse⟩
     · have hcurrentFlipTrue :
           s.formula.clauseValue (flipUniv on_ τ) skCand c.lits = true := by
         cases hval :
@@ -5834,43 +4906,10 @@ theorem dependencyRemoval_properGrowthResidual_sideSplit_or_sameClauseFailureNex
       DependencyRemovalExactTwoPatchResidual
         s vars on_ skBase skCand skNext σ) :
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
-      ((∃ cref c changed flipLit τ,
-        s.clauses.getClause cref = some c ∧
-        s.formula.clauseValue τ skNext c.lits = false ∧
-        s.formula.clauseValue τ skCand c.lits = true ∧
-        changed ∈ c.lits.toList ∧
-        changed.var ∈ vars.toList ∧
-        flipLit ∈ c.lits.toList ∧
-        flipLit.var ∈ vars.toList ∧
-        DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
-        ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
-        s.formula.litValue τ skCand flipLit = true ∧
-        s.formula.litValue (flipUniv on_ τ) skCand flipLit =
-          true) ∨
-      (∃ cref c changed flipLit τ,
-        s.clauses.getClause cref = some c ∧
-        s.formula.clauseValue τ skNext c.lits = false ∧
-        changed ∈ c.lits.toList ∧
-        changed.var ∈ vars.toList ∧
-        s.formula.litValue τ skBase changed = true ∧
-        s.formula.litValue τ skNext changed = false ∧
-        s.formula.litValue (flipUniv on_ τ) skNext changed =
-          false ∧
-        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) changed ∧
-        (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
-        flipLit ∈ c.lits.toList ∧
-        flipLit.var ∈ vars.toList ∧
-        s.formula.litValue τ skNext flipLit = false ∧
-        s.formula.litValue (flipUniv on_ τ) skNext flipLit =
-          true ∧
-        DeleteDepWitness s.formula flipLit.var on_ skNext τ ∧
-        ¬ DeleteDepWitness s.formula flipLit.var on_ skCand τ ∧
-        s.formula.litValue τ skCand flipLit = false ∧
-        s.formula.litValue (flipUniv on_ τ) skCand flipLit =
-          false ∧
-        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-          (mkLit flipLit.var
-            (s.formula.varValue τ skCand flipLit.var)))) ∨
+      (DependencyRemovalProperGrowthCurrentTrueObservedResidual
+          s vars on_ skBase skCand skNext ∨
+        DependencyRemovalProperGrowthCurrentFalseResidual
+          s vars on_ skBase skCand skNext) ∨
       ∃ τ, FlexibleRepairSameClauseFlipFailure
         s vars on_ skBase skNext τ := by
   rcases
@@ -5935,8 +4974,8 @@ theorem dependencyRemoval_properGrowthResidual_namedSideSplit_or_sameClauseFailu
       DependencyRemovalExactTwoPatchResidual
         s vars on_ skBase skCand skNext σ) :
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
-      DependencyRemovalProperGrowthCurrentTrueResidual
-        s vars on_ skCand skNext ∨
+      DependencyRemovalProperGrowthCurrentTrueObservedResidual
+        s vars on_ skBase skCand skNext ∨
       DependencyRemovalProperGrowthCurrentFalseResidual
         s vars on_ skBase skCand skNext ∨
       ∃ τ, FlexibleRepairSameClauseFlipFailure
@@ -5978,7 +5017,7 @@ theorem dependencyRemoval_properGrowthResidual_refinedSideSplit
     (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
     (hcontains : ∀ x ∈ vars.toList,
       (s.formula.depset.getD x #[]).contains on_ = true)
-    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (_hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
     (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
     (htrackedNext :
       FlexibleRepairPoolTracked s vars on_ skBase skNext)
@@ -5988,10 +5027,10 @@ theorem dependencyRemoval_properGrowthResidual_refinedSideSplit
       DependencyRemovalExactTwoPatchResidual
         s vars on_ skBase skCand skNext σ) :
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
-      DependencyRemovalProperGrowthCurrentTrueResidual
-        s vars on_ skCand skNext ∨
-      (∃ τ, FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skCand τ) ∨
+      DependencyRemovalProperGrowthCurrentTrueObservedResidual
+        s vars on_ skBase skCand skNext ∨
+      DependencyRemovalProperGrowthCurrentBothSidesFalseResidual
+        s vars on_ skBase skCand skNext ∨
       DependencyRemovalProperGrowthCurrentFalseForwardLiveResidual
         s vars on_ skBase skCand skNext ∨
       DependencyRemovalProperGrowthCurrentFalseFlipLiveResidual
@@ -6013,192 +5052,13 @@ theorem dependencyRemoval_properGrowthResidual_refinedSideSplit
           dependencyRemoval_properGrowthCurrentFalseResidual_refineCurrentClause
             (s := s) (vars := vars) (on_ := on_)
             (skBase := skBase) (skCand := skCand) (skNext := skNext)
-            hallBase htracked hfalse with
-          hsameCand | hlive
-        · exact Or.inr (Or.inr (Or.inl hsameCand))
+            hfalse with
+          hboth | hlive
+        · exact Or.inr (Or.inr (Or.inl hboth))
         · rcases hlive with hforward | hflip
           · exact Or.inr (Or.inr (Or.inr (Or.inl hforward)))
           · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl hflip))))
       · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr hsameNext))))
-
-/-!
-The flip-live residual proves the TeX sentence "there is some other literal
-\(l_y\)" in a concrete Lean form.  The residual literal `flipLit` is false on
-both current \(u\)-sides, while the clause itself becomes true on the flipped
-side.  Therefore a different clause literal flips from false to true for the
-current candidate, and the earlier universal-literal argument shows that this
-literal is existential and depends on `on_`.
--/
-
-theorem dependencyRemoval_properGrowthCurrentFalseFlipLive_existentialWitness
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment}
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hres :
-      DependencyRemovalProperGrowthCurrentFalseFlipLiveResidual
-        s vars on_ skBase skCand skNext) :
-    ∃ cref c changed flipLit liveLit τ,
-      s.clauses.getClause cref = some c ∧
-      s.formula.clauseValue τ skCand c.lits = false ∧
-      s.formula.clauseValue (flipUniv on_ τ) skCand c.lits = true ∧
-      changed ∈ c.lits.toList ∧
-      changed.var ∈ vars.toList ∧
-      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) changed ∧
-      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
-      flipLit ∈ c.lits.toList ∧
-      s.formula.litValue τ skCand flipLit = false ∧
-      s.formula.litValue (flipUniv on_ τ) skCand flipLit = false ∧
-      liveLit ∈ c.lits.toList ∧
-      liveLit ≠ flipLit ∧
-      s.formula.litValue τ skCand liveLit = false ∧
-      s.formula.litValue (flipUniv on_ τ) skCand liveLit = true ∧
-      DeleteDepWitness s.formula liveLit.var on_ skCand τ ∧
-      s.formula.isVarExistential liveLit.var = true ∧
-      (s.formula.depset.getD liveLit.var #[]).contains on_ = true := by
-  rcases hres with
-    ⟨cref, c, changed, flipLit, τ, hget, _hnextFalse,
-      hchangedMem, hchangedVar, _hchangedTrue, _hchangedFalse,
-      _hchangedFlipFalse, hchangedNoPath, hnoCompl, hflipMem,
-      _hflipVar, _hflipNextFalse, _hflipNextTrue, _hwitNext,
-      _hnotCand, hflipCandFalse, hflipCandFlipFalse,
-      _hnoPathCurrent, hcurrentFalse, hcurrentFlipTrue⟩
-  rcases dependencyRemoval_flipWitness_isExistential_or_sameClauseFalse
-      (s := s) (vars := vars) (on_ := on_) (skCand := skCand)
-      (σ := τ) (cref := cref) (c := c) (baseLit := changed)
-      hgt hexi hcontains hget hcurrentFalse hchangedMem hchangedVar
-      hchangedNoPath with
-    ⟨_hnoComplCurrent, hflipOrSame⟩
-  rcases hflipOrSame with hflip | hsameFalse
-  · rcases hflip with
-      ⟨liveLit, hliveMem, hliveFalse, hliveTrue, hliveWitness,
-        hliveExi, hliveContains⟩
-    have hliveNeFlip : liveLit ≠ flipLit := by
-      intro hEq
-      rw [hEq, hflipCandFlipFalse] at hliveTrue
-      cases hliveTrue
-    exact
-      ⟨cref, c, changed, flipLit, liveLit, τ, hget,
-        hcurrentFalse, hcurrentFlipTrue, hchangedMem, hchangedVar,
-        hchangedNoPath, hnoCompl, hflipMem, hflipCandFalse,
-        hflipCandFlipFalse, hliveMem, hliveNeFlip, hliveFalse, hliveTrue,
-        hliveWitness, hliveExi, hliveContains⟩
-  · rw [hcurrentFlipTrue] at hsameFalse
-    cases hsameFalse
-
-/-!
-The only way the flip-live witness does not immediately give the next strict
-repair is if it is on the same variable as the old changed literal.  That case
-is named separately; otherwise the same-clause tail lemma transfers the
-missing pure-path condition from the old changed literal to the new witness's
-current value, and a one-step patch is valid.
--/
-
-abbrev DependencyRemovalProperGrowthFlipLiveSameChangedVarObstruction
-    (s : CheckState) (vars : Array Var) (on_ : Var)
-    (skCand : SkolemAssignment) : Prop :=
-  ∃ cref c changed flipLit liveLit τ,
-    s.clauses.getClause cref = some c ∧
-    s.formula.clauseValue τ skCand c.lits = false ∧
-    s.formula.clauseValue (flipUniv on_ τ) skCand c.lits = true ∧
-    changed ∈ c.lits.toList ∧
-    changed.var ∈ vars.toList ∧
-    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) changed ∧
-    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
-    flipLit ∈ c.lits.toList ∧
-    s.formula.litValue τ skCand flipLit = false ∧
-    s.formula.litValue (flipUniv on_ τ) skCand flipLit = false ∧
-    liveLit ∈ c.lits.toList ∧
-    liveLit ≠ flipLit ∧
-    liveLit.var = changed.var ∧
-    s.formula.litValue τ skCand liveLit = false ∧
-    s.formula.litValue (flipUniv on_ τ) skCand liveLit = true ∧
-    DeleteDepWitness s.formula liveLit.var on_ skCand τ ∧
-    s.formula.isVarExistential liveLit.var = true ∧
-    (s.formula.depset.getD liveLit.var #[]).contains on_ = true
-
-theorem dependencyRemoval_properGrowthCurrentFalseFlipLive_strictStep_or_sameChangedVar
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment}
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (hres :
-      DependencyRemovalProperGrowthCurrentFalseFlipLiveResidual
-        s vars on_ skBase skCand skNext) :
-    FlexibleRepairTrackedStrictStep s vars on_ skBase skCand ∨
-      DependencyRemovalProperGrowthFlipLiveSameChangedVarObstruction
-        s vars on_ skCand := by
-  rcases
-      dependencyRemoval_properGrowthCurrentFalseFlipLive_existentialWitness
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (skNext := skNext)
-        hgt hexi hcontains hres with
-    ⟨cref, c, changed, flipLit, liveLit, τ, hget,
-      hcurrentFalse, hcurrentFlipTrue, hchangedMem, hchangedVar,
-      hchangedNoPath, hnoCompl, hflipMem, hflipCandFalse,
-      hflipCandFlipFalse, hliveMem, hliveNeFlip, hliveFalse,
-      hliveTrue, hliveWitness, hliveExi, hliveContains⟩
-  by_cases hsameVar : liveLit.var = changed.var
-  · exact Or.inr
-      ⟨cref, c, changed, flipLit, liveLit, τ, hget,
-        hcurrentFalse, hcurrentFlipTrue, hchangedMem, hchangedVar,
-        hchangedNoPath, hnoCompl, hflipMem, hflipCandFalse,
-        hflipCandFlipFalse, hliveMem, hliveNeFlip, hsameVar,
-        hliveFalse, hliveTrue, hliveWitness, hliveExi,
-        hliveContains⟩
-  · have hliveVar : liveLit.var ∈ vars.toList :=
-      hclosed liveLit.var hliveExi hliveContains
-    have hchangedMemMk :
-        mkLit changed.var changed.isPos ∈ c.lits.toList := by
-      rw [← dependencyRemoval_literal_eq_mkLit_var_isPos changed]
-      exact hchangedMem
-    have hliveMemMk :
-        mkLit liveLit.var liveLit.isPos ∈ c.lits.toList := by
-      rw [← dependencyRemoval_literal_eq_mkLit_var_isPos liveLit]
-      exact hliveMem
-    have hchangedNoPathMk :
-        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-          (mkLit changed.var changed.isPos) := by
-      rw [← dependencyRemoval_literal_eq_mkLit_var_isPos changed]
-      exact hchangedNoPath
-    have hothers :
-        ∀ l ∈ c.lits.toList, l ≠ mkLit changed.var changed.isPos →
-          s.formula.litValue τ skCand l = false := by
-      intro l hl _hne
-      exact dependencyRemoval_clauseValue_false_implies_lit_false
-        s.formula τ skCand c.lits hcurrentFalse l hl
-    have htailNoPath :
-        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-          (mkLit liveLit.var (!liveLit.isPos)) :=
-      dependencyRemoval_sameClause_tailOldLiteralNoPurePath
-        (s := s) (vars := vars) (on_ := on_)
-        (of_ := changed.var) (nextOf := liveLit.var)
-        (sk := skCand) (σ := τ) (cref := cref) (c := c)
-        (pos := changed.isPos) (nextPos := liveLit.isPos)
-        hon_univ hexi hcontains hchangedVar hget hchangedMemMk
-        hchangedNoPathMk hsameVar hliveMemMk hothers
-    have hliveValue :
-        s.formula.varValue τ skCand liveLit.var = !liveLit.isPos :=
-      dependencyRemoval_litValue_false_varValue_eq_not_isPos
-        s.formula τ skCand liveLit hliveFalse
-    have hnoPathCurrent :
-        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
-          (mkLit liveLit.var
-            (s.formula.varValue τ skCand liveLit.var)) := by
-      simpa [hliveValue] using htailNoPath
-    exact Or.inl
-      (dependencyRemoval_poolPatchStep_trackedStrictStep
-        (s := s) (vars := vars) (on_ := on_) (patched := liveLit.var)
-        (skBase := skBase) (skCand := skCand) (σSeed := τ)
-        hexi hcontains htracked hliveVar hliveWitness hnoPathCurrent)
 
 /-!
 The same flip-live residual can be phrased closer to the TeX obstruction.  If
@@ -6346,272 +5206,6 @@ theorem dependencyRemoval_properGrowthCurrentFalseFlipLive_strictStep_or_blocked
     cases hsameFalse
 
 /-!
-The same-variable obstruction can be normalized further.  Because the residual
-clause has no complementary pair, a live literal on the same variable as the
-old changed literal cannot be the negation of that old literal.  It is
-therefore exactly the old changed literal.  This exposes the remaining gap in
-the TeX chase: the live witness is the old literal itself, so the missing
-no-path condition needed for a direct patch is the opposite polarity from the
-one already known.
--/
-
-abbrev DependencyRemovalProperGrowthFlipLiveSameLiteralObstruction
-    (s : CheckState) (vars : Array Var) (on_ : Var)
-    (skCand : SkolemAssignment) : Prop :=
-  ∃ cref c changed flipLit τ,
-    s.clauses.getClause cref = some c ∧
-    s.formula.clauseValue τ skCand c.lits = false ∧
-    s.formula.clauseValue (flipUniv on_ τ) skCand c.lits = true ∧
-    changed ∈ c.lits.toList ∧
-    changed.var ∈ vars.toList ∧
-    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) changed ∧
-    (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
-    flipLit ∈ c.lits.toList ∧
-    s.formula.litValue τ skCand flipLit = false ∧
-    s.formula.litValue (flipUniv on_ τ) skCand flipLit = false ∧
-    changed ≠ flipLit ∧
-    s.formula.litValue τ skCand changed = false ∧
-    s.formula.litValue (flipUniv on_ τ) skCand changed = true ∧
-    DeleteDepWitness s.formula changed.var on_ skCand τ ∧
-    s.formula.isVarExistential changed.var = true ∧
-    (s.formula.depset.getD changed.var #[]).contains on_ = true
-
-theorem dependencyRemoval_properGrowthFlipLiveSameChangedVar_sameLiteral
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skCand : SkolemAssignment}
-    (hobs :
-      DependencyRemovalProperGrowthFlipLiveSameChangedVarObstruction
-        s vars on_ skCand) :
-    DependencyRemovalProperGrowthFlipLiveSameLiteralObstruction
-      s vars on_ skCand := by
-  rcases hobs with
-    ⟨cref, c, changed, flipLit, liveLit, τ, hget,
-      hcurrentFalse, hcurrentFlipTrue, hchangedMem, hchangedVar,
-      hchangedNoPath, hnoCompl, hflipMem, hflipCandFalse,
-      hflipCandFlipFalse, hliveMem, hliveNeFlip, hsameVar,
-      hliveFalse, hliveTrue, hliveWitness, hliveExi,
-      hliveContains⟩
-  have hliveNeChangedNeg : liveLit ≠ changed.negate := by
-    intro hEq
-    exact (hnoCompl changed hchangedMem) (by simpa [← hEq] using hliveMem)
-  have hliveEqChanged : liveLit = changed :=
-    dependencyRemoval_literal_eq_of_same_var_and_not_negate
-      changed liveLit hsameVar.symm hliveNeChangedNeg
-  have hchangedNeFlip : changed ≠ flipLit := by
-    intro hchangedEqFlip
-    exact hliveNeFlip (hliveEqChanged.trans hchangedEqFlip)
-  have hchangedCandFalse :
-      s.formula.litValue τ skCand changed = false := by
-    simpa [hliveEqChanged] using hliveFalse
-  have hchangedCandFlipTrue :
-      s.formula.litValue (flipUniv on_ τ) skCand changed = true := by
-    simpa [hliveEqChanged] using hliveTrue
-  have hchangedWitness :
-      DeleteDepWitness s.formula changed.var on_ skCand τ := by
-    simpa [hliveEqChanged] using hliveWitness
-  have hchangedExi :
-      s.formula.isVarExistential changed.var = true := by
-    simpa [hliveEqChanged] using hliveExi
-  have hchangedContains :
-      (s.formula.depset.getD changed.var #[]).contains on_ = true := by
-    simpa [hliveEqChanged] using hliveContains
-  exact
-    ⟨cref, c, changed, flipLit, τ, hget, hcurrentFalse,
-      hcurrentFlipTrue, hchangedMem, hchangedVar, hchangedNoPath,
-      hnoCompl, hflipMem, hflipCandFalse, hflipCandFlipFalse,
-      hchangedNeFlip, hchangedCandFalse, hchangedCandFlipTrue,
-      hchangedWitness, hchangedExi, hchangedContains⟩
-
-/-!
-After the flip-live branch is refined, the proper-growth frontier has a
-smaller remaining shape.  A flip-live literal on a different variable is an
-ordinary strict repair step; only the same-variable obstruction remains
-unclosed.
--/
-
-theorem dependencyRemoval_properGrowthResidual_refinedSideSplit_or_sameVar
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hsubsetCandNext :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ) :
-    DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
-      DependencyRemovalProperGrowthCurrentTrueResidual
-        s vars on_ skCand skNext ∨
-      (∃ τ, FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skCand τ) ∨
-      DependencyRemovalProperGrowthCurrentFalseForwardLiveResidual
-        s vars on_ skBase skCand skNext ∨
-      DependencyRemovalProperGrowthFlipLiveSameChangedVarObstruction
-        s vars on_ skCand ∨
-      ∃ τ, FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skNext τ := by
-  rcases
-      dependencyRemoval_properGrowthResidual_refinedSideSplit
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (skNext := skNext) (σ := σ)
-        hon_univ hclosed hgt hexi hcontains hallBase htracked
-        htrackedNext hsubsetCandNext hexact with
-    hlocal | hrest
-  · exact Or.inl hlocal
-  · rcases hrest with htrue | hrest
-    · exact Or.inr (Or.inl htrue)
-    · rcases hrest with hsameCand | hrest
-      · exact Or.inr (Or.inr (Or.inl hsameCand))
-      · rcases hrest with hforward | hrest
-        · exact Or.inr (Or.inr (Or.inr (Or.inl hforward)))
-        · rcases hrest with hflip | hsameNext
-          · rcases
-              dependencyRemoval_properGrowthCurrentFalseFlipLive_strictStep_or_sameChangedVar
-                (s := s) (vars := vars) (on_ := on_)
-                (skBase := skBase) (skCand := skCand)
-                (skNext := skNext)
-                hon_univ hclosed hgt hexi hcontains htracked hflip with
-              hstrict | hobs
-            · exact Or.inl (Or.inr hstrict)
-            · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl hobs))))
-          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr hsameNext))))
-
-/-!
-The same split with the remaining flip-live branch normalized to the exact
-same-literal form above.  This is the more useful audit statement: outside of
-ordinary restarts and forward/current-true residuals, the hard branch says the
-old changed literal itself is a current \(u\)-dependency witness.
--/
-
-theorem dependencyRemoval_properGrowthResidual_refinedSideSplit_or_sameLiteral
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hsubsetCandNext :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ) :
-    DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
-      DependencyRemovalProperGrowthCurrentTrueResidual
-        s vars on_ skCand skNext ∨
-      (∃ τ, FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skCand τ) ∨
-      DependencyRemovalProperGrowthCurrentFalseForwardLiveResidual
-        s vars on_ skBase skCand skNext ∨
-      DependencyRemovalProperGrowthFlipLiveSameLiteralObstruction
-        s vars on_ skCand ∨
-      ∃ τ, FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skNext τ := by
-  rcases
-      dependencyRemoval_properGrowthResidual_refinedSideSplit_or_sameVar
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (skNext := skNext) (σ := σ)
-        hon_univ hclosed hgt hexi hcontains hallBase htracked
-        htrackedNext hsubsetCandNext hexact with
-    hlocal | hrest
-  · exact Or.inl hlocal
-  · rcases hrest with htrue | hrest
-    · exact Or.inr (Or.inl htrue)
-    · rcases hrest with hsameCand | hrest
-      · exact Or.inr (Or.inr (Or.inl hsameCand))
-      · rcases hrest with hforward | hrest
-        · exact Or.inr (Or.inr (Or.inr (Or.inl hforward)))
-        · rcases hrest with hsameVar | hsameNext
-          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
-              (dependencyRemoval_properGrowthFlipLiveSameChangedVar_sameLiteral
-                (s := s) (vars := vars) (on_ := on_)
-                (skCand := skCand) hsameVar)))))
-          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr hsameNext))))
-
-/-!
-The forward-live branch can be exposed in the same named style.  Either its
-live literal has the old-polarity no-path condition supplied by the
-same-clause tail argument, or that live literal is exactly the old changed
-literal.  The latter is kept as a small obstruction because it is the point
-where the direct tail argument stops.
--/
-
-theorem dependencyRemoval_properGrowthResidual_refinedSideSplit_or_forwardTail
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hsubsetCandNext :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ) :
-    DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
-      DependencyRemovalProperGrowthCurrentTrueResidual
-        s vars on_ skCand skNext ∨
-      (∃ τ, FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skCand τ) ∨
-      DependencyRemovalProperGrowthForwardLiveTailResidual
-        s vars on_ skBase skCand skNext ∨
-      DependencyRemovalProperGrowthForwardLiveSameLiteralObstruction
-        s vars on_ skBase skCand skNext ∨
-      DependencyRemovalProperGrowthFlipLiveSameLiteralObstruction
-        s vars on_ skCand ∨
-      ∃ τ, FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skNext τ := by
-  rcases
-      dependencyRemoval_properGrowthResidual_refinedSideSplit_or_sameLiteral
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (skNext := skNext) (σ := σ)
-        hon_univ hclosed hgt hexi hcontains hallBase htracked
-        htrackedNext hsubsetCandNext hexact with
-    hlocal | hrest
-  · exact Or.inl hlocal
-  · rcases hrest with htrue | hrest
-    · exact Or.inr (Or.inl htrue)
-    · rcases hrest with hsameCand | hrest
-      · exact Or.inr (Or.inr (Or.inl hsameCand))
-      · rcases hrest with hforward | hrest
-        · rcases
-            dependencyRemoval_properGrowthCurrentFalseForwardLive_tailResidual_or_sameLiteral
-              (s := s) (vars := vars) (on_ := on_)
-              (skBase := skBase) (skCand := skCand)
-              (skNext := skNext)
-              hon_univ hexi hcontains htracked htrackedNext hforward with
-            htail | hsameForward
-          · exact Or.inr (Or.inr (Or.inr (Or.inl htail)))
-          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl hsameForward))))
-        · rcases hrest with hflipSame | hsameNext
-          · exact Or.inr
-              (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl hflipSame)))))
-          · exact Or.inr
-              (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr hsameNext)))))
-
-/-!
 The flip-live side can be sharpened further.  Instead of leaving the
 same-literal case as an unnamed obstruction, Lean now records the concrete
 blocked-path branch: either the candidate can be patched strictly, or the old
@@ -6639,10 +5233,10 @@ theorem dependencyRemoval_properGrowthResidual_refinedSideSplit_or_blockedPathBr
       DependencyRemovalExactTwoPatchResidual
         s vars on_ skBase skCand skNext σ) :
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
-      DependencyRemovalProperGrowthCurrentTrueResidual
-        s vars on_ skCand skNext ∨
-      (∃ τ, FlexibleRepairSameClauseFlipFailure
-        s vars on_ skBase skCand τ) ∨
+      DependencyRemovalProperGrowthCurrentTrueObservedResidual
+        s vars on_ skBase skCand skNext ∨
+      DependencyRemovalProperGrowthCurrentBothSidesFalseResidual
+        s vars on_ skBase skCand skNext ∨
       DependencyRemovalProperGrowthForwardLiveTailResidual
         s vars on_ skBase skCand skNext ∨
       DependencyRemovalProperGrowthForwardLiveSameLiteralObstruction
@@ -6662,8 +5256,8 @@ theorem dependencyRemoval_properGrowthResidual_refinedSideSplit_or_blockedPathBr
   · exact Or.inl hlocal
   · rcases hrest with htrue | hrest
     · exact Or.inr (Or.inl htrue)
-    · rcases hrest with hsameCand | hrest
-      · exact Or.inr (Or.inr (Or.inl hsameCand))
+    · rcases hrest with hboth | hrest
+      · exact Or.inr (Or.inr (Or.inl hboth))
       · rcases hrest with hforward | hrest
         · rcases
             dependencyRemoval_properGrowthCurrentFalseForwardLive_tailResidual_or_sameLiteral
@@ -6689,44 +5283,97 @@ theorem dependencyRemoval_properGrowthResidual_refinedSideSplit_or_blockedPathBr
               (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr hsameNext)))))
 
 /-!
-The refined frontier exposes one simple restart shape.  A `RestartableFailure`
-is a concrete failed Skolem set that is still in the repair pool and is already
-proper-smaller than the original satisfying Skolem set.  This is exactly the
-state from which the finite descent paragraph may restart.
+The hard audit point is the phrase in the TeX proof saying that the next
+Skolem set \(f''\) is again in \(\mathcal M\) and has a proper subset of the
+current \(u\)-dependency witnesses.  Lean does not get that conclusion from the
+false residual clause in one step.
+
+The split above names the cases hidden inside that sentence.
+
+* `DependencyRemovalProperGrowthCurrentTrueObservedResidual`: the residual clause is
+  false for the two-patch candidate `skNext`, but already true for the current
+  candidate `skCand` through a named clause literal.  This package now also
+  keeps the old-witness side and missing pure-path fact that the TeX patch step
+  needs.
+
+* `DependencyRemovalProperGrowthForwardLiveTailResidual`: a different current
+  literal explains why the same clause is true for `skCand`.  The missing proof
+  is that this live literal gives the TeX \(y\)-patch as a strict repair from
+  `skCand`, or else contradicts the no-cross-path hypothesis.
+
+* `DependencyRemovalProperGrowthForwardLiveSameLiteralObstruction`: the live
+  literal is the same variable as the changed literal.  This is the delicate
+  path case; it must turn into either a strict current patch or a blocked-path
+  contradiction.
+
+* `DependencyRemovalProperGrowthCurrentBothSidesFalseResidual`: the residual
+  clause is false for the current candidate on both \(u\)-sides.  This is not
+  collapsed to a bare same-clause failure, because the residual clause,
+  changed literal, new-witness literal, and assignment are the provenance the
+  next chase step must keep.
+
+* `FlexibleRepairSameClauseFlipFailure ... skNext`: the same-clause failure has
+  moved to the two-patch candidate.  This is a failed tracked candidate below
+  `skBase`, but the current-frontier handler still needs either a strict step
+  from `skCand` or a stronger rank decrease.
+
+The blocked-path branch is no longer an open hard case: the no-cross-path
+hypothesis turns it into a strict tracked patch by
+`dependencyRemoval_blockedPathBranch_trackedStrictStep`.
+
+So the reviewer-facing question is precise: in the TeX induction step, do the
+cases above prove an actual strict patch from \(f'\), prove a contradiction, or
+require a finite rank stronger than the plain witness count?
 -/
-
-abbrev DependencyRemovalRestartableFailure
-    (s : CheckState) (vars : Array Var) (on_ : Var)
-    (skBase : SkolemAssignment) : Prop :=
-  ∃ skFail τ,
-    FlexibleRepairPoolTracked s vars on_ skBase skFail ∧
-    DeleteWitnessFiberSetProperSubset s.formula vars on_ skFail skBase ∧
-    s.clauses.matrixValue s.formula τ skFail = false
-
-theorem dependencyRemoval_restartableFailure_outcome_of_restart
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase : SkolemAssignment}
-    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_)
-    (hallBase : ∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true)
-    (hfail :
-      DependencyRemovalRestartableFailure s vars on_ skBase) :
-    DependencyRemovalDescentOutcome s vars on_ skBase := by
-  rcases hfail with ⟨skFail, τ, htracked, hproper, hfalse⟩
-  exact hrestart hallBase htracked hproper hfalse
 
 /-!
-The proper-growth residual is now reduced without assuming restart.  Either it
-already gives the local repair result, or one of the named frontier branches
-contains the restartable failure described above.
-
-This is the audit boundary for the finite-descent paragraph: the local
-case-analysis part of the TeX proof produces a concrete failed candidate; the
-separate restart theorem is what turns that candidate into global descent.
+The next theorem turns that audit list into a Lean interface.  It proves the
+current-frontier handler as soon as the five named hard cases are discharged.
+The ordinary local-repair case and the blocked-path case are handled here; the
+only remaining obligations are the cases that the TeX proof compresses into
+the sentence saying that the next Skolem set is again in the pool and has a
+proper subset of the current witnesses.
 -/
 
-theorem dependencyRemoval_properGrowthResidual_localRepair_or_restartableFailure
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
+abbrev DependencyRemovalCurrentFrontierHardCaseDischarge
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    DependencyRemovalCurrentResidualFrontier
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalExactTwoPatchResidual
+      s vars on_ skBase skCand skNext σ →
+    (DependencyRemovalProperGrowthCurrentTrueObservedResidual
+        s vars on_ skBase skCand skNext →
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand) ∧
+    (DependencyRemovalProperGrowthCurrentBothSidesFalseResidual
+        s vars on_ skBase skCand skNext →
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand) ∧
+    (DependencyRemovalProperGrowthForwardLiveTailResidual
+        s vars on_ skBase skCand skNext →
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand) ∧
+    (DependencyRemovalProperGrowthForwardLiveSameLiteralObstruction
+        s vars on_ skBase skCand skNext →
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand) ∧
+    ((∃ τ, FlexibleRepairSameClauseFlipFailure
+        s vars on_ skBase skNext τ) →
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand)
+
+theorem dependencyRemoval_sameClauseConcreteCurrentFrontierHandler_of_hardCaseDischarge
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
     (hon_univ : s.formula.isVarExistential on_ = false)
     (hclosed : ∀ x, s.formula.isVarExistential x = true →
       (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
@@ -6734,278 +5381,44 @@ theorem dependencyRemoval_properGrowthResidual_localRepair_or_restartableFailure
     (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
     (hcontains : ∀ x ∈ vars.toList,
       (s.formula.depset.getD x #[]).contains on_ = true)
-    (hallBase : ∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hproperNext :
-      DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase)
-    (hsubsetCandNext :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ) :
-    DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
-      DependencyRemovalRestartableFailure s vars on_ skBase := by
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hhard : DependencyRemovalCurrentFrontierHardCaseDischarge
+      s vars on_) :
+    DependencyRemovalSameClauseConcreteCurrentFrontierHandler
+      s vars on_ := by
+  intro skBase skCand skNext σ hallBase htracked hfalse htwo
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hcurrent hexact
+  rcases hhard hallBase htracked hfalse htwo hproperCand
+      htrackedNext hltNextBase hproperNext hsubsetCandNext
+      hcurrent hexact with
+    ⟨hcurrentTrue, hboth, htail, hsameForward, hsameNext⟩
   rcases
       dependencyRemoval_properGrowthResidual_refinedSideSplit_or_blockedPathBranch
         (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
         (skCand := skCand) (skNext := skNext) (σ := σ)
-        hon_univ hclosed hgt hexi hcontains hallBase
-        htracked htrackedNext hsubsetCandNext hexact with
+        hon_univ hclosed hgt hexi hcontains hallBase htracked
+        htrackedNext hsubsetCandNext hexact with
     hlocal | hrest
-  · exact Or.inl hlocal
-  · rcases hrest with hcurrentTrue | hrest
-    · rcases hcurrentTrue with
-        ⟨cref, c, _changed, _flipLit, τ, hget, hnextFalse, _hrest⟩
-      have hfalseNext :
-          s.clauses.matrixValue s.formula τ skNext = false :=
-        dependencyRemoval_matrixValue_false_of_false_clause
-          s.formula s.clauses τ skNext hget hnextFalse
-      exact Or.inr ⟨skNext, τ, htrackedNext, hproperNext, hfalseNext⟩
-    · rcases hrest with hsameCand | hrest
-      · rcases hsameCand with ⟨τ, hfailureCand⟩
-        have hfalseCand :
-            s.clauses.matrixValue s.formula τ skCand = false :=
-          dependencyRemoval_sameClauseFailure_matrixFalse
-            (s := s) (vars := vars) (on_ := on_)
-            (skBase := skBase) (skCand := skCand) (σ := τ)
-            hfailureCand
-        have hproperCand :
-            DeleteWitnessFiberSetProperSubset
-              s.formula vars on_ skCand skBase :=
-          dependencyRemoval_trackedFalseCandidate_hasProperSubset
-            (s := s) (vars := vars) (on_ := on_)
-            (skBase := skBase) (skCand := skCand) (σ := τ)
-            hallBase htracked hfalseCand
-        exact Or.inr ⟨skCand, τ, htracked, hproperCand, hfalseCand⟩
-      · rcases hrest with hforwardTail | hrest
-        · rcases hforwardTail with
-            ⟨cref, c, _changed, _flipLit, _liveLit, τ, hget,
-              hnextFalse, _hrest⟩
-          have hfalseNext :
-              s.clauses.matrixValue s.formula τ skNext = false :=
-            dependencyRemoval_matrixValue_false_of_false_clause
-              s.formula s.clauses τ skNext hget hnextFalse
-          exact Or.inr
-            ⟨skNext, τ, htrackedNext, hproperNext, hfalseNext⟩
-        · rcases hrest with hforwardSame | hrest
-          · rcases hforwardSame with
-              ⟨cref, c, _changed, _flipLit, τ, hget,
-                hnextFalse, _hrest⟩
-            have hfalseNext :
-                s.clauses.matrixValue s.formula τ skNext = false :=
-              dependencyRemoval_matrixValue_false_of_false_clause
-                s.formula s.clauses τ skNext hget hnextFalse
-            exact Or.inr
-              ⟨skNext, τ, htrackedNext, hproperNext, hfalseNext⟩
-          · rcases hrest with hblocked | hsameNext
-            · rcases hblocked with
-                ⟨_startPos, τ, cref, c, _lit, hget,
-                  hcurrentFalse, _hrest⟩
-              have hfalseCand :
-                  s.clauses.matrixValue s.formula τ skCand = false :=
-                dependencyRemoval_matrixValue_false_of_false_clause
-                  s.formula s.clauses τ skCand hget hcurrentFalse
-              have hproperCand :
-                  DeleteWitnessFiberSetProperSubset
-                    s.formula vars on_ skCand skBase :=
-                dependencyRemoval_trackedFalseCandidate_hasProperSubset
-                  (s := s) (vars := vars) (on_ := on_)
-                  (skBase := skBase) (skCand := skCand) (σ := τ)
-                  hallBase htracked hfalseCand
-              exact Or.inr
-                ⟨skCand, τ, htracked, hproperCand, hfalseCand⟩
-            · rcases hsameNext with ⟨τ, hfailureNext⟩
-              have hfalseNext :
-                  s.clauses.matrixValue s.formula τ skNext = false :=
-                dependencyRemoval_sameClauseFailure_matrixFalse
-                  (s := s) (vars := vars) (on_ := on_)
-                  (skBase := skBase) (skCand := skNext) (σ := τ)
-                  hfailureNext
-              exact Or.inr
-                ⟨skNext, τ, htrackedNext, hproperNext, hfalseNext⟩
-
-/-!
-Once the finite restart principle is available, the refined proper-growth
-frontier is not a terminal branch.  Each named residual contains a concrete
-failed candidate:
-
-* the current candidate \(f'\), in the current same-clause and blocked-path
-  flip-live cases; or
-* the two-patch candidate \(f''\), in the current-true, forward-live, and
-  next same-clause cases.
-
-Since both candidates are tracked and proper-smaller than the original
-satisfying Skolem set, the finite restart theorem continues the descent.
--/
-
-theorem dependencyRemoval_properGrowthResidual_localRepair_of_restart
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_)
-    (hallBase : ∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hproperNext :
-      DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase)
-    (hsubsetCandNext :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ) :
-    DependencyRemovalLocalRepairResult s vars on_ skBase skCand := by
-  rcases
-      dependencyRemoval_properGrowthResidual_localRepair_or_restartableFailure
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (skNext := skNext) (σ := σ)
-        hon_univ hclosed hgt hexi hcontains hallBase
-        htracked htrackedNext hproperNext hsubsetCandNext hexact with
-    hlocal | hfail
   · exact hlocal
-  · exact Or.inl
-      (dependencyRemoval_restartableFailure_outcome_of_restart
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        hrestart hallBase hfail)
-
-/-!
-The equivalent-footprint residual is now reduced to one obstruction.  A strict
-current patch already gives the local repair result.  A same-clause failure
-for the two-patch candidate is handled by the finite restart theorem, so this
-branch no longer recursively assumes its own residual handler.  Therefore only
-the pure-path obstruction above remains.
--/
-
-theorem dependencyRemoval_equivalentFootprintFrontier_localRepair_or_pathObstruction_of_restart
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_)
-    (hallBase : ∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hproperNext :
-      DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase)
-    (hsubsetNextCand :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
-    (hcurrent :
-      DependencyRemovalCurrentResidualFrontier
-        s vars on_ skBase skCand skNext σ)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ) :
-    DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
-      DependencyRemovalEquivalentFootprintPathObstruction
-        s vars on_ skCand skNext := by
-  rcases
-      dependencyRemoval_currentFrontier_equivalentFootprint_oldLiteral_and_nextCases
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (skNext := skNext) (σ := σ)
-        hclosed hgt hexi hcontains htracked htrackedNext
-        hsubsetNextCand hcurrent hexact with
-    ⟨_holdLiteral, hcases⟩
-  rcases hcases with hstrict | hrest
-  · exact Or.inl (Or.inr hstrict)
-  · rcases hrest with hpath | hsameClauseNext
-    · exact Or.inr hpath
-    · rcases hsameClauseNext with ⟨τ, hfailureNext⟩
-      exact Or.inl
-        (dependencyRemoval_sameClauseFailure_nextOutcome_of_restart
-          (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-          (skCand := skCand) (skNext := skNext) (τ := τ)
-          hrestart hallBase htrackedNext hproperNext hfailureNext)
-
-/-!
-The named obstruction above is impossible in the equivalent-footprint case, so
-the equivalent-footprint residual now gives the local repair result outright.
--/
-
-theorem dependencyRemoval_equivalentFootprintFrontier_localRepair_of_restart
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment}
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_)
-    (hallBase : ∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true)
-    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
-    (htrackedNext :
-      FlexibleRepairPoolTracked s vars on_ skBase skNext)
-    (hproperNext :
-      DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase)
-    (hsubsetCandNext :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext)
-    (hsubsetNextCand :
-      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand)
-    (hcurrent :
-      DependencyRemovalCurrentResidualFrontier
-        s vars on_ skBase skCand skNext σ)
-    (hexact :
-      DependencyRemovalExactTwoPatchResidual
-        s vars on_ skBase skCand skNext σ) :
-    DependencyRemovalLocalRepairResult s vars on_ skBase skCand := by
-  rcases
-      dependencyRemoval_equivalentFootprintFrontier_localRepair_or_pathObstruction_of_restart
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (skNext := skNext) (σ := σ)
-        hclosed hgt hexi hcontains hrestart hallBase htracked
-        htrackedNext hproperNext hsubsetNextCand hcurrent hexact with
-    hlocal | hobs
-  · exact hlocal
-  · exact False.elim
-      (dependencyRemoval_equivalentFootprintPathObstruction_false
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (skNext := skNext)
-        hon_univ hclosed hexi hcontains htracked htrackedNext
-        hsubsetCandNext hobs)
-
-/-!
-The two frontier branches can also be viewed as one shared current-frontier
-step.  This theorem is deliberately conditional on an already available
-restart principle: it records that the residual false clause is not a new
-mathematical obstruction once restart is in hand.  The remaining global task is
-to obtain that restart non-circularly.
--/
-
-theorem dependencyRemoval_sameClauseConcreteCurrentFrontierHandler_of_restart
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_) :
-    DependencyRemovalSameClauseConcreteCurrentFrontierHandler
-      s vars on_ := by
-  intro skBase skCand skNext σ hallBase htracked _hfalse _hfailure
-    _hproperCand htrackedNext _hltNextBase hproperNext hsubsetCandNext
-    _hcurrent hexact
-  exact
-    dependencyRemoval_properGrowthResidual_localRepair_of_restart
-      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-      (skCand := skCand) (skNext := skNext) (σ := σ)
-      hon_univ hclosed hgt hexi hcontains hrestart hallBase
-      htracked htrackedNext hproperNext hsubsetCandNext hexact
+  · rcases hrest with htrue | hrest
+    · exact hcurrentTrue htrue
+    · rcases hrest with hbothCase | hrest
+      · exact hboth hbothCase
+      · rcases hrest with htailCase | hrest
+        · exact htail htailCase
+        · rcases hrest with hsameForwardCase | hrest
+          · exact hsameForward hsameForwardCase
+          · rcases hrest with hblocked | hsameNextCase
+            · rcases hblocked with ⟨startPos, hblockedBranch⟩
+              exact Or.inr
+                (dependencyRemoval_blockedPathBranch_trackedStrictStep
+                  (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+                  (on_ := on_) (skBase := skBase) (skCand := skCand)
+                  (startPos := startPos)
+                  hfull hon_le hon_univ hexi hcontains hpaths htracked
+                  hblockedBranch)
+            · exact hsameNext hsameNextCase
 
 /-!
 The local case analysis now has the shape needed by the finite restart
@@ -7296,68 +5709,6 @@ theorem dependencyRemovalBridge_of_initialPatchRestart
         hexi hcontains hrestart hall hof hwitSeed hnoPath)
 
 /-!
-The same measured restart can be plugged into the high-level bridge from the
-end of the TeX proof.  The statement below has exactly the usual no-cross-path
-hypotheses, but replaces the earlier residual-handler assumption by the local
-claim that every nondecreasing same-clause residual decreases the supplied
-finite measure.
-
-This does not choose the measure.  It records the remaining mathematical task
-cleanly: find a natural-valued quantity that decreases on the residual branch
-while ordinary patch steps still decrease it whenever they decrease the
-witness count.
--/
-
-theorem dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths_measureDecrease
-    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
-    {vars : Array Var} {on_ : Var}
-    (measure : SkolemAssignment → Nat)
-    (hfull : CheckState.FullCorrect dqbf cs s)
-    (hon_le : on_ ≤ s.formula.maxVar)
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hclosed : ∀ x, s.formula.isVarExistential x = true →
-      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
-    (hgt : ∀ x ∈ vars.toList, on_ < x)
-    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
-    (hcontains : ∀ x ∈ vars.toList,
-      (s.formula.depset.getD x #[]).contains on_ = true)
-    (hpaths : NoDeleteCrossPathsSet s vars on_)
-    (hmeasure_count :
-      ∀ {skNext skCur : SkolemAssignment},
-        deleteWitnessFiberCountSet s.formula vars on_ skNext <
-          deleteWitnessFiberCountSet s.formula vars on_ skCur →
-        measure skNext < measure skCur)
-    (hmeasure_residual :
-      DependencyRemovalSameClauseConcreteNondecreasingResidualMeasureDecrease
-        s vars on_ measure) :
-    DeleteIndependenceSetBridge s vars on_ :=
-  dependencyRemovalBridge_of_initialPatchRestart
-    (s := s) (vars := vars) (on_ := on_)
-    hexi hcontains
-    (by
-      intro badOf pos hof hposPath hnegPath
-      exact noDeleteCrossPathsSet_forbids_deletePurePath_pair
-        (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
-        (on_ := on_) (of_ := badOf) (pos := pos)
-        hfull hon_le hon_univ hpaths hof hposPath hnegPath)
-    (by
-      intro of_ sk σ₀ _hall hof hwit
-      exact dependencyRemoval_selectSeed_of_noForbiddenPair
-        (s := s) (vars := vars) (on_ := on_) (of_ := of_)
-        (sk := sk) (σ₀ := σ₀)
-        (by
-          intro badOf pos hof hposPath hnegPath
-          exact noDeleteCrossPathsSet_forbids_deletePurePath_pair
-            (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
-            (on_ := on_) (of_ := badOf) (pos := pos)
-            hfull hon_le hon_univ hpaths hof hposPath hnegPath)
-        hof hwit)
-    (dependencyRemoval_trackedFalseRestart_of_sameClauseResidualMeasureDecrease
-      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
-      measure hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
-      hmeasure_count hmeasure_residual)
-
-/-!
 This version removes the abstract restart assumption: the restart comes from the
 tracked local repair proof and the same-clause residual handler proved above.
 -/
@@ -7472,6 +5823,62 @@ theorem dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths
         (on_ := on_) (of_ := badOf) (pos := pos)
         hfull hon_le hon_univ hpaths hof hposPath hnegPath)
     hhandler
+
+/-!
+This is the same no-cross-path bridge with the ranked residual obligation
+exposed.  It keeps the TeX finite-descent paragraph intact while allowing the
+remaining nondecreasing same-clause cases to be discharged by a stronger rank
+than the plain witness count.
+-/
+
+theorem dependencyRemovalBridge_of_initialPatchLocalRepair_noCrossPaths_residualRank
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    {vars : Array Var} {on_ : Var}
+    (rank : SkolemAssignment → Nat)
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hclosed : ∀ x, s.formula.isVarExistential x = true →
+      (s.formula.depset.getD x #[]).contains on_ = true → x ∈ vars.toList)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hrank_count :
+      ∀ {skNext skCur : SkolemAssignment},
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skCur →
+        rank skNext < rank skCur)
+    (hresRank :
+      DependencyRemovalSameClauseConcreteNondecreasingResidualRankDecrease
+        s vars on_ rank) :
+    DeleteIndependenceSetBridge s vars on_ :=
+  dependencyRemovalBridge_of_initialPatchRestart
+    (s := s) (vars := vars) (on_ := on_)
+    hexi hcontains
+    (by
+      intro badOf pos hof hposPath hnegPath
+      exact noDeleteCrossPathsSet_forbids_deletePurePath_pair
+        (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
+        (on_ := on_) (of_ := badOf) (pos := pos)
+        hfull hon_le hon_univ hpaths hof hposPath hnegPath)
+    (by
+      intro of_ sk σ₀ _hall hof hwit
+      exact dependencyRemoval_selectSeed_of_noForbiddenPair
+        (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+        (sk := sk) (σ₀ := σ₀)
+        (by
+          intro badOf pos hof hposPath hnegPath
+          exact noDeleteCrossPathsSet_forbids_deletePurePath_pair
+            (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
+            (on_ := on_) (of_ := badOf) (pos := pos)
+            hfull hon_le hon_univ hpaths hof hposPath hnegPath)
+        hof hwit)
+    (dependencyRemoval_trackedFalseRestart_of_sameClauseResidualRank
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      rank hfull hon_le hon_univ hclosed hgt hexi hcontains hpaths
+      hrank_count hresRank)
 
 /-!
 The residual handler has now been split into the two concrete frontier cases:
