@@ -237,6 +237,48 @@ private abbrev ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler
   DependencyRemovalSameClauseConcreteCurrentFrontierHandler s vars on_
 
 /-!
+The last checker-side handoff now splits cleanly into two reusable packets:
+
+* the cached same-clause current-frontier handler used by the residual
+  pipeline, and
+* the external diagnostic continuation used for the culprit flip branch.
+
+The remaining work is precisely to connect the non-culprit
+`matrix_internal_or_flip` subcase back into this cached current-frontier
+packet.  Keeping that seam here leaves the local repair theorem below as pure
+orchestration.
+-/
+private theorem
+    computeDeps_activeDeletion_cachedCurrentFrontierHandoff
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
+    ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ ∧
+      ComputeDepsActiveDeletionExternalDiagnosticLocalContinuation
+        s vars on_ := by
+  /-
+  Remaining seam:
+
+  * the cached current-frontier handler for same-clause restart states over
+    `vars`;
+  * the external patch-false internal-literal handoff from
+    `flexibleRepairPoolCandidate_external_patch_false_matrix_internal_or_flip`
+    back into that cached restart packet.
+
+  The culprit `flipVar` branch should keep using the existing external
+  diagnostic continuation.
+  -/
+  sorry
+
+/-!
 For the cached `computeDeps` consumer, the remaining semantic packet is kept at
 the tracked repair-pool level used by the narrative proof.  The proof still
 has to account for the same two semantic frontier shapes
@@ -398,6 +440,11 @@ private theorem
         s.clauses.matrixValue s.formula τ
           (patchDeleteWitnessAt s.formula flipVar σ skCand) = false) :
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand := by
+  rcases
+      computeDeps_activeDeletion_cachedCurrentFrontierHandoff
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+        hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed with
+    ⟨hcurrent, hexternal_local⟩
   have hsame_from_current :
       ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ →
       FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
@@ -411,24 +458,19 @@ private theorem
         (dependencyRemoval_sameClauseConcreteNondecreasingResidualHandler_of_current
           (s := s) (vars := vars) (on_ := on_) hexi hcurrent)
         hallBase htracked hproper hfalse hsame
-  -- Remaining cached current-frontier seam:
-  -- the exact same-clause theorem still needed here is
-  -- `ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_`.
-  -- The ordinary same-clause reduction itself is no longer the blocker:
-  -- once that current-frontier handler exists, `hsame_from_current` feeds it
-  -- through the existing residual-handler reduction immediately.
-  --
-  -- The current statement is still one level too high for the external branch:
-  -- once the external patch-false branch reduces to "already false on an
-  -- internal cached literal", that data is not yet a local repair result over
-  -- `vars`; it has to re-enter the cached current-frontier restart packet.
-  -- The reduced external diagnostic itself is already normalized by
-  -- `computeDeps_activeDeletion_externalPatchFailureContinuation_of_diagnostic`.
-  -- So the remaining `sorry` is exactly the cached current-frontier handoff,
-  -- plus the non-culprit internal-literal subcase of the public
-  -- `flexibleRepairPoolCandidate_external_patch_false_matrix_internal_or_flip`
-  -- split.
-  sorry
+  have hexternal_cont :
+      FlexibleRepairExternalPatchFailureContinuation s vars on_ :=
+    computeDeps_activeDeletion_externalPatchFailureContinuation_of_diagnostic
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hnoCrossClosed hexternal_local
+  rcases hhard with hsame | hexternal_fail
+  · exact hsame_from_current hcurrent hsame
+  · rcases hexternal_fail with
+      ⟨τ, flipVar, hnotMem, hvalEq, hwitCand, hwitBase, hexiFlip,
+        hcontainsFlip, hnoPathCand, hnoPathBase, hprogress, hfalsePatch⟩
+    exact Or.inl
+      (hexternal_cont hallBase htracked.1 hnotMem hvalEq hwitCand hwitBase
+        hexiFlip hcontainsFlip hnoPathCand hnoPathBase hprogress hfalsePatch)
 
 private theorem computeDeps_activeDeletion_trackedStrictFalseStep
     (dqbf : DQBF) (cs : ClauseStore)
