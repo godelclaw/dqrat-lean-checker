@@ -1,0 +1,97 @@
+Codex-generated supplement, written in the Leroy-style literate format
+requested in `DqratLean/LeroyTex.txt`.
+
+Status note:
+- This is a local working note for readability.
+- It is not the trusted Lean proof by itself.
+- The semantic source of truth remains the checked Lean development.
+
+\paragraph{Cached active-set consumer for \texttt{computeDeps}.}
+Let
+\[
+  \mathcal{V}_{u}
+  =
+  \{\, z \in \operatorname{indepOf}[u-1]
+    \mid u \in D_{z} \,\}
+\]
+be the cached active set returned by \texttt{computeDeps}.  By the checker
+invariants already proved in Lean, every variable in $\mathcal{V}_{u}$ is
+existential, lies strictly after $u$, and still contains $u$ in its
+dependency set.  Thus the static hypotheses of the dependency-removal lemma
+have already been reconstructed for the cached set.  What remains is the
+dynamic statement: any failed repair candidate built from this cached set can
+still be continued.
+
+\paragraph{Why the frontier still splits into exactly two semantic obligations.}
+For the cached \texttt{computeDeps} consumer, the remaining semantic packet is
+kept at the tracked repair-pool level used by the narrative proof.  It still
+consists of two frontier shapes:
+\begin{enumerate}
+\item a same-clause restart for tracked repair candidates already inside the
+      cached active set, and
+\item an external patch whose failure either closes directly from the reduced
+      diagnostic or exposes a new cached current-frontier state.
+\end{enumerate}
+This is the honest theorem boundary for the cached \texttt{computeDeps}
+consumer.  The checker-facing bridge should consume one tracked false-restart
+theorem and not force the proof back through the older generic repair-pool
+continuation wrapper; and that restart theorem should itself come from one
+local strict-false repair-step theorem.
+
+\paragraph{Reduced external diagnostic.}
+For a variable $y \notin \mathcal{V}_{u}$, the cached closedness hypothesis is
+not the full ``every existential depending on $u$ is in the active set''
+statement.  Instead it says: if $y$ is existential, lies after $u$, still
+depends on $u$, and has no forbidden cross-path pair, then $y$ must already be
+in the cached set.  Consequently the external diagnostic for a failed patch on
+$y$ reduces to the honest disjunction
+\[
+  \neg (u < y)
+  \;\lor\;
+  \bigl(\text{there is a two-sided reach pair from }u\text{ to }y\bigr).
+\]
+Under \texttt{FullCorrect}, the older ``$y \notin \mathrm{exivars}$'' branch is
+impossible and disappears.
+
+\paragraph{The actual blocker.}
+Suppose an external patch on $y \notin \mathcal{V}_{u}$ fails.  The local Lean
+decomposition shows that one of two things happened:
+\begin{enumerate}
+\item the changed false literal really is the patched literal on $y$, or
+\item the patched candidate was already false on some internal literal
+      $l_{z}$ with $z \in \mathcal{V}_{u}$.
+\end{enumerate}
+The first case is exactly the reduced external-diagnostic branch above.
+The second case is not a contradiction and not an algorithmic defect.  It is a
+genuine restart/current-frontier state: the failed external patch has exposed a
+false current candidate on an internal cached literal, and the proof must
+continue from that new local frontier rather than conclude immediately.
+
+\paragraph{What the remaining theorem must say.}
+Therefore the remaining checker-side theorem should not pretend that every
+failed external patch already yields the final descent outcome.  It must either
+produce that outcome directly, or produce the cached current-frontier restart
+state needed to continue the same-clause argument.  In other words, the last
+semantic packet to instantiate for \texttt{computeDeps} is:
+\begin{quote}
+from a failed tracked cached repair candidate, recover the tracked
+strict-false local step needed by the finite-descent wrapper, with the reduced
+external diagnostic consumed internally rather than re-exposed through one
+more wrapper theorem.
+\end{quote}
+This is precisely the point where the narrative proof's current-frontier and
+removed-witness paragraphs meet the checker-facing cached-set consumer.
+
+\paragraph{Lean landing point.}
+The corresponding Lean consumer is
+\[
+  \texttt{computeDeps\_activeDeletion\_trackedStrictFalseStep}.
+\]
+Its same-clause part should be proved by a cached current-frontier restart
+argument.  Its external part should consume only the reduced diagnostic
+\[
+  \neg (u < y) \lor \text{reach-pair}(u,y),
+\]
+without circularly assuming a full repair-pool continuation.  The downstream
+Lean assembly is then just the finite-descent wrapper followed by the
+restart-based bridge consumer.

@@ -96,6 +96,8 @@ termination_by toks.size - start
 
 /-- Process one `d`-line in the prefix and return the next token position. -/
 def resolvePrefixDepVarM (declaredMaxVar extExi : Nat) : CheckM Var := do
+  if extExi = 0 then
+    throw "Expected positive exi var in 'd' line"
   ensureWithinMaxVar declaredMaxVar extExi
   let f ← (·.formula) <$> get
   if !f.externalVarExists extExi then

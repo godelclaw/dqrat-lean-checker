@@ -1,4 +1,4 @@
-import DqratLean.Soundness
+import DqratLean.DependencyRemovalCore
 
 /-!
 This file contains Lean bookkeeping for the residual case in the dependency

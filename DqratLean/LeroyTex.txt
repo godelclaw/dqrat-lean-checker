@@ -1,0 +1,199 @@
+Leroy's request.  Do not call it "Leroy's txt".  Do not upload/commit this to github.
+
+I'd like the Lean soundness proof to follow the following tex. But for
+my own readability the entire proof should be in comments in the file,
+as well as additional comments suitable for someone unfamiliar with lean
+but familiar with the subject matter.
+
+When the llm comes up with its terminology for items in the proof it
+should make its own comments to explain this.
+
+This way I can start to prompt it better.
+
+
+\begin{lemma}[Dependency Removal]
+                Suppose we have a DQBF $\Pi\exists x(D_x) \phi$.
+                $\Pi$ contains a list of quantified universal variables $U$ and a list
+of existential variables $E$ with Henkin quantifiers, each existential
+variable $e$ is paired with a dependency set $D_e$ a subset of $U$.
+$D_x$ is the dependency set of of $x$ and is also  subset of $U$.
+                $\phi$ is the propositional matrix written as a conjunctive normal
+form using only variables from $U$ and $E$ and $x$.
+
+                Suppose there is some $u \in D_x$, and none of these conditions are
+satisfied
+                \begin{itemize}
+                        \item a $u$-pure path from $u$ to $l$ and a $\bar u $-pure path from
+$\bar u $ to $\bar l$
+                        \item a  $u$-pure path from $u$ to $\bar l$ and a $\bar u $-path from
+$\bar u $ to $l$
+                \end{itemize}
+                Then if $\Pi\exists x(D_x) \phi$ is satisfiable then so is $\Pi\exists
+x(D_x\setminus\{u\}) \phi$.
+
+        \end{lemma}
+
+        \begin{proof}
+                Let $f=\{ f_e \mid e\in E\}$ be a set of Skolem functions that
+satisfies $\Pi\exists x(D_x) \phi$.
+                We will construct a set of Skolem functions $f^*=\{ f^*_e \mid e\in
+E\}$ that satisfies $\Pi\exists x(D_x\setminus\{u\}) \phi$.
+
+                We use the following definitions:
+                \begin{itemize}
+                \item If $\alpha$ is partial assignment to the universal variables,
+$\alpha^v$ is obtained by flipping the Boolean value of universal
+variable $v$.
+                % definition
+                \item Given $f$ a \emph{dependency witness} is a  triple $(\alpha, y,
+v)$ where $f_y(\alpha)\neq  f_y(\alpha^v)$, $y$ is an existential
+variable, $v$ is a universal variable, $\alpha$ is an assignment to
+$D_y$
+                %\item The \textit{hairiness} $h(f)$ of Skolem set $f$ is the number
+of triples $(\alpha, y, v)$ for which $f_y(\alpha)\neq  f_y(\alpha^v)$
+                \item The set $\mathcal{S}_u=\{z:u \in D_z\}$
+                \item For universal literal $l$: $\phi_l= \{C \in \phi \mid l\in C\}$.
+                \item For an existential variable $z$, and assignment $\gamma\in
+\{0,1\}^U$: $\gamma_z= \gamma|_{D_{z}}$
+                \end{itemize}
+
+
+                Suppose $f$ has a dependency witness $(\alpha, x, u)$ where $u \in
+\mathrm{D}_x^\Pi \setminus \mathrm{D}_x^{\Pi'}$.
+                Let $l_u$ be the literal on $u$ satisfied by $\alpha$, $l_x$ the
+literal on $x$ satisfied by $f_x(\alpha)$.
+                Since $u \not \in \mathrm{D}_x^{\Pi'}$, by definition either $\bar l_u
+\not\pusim l_x$ or $l_u \not\pusim \bar l_x$.
+                Without loss of generality, let $\bar l_u \not\pusim l_x$ (in the
+other case, swap the roles of $\alpha$ and $\alpha^u$).
+
+                Define $\mpool = \mpool(f, \bar l_u, l_x, \alpha)$ as the set of all
+Skolem sets $f'=\{f'_x \mid  x\in E\}$ respecting the prefix $\Pi$ with
+the following properties:
+                \begin{enumerate}
+                        \item The set of dependency witnesses in $f'$ and $u$ are a
+\emph{proper} subset of dependency witness in $f$ and $u$. i.e if $f'$
+has a dependency witness $(\delta, y,u)$ then $f$ has dependency witness
+$(\delta, y,u)$ and there is least one dependency witness for $f$ that
+is not present for $f'$.
+                        \label{item:hairiness}
+                        \item For every existential variable $z$, for every
+                        $ \gamma \in \{0,1\}^{D(z)}$, if
+                         $f'_z (\gamma_z) \neq f_z(\gamma_z)$  then $\gamma_z$ satisfies
+$l_u$; i.e. $u\in D(z)$ and $l_u$'s polarity matches with $\gamma_z$.
+
+                        \label{item:assignment}
+                        \item For every existential variable $z$, for every $\gamma \in
+\{0,1\}^{D(z)}$, if
+                        $f'_z (\gamma_z) \neq f_z(\gamma_z)$  then
+                        for the literal $l_z$ satisfied by $f_z(\gamma_z)$,
+                        $\bar l_u \not \pusim l_z$.
+                \end{enumerate}
+                We first show that $\mpool$ is non-empty. Let
+%               Let $f^0=\{f^0_y \mid y \in \var_\exists(\Pi)\}$ so that $f^0_y =
+f_y$ for all $y \neq x$ and $f^0_x(\tau)$ agrees with $f_x (\tau)  $,
+unless $\tau=\alpha$ in which case $f^0_x(\tau)=\neg f_x(\tau)$.
+                        \[ f^0=\{f^0_z \mid z \in E \}\quad
+                                f^0_z(\tau) = \begin{cases}
+                                                \neg f_x(\tau) & \text{ if } \tau = \alpha \text{ and } z=x\\
+                                                f_z (\tau)     & \text{ otherwise,}
+                                        \end{cases}
+                        \]
+                        %and , i.e.,
+                        %flip the value of $f^0_x$ for $\alpha$.
+                \begin{enumerate}
+                \item
+                $f^0$ satisfies property~%\ref{item:harmony},
+                \ref{item:hairiness} because $(\alpha, x, u)$ and $(\alpha^u, x, u)$
+are dependency witnesses that are removed.
+                For any dependency witness $(\delta, w, u)$ present in $f^0$ then
+$w\neq x$ or ($\delta\neq \alpha$ and $\delta\neq \alpha^u$ ) and so
+$f^0_w(\delta)=f_w(\delta)$ and $f^0_w(\delta^u)=f_w(\delta^u)$ so
+$(\delta, w, u)$ is a dependency witness in $f$.
+                \item $f^0$ only differs from $f$ on $\alpha$ and its extensions, but
+$\alpha$ satisfies $l_u$.
+                \item $f_z^0$ only differs from $f_z$ when $z=x$ however we have
+assumed that $\bar l_u \not \pusim l_x$ and $f_x(\alpha)$ satisfies
+$l_x$.
+                \end{enumerate}
+                Next we will define the inductive step. We show that if $f'\in \mpool$
+is not a model then there is $f''\in \mpool$ where the dependency
+witnesses of $f''$ and $u$ are a proper subset of the dependency
+witnesses of $f'$.
+
+                First we need to construct such a $f''$. We know that if $f'$ is not a
+model of $\Pi\exists x(D_x) \phi$, then there is some assignment
+$\gamma\in \{0,1\}^{E}$ and some clause $C\in \phi$ such that the
+assignment $\gamma \cup f'(\gamma)$ falsifies $C$.
+                However we know that $\gamma \cup f(\gamma)$ satisfies $C$ because $f$
+is a model. Hence there is some existential variable $z$ such that
+$f'_z(\gamma_z)\neq f_z(\gamma_z)$ and some literal $l_z$ in $z$ such
+that $f_z(\gamma_z)$ satisfies $l_z$ and $f'_z(\gamma_z)$ falsifies
+$l_z$. By property~\ref{item:assignment}: $ \gamma_z$ satisfies $l_u$,
+and by property~\ref{item:path}: $\bar l_u \not \pusim l_z$.
+                On $\gamma^u$, we have that $l_u$ is falsified so $f'$ and $f$ are
+equal by property~\ref{item:assignment}.  This means that
+$f'_z(\gamma^u_z)=f_z(\gamma^u_z)$. Therefore if $f_z(\gamma_z)\neq
+f_z(\gamma^u_z)$ (i.e. $(\gamma_z, z, u)$ is not a dependency witness in
+$f$) then
+                $f'_z(\gamma_z)\neq f_z(\gamma_z)=f_z(\gamma^u_z)=f'_z(\gamma^u_z)$
+(i.e. $(\gamma_z, z, u)$ is a dependency witness in $f'$) violating
+property~\ref{item:hairiness}, so $f_z(\gamma^u_z)\neq f_z(\gamma^u_z)$
+and $f'_z(\gamma_z)=f'_z(\gamma^u_z)$.
+
+                This means there is some other literal  $l_y\in C$ with variable $y$
+such that it is satisfied in $\gamma^u \cup f(\gamma^u)$. As we observed
+that $f$ and $f'$ must agree on $\gamma^u$, $l_y$ is also satisfied by
+$\gamma^u \cup f'(\gamma^u)$.
+                $\gamma \cup f(\gamma)$ does not satisfy $l_y$ as it does not satisfy
+clause $C$. Therefore the only universal variable $y$ can be is $u$,
+however $l_y$ cannot be $l_u$, otherwise $\gamma \cup f(\gamma)$ would
+satisfy this (we come back to this for pure paths), and  $l_y$ cannot be
+$\bar l_u$ otherwise we would have $\bar l_u \not \pusim l_z$.
+                Therefore $y$ is existential. Let
+
+
+         \[ f''=\{f''_w \mid w \in E \}\quad
+                f''_w(\tau) = \begin{cases}
+                        \neg f'_w(\tau) & \text{ if } \tau = \gamma_y \text{ and } w=y\\
+                        f'_w (\tau)     & \text{ otherwise,}
+                \end{cases}
+                \]
+         we show that $f''\in\mpool$:
+         \begin{enumerate}
+                \item (+ smaller than $f'$) As $\gamma \cup f(\gamma)$ falsifies
+$l_y$ and $\gamma \cup f(\gamma^u)$ satisfies $l_y$,
+                $(\gamma_y, y, u)$ and  $(\gamma^u_y, y, u)$ are dependency witnesses
+for $f'$ and therefore must be for $f$ by induction hypothesis.
+$f''_y(\gamma_y)=  f''_y(\gamma^u_y)$ and thus these dependency
+witnesses are removed for $f''$.
+                For any dependency witness $(\delta, w, u)$ in $f''$, $w\neq y$ or
+($\delta\neq \gamma_y$ and $\delta\neq \gamma_y^u$ ), and so
+$f''_w(\delta)=f'_w(\delta)$ and $f''_w(\delta^u)=f'_w(\delta^u)$ so
+$(\delta, w, u)$ is a dependency witness in $f'$ and thus also in $f$.
+%This step also proves a strict subset of $f'$ as required.
+                \item $f''$ only differs from $f'$ on $\gamma_y$ and its extensions.
+                Since $(\gamma_y, y,u)$ is a dependency witness for $f'$, then $u\in
+D(y)$, and since it is consistent with $\gamma$ then $\gamma_y$
+satisfies $l_u$.
+                \item $f_w^0$ only differs from $f'_w$ when $w=y$.
+                We know that $(\gamma_y, y,u)$ is a dependency witness for $f$, so as
+$f_y(\gamma^u_y)$ satisfies $l_y$ then $f_y(\gamma_y)$ satisfies $\bar
+l_y$. Assume for contradiction, that $\bar l_u  \pusim \bar l_y$. We
+know that if $l_u$ was in $C$ then $\gamma$ would satisfy $C$ which is
+does not (this is the only observation needed to get from \Drrs to
+\Dpu). Hence extending $\bar l_u  \pusim \bar l_y$ through the positive
+$l_y$ to $l_z$ gives us a $\bar l_u$ pure path from $\bar l_u$ to $l_z$
+giving us a contradiction.
+         \end{enumerate}
+
+         Since the set of dependency witnesses is finite the induction step
+eventually terminates with model where $(\alpha, x, u)$ is no longer a
+dependency witness, and we have strictly fewer dependency witnesses on
+$u$.
+         We can repeat this for any other witness $(\alpha', x, u)$ until all
+witnesses of $(\alpha', x, u)$ are removed to get model $f^*$. We can
+restrict the domain of $f^*_x$ to remove $u$ and it will still be well
+defined and a winning Skolem function.
+
+        \end{proof}

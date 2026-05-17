@@ -75,61 +75,6 @@ abbrev DependencyRemovalSameClauseConcreteNondecreasingResidualHandler
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand
 
 /-!
-The TeX proof measures progress by the finite set of remaining dependency
-witnesses.  Most Lean branches use exactly that count.  One residual branch can
-preserve the count while changing the detailed repair footprint, so Lean also
-records the more general ranked form: a caller may provide any natural-valued
-rank that strictly decreases in the nondecreasing residual case.
--/
-
-abbrev DependencyRemovalSameClauseConcreteNondecreasingResidualRankDecrease
-    (s : CheckState) (vars : Array Var) (on_ : Var)
-    (rank : SkolemAssignment → Nat) : Prop :=
-  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
-    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
-    FlexibleRepairPoolTracked s vars on_ skBase skCand →
-    s.clauses.matrixValue s.formula σ skCand = false →
-    FlexibleRepairSameClauseTwoPolarityFailure
-      s vars on_ skBase skCand σ →
-    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
-    FlexibleRepairPoolTracked s vars on_ skBase skNext →
-    deleteWitnessFiberCountSet s.formula vars on_ skNext <
-      deleteWitnessFiberCountSet s.formula vars on_ skBase →
-    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
-    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
-    (deleteWitnessFiberCountSet s.formula vars on_ skCand <
-        deleteWitnessFiberCountSet s.formula vars on_ skNext ∨
-      DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand) →
-    ¬ deleteWitnessFiberCountSet s.formula vars on_ skNext <
-      deleteWitnessFiberCountSet s.formula vars on_ skCand →
-    DependencyRemovalExactTwoPatchResidual
-      s vars on_ skBase skCand skNext σ →
-    rank skNext < rank skCand
-
-/-!
-A same-clause ranked repair is the induction step with this more general
-measure.  It either finishes the dependency-removal descent, or returns a
-failed tracked candidate with strictly smaller rank.
--/
-
-abbrev DependencyRemovalSameClauseRankedRepair
-    (s : CheckState) (vars : Array Var) (on_ : Var)
-    (rank : SkolemAssignment → Nat) : Prop :=
-  ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
-    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
-    FlexibleRepairPoolTracked s vars on_ skBase skCand →
-    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
-    s.clauses.matrixValue s.formula σ skCand = false →
-    FlexibleRepairSameClauseFlipFailure
-      s vars on_ skBase skCand σ →
-    DependencyRemovalDescentOutcome s vars on_ skBase ∨
-      ∃ skNext,
-        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
-        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
-        rank skNext < rank skCand ∧
-        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
-
-/-!
 Inside this residual, the footprint relation between the current candidate
 \(f'\) and the two-patch candidate \(f''\) has two possible shapes.
 
@@ -182,6 +127,33 @@ abbrev DependencyRemovalSameClauseConcreteEquivalentFootprintResidualHandler
     DeleteWitnessFiberSetSubset s.formula vars on_ skNext skCand →
     deleteWitnessFiberCountSet s.formula vars on_ skNext =
       deleteWitnessFiberCountSet s.formula vars on_ skCand →
+    DependencyRemovalExactTwoPatchResidual
+      s vars on_ skBase skCand skNext σ →
+    DependencyRemovalLocalRepairResult s vars on_ skBase skCand
+
+/-!
+Both footprint shapes contain the same local TeX data needed for the next
+repair: a concrete residual false clause and a patch fiber already absent from
+the current candidate.  A current-frontier handler is an argument that works
+from exactly that shared data.
+-/
+
+abbrev DependencyRemovalSameClauseConcreteCurrentFrontierHandler
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand skNext : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    FlexibleRepairSameClauseTwoPolarityFailure
+      s vars on_ skBase skCand σ →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    FlexibleRepairPoolTracked s vars on_ skBase skNext →
+    deleteWitnessFiberCountSet s.formula vars on_ skNext <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase →
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skNext →
+    DependencyRemovalCurrentResidualFrontier
+      s vars on_ skBase skCand skNext σ →
     DependencyRemovalExactTwoPatchResidual
       s vars on_ skBase skCand skNext σ →
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand
@@ -283,6 +255,45 @@ theorem dependencyRemoval_sameClauseConcreteEquivalentFootprintResidualHandler_o
     hexact
 
 /-!
+The proper-growth frontier and equivalent-footprint frontier both reduce to
+the current-frontier data above.  This is the Lean version of focusing the TeX
+induction step on the one residual false clause, instead of keeping two
+separate architectural branches alive.
+-/
+
+theorem dependencyRemoval_sameClauseConcreteProperGrowthFrontierHandler_of_current
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hcurrent :
+      DependencyRemovalSameClauseConcreteCurrentFrontierHandler
+        s vars on_) :
+    DependencyRemovalSameClauseConcreteProperGrowthFrontierHandler
+      s vars on_ := by
+  intro skBase skCand skNext σ hall htracked hfalse hfailure
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    _hproperCandNext hfrontier hexact
+  exact hcurrent hall htracked hfalse hfailure hproperCand
+    htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hfrontier.2.2.2 hexact
+
+theorem dependencyRemoval_sameClauseConcreteEquivalentFootprintFrontierHandler_of_current
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hcurrent :
+      DependencyRemovalSameClauseConcreteCurrentFrontierHandler
+        s vars on_) :
+    DependencyRemovalSameClauseConcreteEquivalentFootprintFrontierHandler
+      s vars on_ := by
+  intro skBase skCand skNext σ hall htracked hfalse hfailure
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    _hsubsetNextCand _hcountEq hfrontier hexact
+  exact hcurrent hall htracked hfalse hfailure hproperCand
+    htrackedNext hltNextBase hproperNext hsubsetCandNext
+    (dependencyRemoval_equivalentFrontier_currentResidual
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (skNext := skNext) (σ := σ)
+      hfrontier)
+    hexact
+
+/-!
 The TeX proof says the induction step must either get a strictly smaller
 candidate or continue the repair analysis.  In this Lean branch, "not strictly
 smaller by count" is split into the two concrete footprint cases above, and
@@ -371,6 +382,26 @@ theorem dependencyRemoval_sameClauseConcreteNondecreasingResidualHandler_of_fron
       (s := s) (vars := vars) (on_ := on_) hexi hgrowth)
     (dependencyRemoval_sameClauseConcreteEquivalentFootprintResidualHandler_of_frontier
       (s := s) (vars := vars) (on_ := on_) hexi hequiv)
+
+/-!
+Thus a single current-frontier handler is enough for the whole nondecreasing
+residual branch.
+-/
+
+theorem dependencyRemoval_sameClauseConcreteNondecreasingResidualHandler_of_current
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcurrent :
+      DependencyRemovalSameClauseConcreteCurrentFrontierHandler
+        s vars on_) :
+    DependencyRemovalSameClauseConcreteNondecreasingResidualHandler
+      s vars on_ :=
+  dependencyRemoval_sameClauseConcreteNondecreasingResidualHandler_of_frontiers
+    (s := s) (vars := vars) (on_ := on_) hexi
+    (dependencyRemoval_sameClauseConcreteProperGrowthFrontierHandler_of_current
+      (s := s) (vars := vars) (on_ := on_) hcurrent)
+    (dependencyRemoval_sameClauseConcreteEquivalentFootprintFrontierHandler_of_current
+      (s := s) (vars := vars) (on_ := on_) hcurrent)
 
 /-!
 If a tracked repair candidate still falsifies a clause, then its witness fibers

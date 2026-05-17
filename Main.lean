@@ -1,10 +1,11 @@
-import DqratLean
+import DqratLean.Checker
+import DqratLean.WatchedParser
 
 def main : List String → IO UInt32
   | [formulaFile, proofFile] => do
       let formulaContent ← IO.FS.readFile formulaFile
       let proofContent   ← IO.FS.readFile proofFile
-      match parseDQDIMACS formulaContent with
+      match DqratLean.Watched.parseDQDIMACS formulaContent with
       | .error e =>
         IO.eprintln s!"c parse error: {e}"
         return 1
@@ -15,7 +16,7 @@ def main : List String → IO UInt32
         return 0
       | .ok (some st) =>
         IO.println s!"c formula read successfully"
-        let result := processProof st proofContent
+        let result := DqratLean.Watched.processProof st proofContent
         match result with
         | .Verified line =>
           IO.println s!"c line {line}: unit propagation derived conflict, proof valid"

@@ -181,6 +181,204 @@ theorem dependencyRemoval_trackedFalseRestart_of_phasedRankedFalseStep
     (skCur := skCand) (τ := σ) rfl htracked hproper hfalse
 
 /-!
+The Boolean phase is enough for the first two-tier attempt, but the proof text
+does not require phases to be Boolean.  A staged descent is the same finite
+argument with an arbitrary type of search states.  Later proof layers can use a
+small inductive phase type when the residual proof needs more than one
+frontier state.
+-/
+
+abbrev DependencyRemovalStagedRankedFalseStep
+    (Phase : Type)
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (rank : Phase → SkolemAssignment → SkolemAssignment → Nat) : Prop :=
+  ∀ {phase : Phase} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    DependencyRemovalDescentOutcome s vars on_ skBase ∨
+      ∃ phaseNext skNext,
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        rank phaseNext skBase skNext < rank phase skBase skCand ∧
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+
+theorem dependencyRemoval_trackedFalseRestart_of_stagedRankedFalseStep
+    {Phase : Type} {s : CheckState} {vars : Array Var} {on_ : Var}
+    (start : Phase)
+    (rank : Phase → SkolemAssignment → SkolemAssignment → Nat)
+    (hstep :
+      DependencyRemovalStagedRankedFalseStep Phase s vars on_ rank) :
+    DependencyRemovalTrackedFalseRestart s vars on_ := by
+  intro skBase skCand σ hall htracked hproper hfalse
+  let P : Nat → Prop := fun n =>
+    ∀ {phase : Phase} {skCur : SkolemAssignment} {τ : UnivAssignment},
+      rank phase skBase skCur = n →
+      FlexibleRepairPoolTracked s vars on_ skBase skCur →
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCur skBase →
+      s.clauses.matrixValue s.formula τ skCur = false →
+      DependencyRemovalDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih phase skCur τ hrank htrackedCur hproperCur hfalseCur
+      rcases hstep (phase := phase) hall htrackedCur hproperCur
+          hfalseCur with
+        houtcome | hnext
+      · exact houtcome
+      · rcases hnext with
+          ⟨phaseNext, skNext, htrackedNext, hproperNext,
+            hrankNext, ρ, hfalseNext⟩
+        have hlt_n : rank phaseNext skBase skNext < n := by
+          simpa [hrank] using hrankNext
+        exact ih (rank phaseNext skBase skNext) hlt_n
+          (phase := phaseNext) (skCur := skNext) (τ := ρ)
+          rfl htrackedNext hproperNext hfalseNext)
+  exact hP (rank start skBase skCand) (phase := start)
+    (skCur := skCand) (τ := σ) rfl htracked hproper hfalse
+
+/-!
+The unguarded phased theorem above is intentionally small, but it is sometimes
+too strong for the frontier proof: a phase is meaningful only for candidates
+that carry the corresponding search-state provenance.  The guarded version
+below is the same finite induction with one extra invariant.  The initial
+failed candidate starts in phase `false`; every recursive step must return a
+new valid phase/candidate pair.
+-/
+
+abbrev DependencyRemovalGuardedPhasedRankedFalseStep
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (valid : Bool → SkolemAssignment → SkolemAssignment → Prop)
+    (rank : Bool → SkolemAssignment → SkolemAssignment → Nat) : Prop :=
+  ∀ {phase : Bool} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment},
+    valid phase skBase skCand →
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    DependencyRemovalDescentOutcome s vars on_ skBase ∨
+      ∃ phaseNext skNext,
+        valid phaseNext skBase skNext ∧
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        rank phaseNext skBase skNext < rank phase skBase skCand ∧
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+
+theorem dependencyRemoval_trackedFalseRestart_of_guardedPhasedRankedFalseStep
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (valid : Bool → SkolemAssignment → SkolemAssignment → Prop)
+    (rank : Bool → SkolemAssignment → SkolemAssignment → Nat)
+    (hstart :
+      ∀ {skBase skCand : SkolemAssignment},
+        FlexibleRepairPoolTracked s vars on_ skBase skCand →
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+        valid false skBase skCand)
+    (hstep :
+      DependencyRemovalGuardedPhasedRankedFalseStep
+        s vars on_ valid rank) :
+    DependencyRemovalTrackedFalseRestart s vars on_ := by
+  intro skBase skCand σ hall htracked hproper hfalse
+  let P : Nat → Prop := fun n =>
+    ∀ {phase : Bool} {skCur : SkolemAssignment} {τ : UnivAssignment},
+      rank phase skBase skCur = n →
+      valid phase skBase skCur →
+      FlexibleRepairPoolTracked s vars on_ skBase skCur →
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCur skBase →
+      s.clauses.matrixValue s.formula τ skCur = false →
+      DependencyRemovalDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih phase skCur τ hrank hvalid htrackedCur hproperCur
+        hfalseCur
+      rcases hstep hvalid hall htrackedCur hproperCur hfalseCur with
+        houtcome | hnext
+      · exact houtcome
+      · rcases hnext with
+          ⟨phaseNext, skNext, hvalidNext, htrackedNext, hproperNext,
+            hrankNext, ρ, hfalseNext⟩
+        have hlt_n : rank phaseNext skBase skNext < n := by
+          simpa [hrank] using hrankNext
+        exact ih (rank phaseNext skBase skNext) hlt_n
+          (phase := phaseNext) (skCur := skNext) (τ := ρ)
+          rfl hvalidNext htrackedNext hproperNext hfalseNext)
+  exact hP (rank false skBase skCand) (phase := false)
+    (skCur := skCand) (τ := σ) rfl (hstart htracked hproper)
+    htracked hproper hfalse
+
+/-!
+The Boolean guarded restart is enough for the two-tier witness-count rank, but
+the residual proof may need more than two reachable search states.  This is the
+same finite descent with an arbitrary phase type and an explicit start phase.
+-/
+
+abbrev DependencyRemovalGuardedStagedRankedFalseStep
+    (Phase : Type)
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (valid : Phase → SkolemAssignment → SkolemAssignment → Prop)
+    (rank : Phase → SkolemAssignment → SkolemAssignment → Nat) : Prop :=
+  ∀ {phase : Phase} {skBase skCand : SkolemAssignment}
+    {σ : UnivAssignment},
+    valid phase skBase skCand →
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    DependencyRemovalDescentOutcome s vars on_ skBase ∨
+      ∃ phaseNext skNext,
+        valid phaseNext skBase skNext ∧
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        rank phaseNext skBase skNext < rank phase skBase skCand ∧
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+
+theorem dependencyRemoval_trackedFalseRestart_of_guardedStagedRankedFalseStep
+    {Phase : Type} {s : CheckState} {vars : Array Var} {on_ : Var}
+    (start : Phase)
+    (valid : Phase → SkolemAssignment → SkolemAssignment → Prop)
+    (rank : Phase → SkolemAssignment → SkolemAssignment → Nat)
+    (hstart :
+      ∀ {skBase skCand : SkolemAssignment},
+        FlexibleRepairPoolTracked s vars on_ skBase skCand →
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+        valid start skBase skCand)
+    (hstep :
+      DependencyRemovalGuardedStagedRankedFalseStep
+        Phase s vars on_ valid rank) :
+    DependencyRemovalTrackedFalseRestart s vars on_ := by
+  intro skBase skCand σ hall htracked hproper hfalse
+  let P : Nat → Prop := fun n =>
+    ∀ {phase : Phase} {skCur : SkolemAssignment} {τ : UnivAssignment},
+      rank phase skBase skCur = n →
+      valid phase skBase skCur →
+      FlexibleRepairPoolTracked s vars on_ skBase skCur →
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCur skBase →
+      s.clauses.matrixValue s.formula τ skCur = false →
+      DependencyRemovalDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih phase skCur τ hrank hvalid htrackedCur hproperCur
+        hfalseCur
+      rcases hstep hvalid hall htrackedCur hproperCur hfalseCur with
+        houtcome | hnext
+      · exact houtcome
+      · rcases hnext with
+          ⟨phaseNext, skNext, hvalidNext, htrackedNext, hproperNext,
+            hrankNext, ρ, hfalseNext⟩
+        have hlt_n : rank phaseNext skBase skNext < n := by
+          simpa [hrank] using hrankNext
+        exact ih (rank phaseNext skBase skNext) hlt_n
+          (phase := phaseNext) (skCur := skNext) (τ := ρ)
+          rfl hvalidNext htrackedNext hproperNext hfalseNext)
+  exact hP (rank start skBase skCand) (phase := start)
+    (skCur := skCand) (τ := σ) rfl (hstart htracked hproper)
+    htracked hproper hfalse
+
+/-!
 When the measure is exactly the number of remaining witness fibers, a failed
 step only needs to produce another failed candidate with smaller witness count.
 -/

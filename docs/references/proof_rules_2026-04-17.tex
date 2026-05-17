@@ -1,0 +1,453 @@
+\documentclass[runningheads]{llncs}
+
+
+\RequirePackage{amssymb,amsmath}
+\RequirePackage{bussproofs/bussproofs}
+\RequirePackage{xspace,xcolor}
+
+\newcommand{\mpool}{\mathcal{M}}
+\DeclareMathOperator*{\var}{\operatorname{var}}
+\newcommand{\pusim}{\ensuremath{\sim_{\mbox{\scriptsize \upshape $\forall$pure}}}}
+
+
+\newcommand{\pathc}[1]{\ensuremath{\mathfrak{C}^{\mbox{\scriptsize \upshape #1}}}\xspace}
+\newcommand{\pathl}[1]{\ensuremath{\mathfrak{L}^{\mbox{\scriptsize \upshape #1}}}\xspace}
+\newcommand{\pathcpu}{\pathc{$\forall$pure}}
+\newcommand{\pathlpu}{\pathl{$\forall$pure}}
+
+\DeclareMathOperator*{\dom}{\textsf{dom}}
+\usepackage{tikz}
+\def\checkmark{\tikz\fill[scale=0.4](0,.35) -- (.25,0) -- (1,.7) -- (.25,.15) -- cycle;}
+
+\newcommand{\D}[1]{\ensuremath{\mathrm{D}^{\Pi}_{{\scriptstyle #1}}}\xspace}
+\newcommand{\Dz}[1]{\ensuremath{\mathcal{D}^{\mbox{\scriptsize \upshape #1}}}\xspace}
+
+\newcommand{\Drrs}{\Dz{rrs}}
+\newcommand{\Dstd}{\Dz{std}}
+\newcommand{\Dtrv}{\Dz{trv}}
+\newcommand{\Dtf}{\Dz{tf}}
+\newcommand{\Dpu}{\Dz{$\forall$pure}}
+
+\begin{document}
+	
+	We should probably start with just RUP then RUP+UR and then try some other small combinations. RAT$_\forall$ is probably the last rule we need to verify.
+	
+	\begin{figure}
+	\begin{tabular}{|c|c|c|c|c|c|c|c|c|c|c|}
+		Crmv & RUP & RAT$_\exists$ & Uadd & Eadd & Dadd & Drmv & Ured & RAT$_\forall$ & compl & pr.cmp. \\
+		 &\checkmark &&&&&&&&UnSat&Resolution\\
+		
+		 &\checkmark &\checkmark&&&&&&&UnSat&RAT$^-$\\
+		 \checkmark&\checkmark &\checkmark&&&&&&&UnSat&DRAT$^-$\\
+		 &\checkmark &\checkmark&&\checkmark&&&&&UnSat&RAT\\
+		 \checkmark&\checkmark &\checkmark&&\checkmark&&&&&UnSat&DRAT\\
+		 &\checkmark &&&&&&\checkmark&&FQBF&QU-Res\\
+		 &\checkmark &&&&&\checkmark&\checkmark&&FQBF&QU(D)-Res\\
+		 &\checkmark &\checkmark&&\checkmark&\checkmark&&\checkmark&&FQBF&Ext QU-Res\\
+		 
+		 \checkmark&\checkmark &\checkmark&\checkmark&\checkmark&\checkmark&&&&TDQBF&\\
+		 &\checkmark &\checkmark&\checkmark&\checkmark&\checkmark&\checkmark&\checkmark&&FDQBF&IndExtQU-Res\\
+		\checkmark&\checkmark &\checkmark&\checkmark&\checkmark&\checkmark&\checkmark&\checkmark&&DQBF&IndExtQU-Res\\
+		\checkmark&\checkmark &\checkmark&\checkmark&\checkmark&\checkmark&\checkmark&\checkmark&\checkmark&DQBF&IndExtQU-Res\\
+		
+		 
+	\end{tabular}
+	\caption{Combinations of sound rules DQRAT+D$^{\forall pure}$. Complete for different problems, and p-equivalent to known proof systems.}
+	\end{figure}
+	
+	Let $x^{0}=\lnot x$ and $x^1= x$. Note this should not be confused with the c++ code where $x$\textasciicircum1, is $\lnot x$ where `\textasciicircum' is the bitwise XOR.
+	\begin{lemma}[Clause Removal]
+		Suppose we have a DQBF $(\Pi \phi)$ with quantifier prefix $\Pi$ containing a list of universal variables $U$ and a list of existential variables $E$ each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. $\phi$ is the propositional matrix written as a conjunctive normal form using only variables from $U$ and $E$ and contains at least one clause.
+		
+		Then if $\Pi \phi$ is satisfiable, for any clause $C\in \phi$, $\Pi \phi\setminus\{C\}$ is satisfiable.
+		
+	\end{lemma}
+	\begin{proof}
+				Suppose $\Pi \phi$ is satisfiable, i.e. there is a set of Skolem functions $f=\{f_e \mid e\in E \}$ (with appropriate domains i.e. $dom(f_e)=D_e$) that satisfy all clauses of $\phi$ under every universal assignment.
+		
+		Suppose we have some universal assignment $\alpha$ we can extend it to $\beta= \alpha\cup \{e^{f_e(\alpha|_{D_e})} | e\in E\}$ and it will satisfy $\phi$, i.e.e satisfy all clauses in $\phi$. removing a clause in $\phi$ still means every remaining clause is satisfied under this assignment. So $\phi\setminus\{C\}$ by this extended assignment, and we can generalise this to all universal assignments and their extensions. Therefore $\Pi \phi\setminus\{C\}$ is satisfiable.
+	\end{proof}
+	
+	Suppose we have some clause $C$ then its negation $\bar C $ is written as a conjunction of singleton clauses $\bigwedge_{c\in C} \lnot c$. 
+	\begin{lemma}
+		Suppose we have a DQBF $(\Pi \phi|_\alpha)$ with quantifier prefix $\Pi$ containing a list of universal variables $U$ and a list of existential variables $E$ each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. $\phi$ is the propositional matrix written as a conjunctive normal form using only variables from $U$ and $E$. $\alpha$ is a Boolean assignment to the variables of $\phi$.
+		
+		In addition suppose we have an array of literals $C$ none satisfied by $\alpha$, and no pair of literals is complementary.
+		
+		Then we apply \texttt{negate\_and\_propagate}($C$) to the state $(\Pi \phi|_\alpha)$ and return false, then the resulting state $(\Pi \phi|_\beta)$ is such that the propositional formulas $\phi_\beta$ and $\phi|_{\alpha\cup\{\neg c \mid c \in C\}}$ are logically equivalent, in other words they have exactly the same models.
+		
+		%Furthermore if \texttt{conflict==true}, i.e. the process returns \texttt{true}, then $\phi|_{\alpha\cup\{\neg c \mid c \in C\}}$ is inconsistent.
+	
+		
+		
+	\end{lemma}
+	
+	\begin{proof}
+		%\texttt{negate\_and\_propagate} assumes both $\alpha$ and ${\neg c \mid c \in C}$ hence $\beta$ will be an extension of $\alpha\cup{\neg c \mid c \in C}$ therefore $\phi_\beta \Rightarrow \phi_{\alpha\cup\{\neg c \mid c \in C\}}$.
+		\texttt{negate\_and\_propagate} begins at $\alpha$ and queues both literals from $\{\neg c \mid c \in C\}$ and any watch literals that become unit in the process. It terminates at a conflict to return true i.e. when $\beta$ contradicts with a literal $l$ on the propagation queue or when the queue is empty and all variables from $\{\neg c \mid c \in C\}$ have already been added and it returns false. 
+		The assignment is monotonic therefore if it returns false $ \beta \supseteq {\alpha\cup\{\neg c \mid c \in C\}}$ and so  $ \phi_{\beta} \Rightarrow\phi_{\alpha\cup\{\neg c \mid c \in C\}} $.
+		
+		So at any stage if the assignment is $\gamma$ and a literal $l$ is added from a unit clause it must have been implied  i.e. $\phi_{\gamma}\Rightarrow l$. Later when it is at the front of the propagation queue we may have a larger assignment  $\delta$ but since $\gamma \subseteq \delta$, then $\phi_{\delta}\Rightarrow\phi_{\gamma}$ and so $\phi_{\delta} \Rightarrow \phi_{\delta\cup \{l\}}$. 
+		This means via induction and monotonicity that $\phi_{\alpha\cup\{\neg c \mid c \in C\}} \Rightarrow \phi_{\beta}$.
+		
+		 
+%		
+%		\texttt{negate\_and\_propagate} works on a watch literal structure. Therefore we add a  literal $l$ to the propagation queue when there is a some clause in the clause database where all watch literals except for $l$ have been negated by the current assignment. This is because in a model we know the clause is true, hence there is at least one satisfied literal and only the remaining literal can be satisfied. 
+%		
+%		
+%		If it returns false, then $\phi_\beta \Rightarrow \phi_{\alpha\cup\{\neg c \mid c \in C\}}$
+%		
+	
+	\end{proof}
+
+\begin{lemma}
+	Suppose we have a DQBF $(\Pi \phi|_\alpha)$ with quantifier prefix $\Pi$ containing a list of universal variables $U$ and a list of existential variables $E$ each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. $\phi$ is the propositional matrix written as a conjunctive normal form using only variables from $U$ and $E$. $\alpha$ is a Boolean assignment to the variables of $\phi$.
+	
+	In addition suppose we have an array of literals $C$ none satisfied by $\alpha$.
+	
+			%Furthermore 
+	Then we apply \texttt{negate\_and\_propagate}($C$) to the state $(\Pi \phi|_\alpha)$.	
+	\sloppy If \texttt{conflict==true}, i.e. the process returns \texttt{true}, then $\phi_{\alpha}\wedge \bigwedge\{\neg c \mid c \in C\}$ is propositionally inconsistent.
+\end{lemma}
+
+\begin{proof}
+	As argued in the previous proof. At any stage if the assignment is $\gamma$ and a literal $l$ is added from a unit clause it must have been implied  i.e. $\phi_{\gamma}\Rightarrow l$. Later when it is at the front of the propagation queue, we may have a larger assignment  $\delta$ but since $\gamma \subseteq \delta$, then $\phi_{\delta}\Rightarrow\phi_{\gamma}$ and so $\phi_{\delta} \Rightarrow \phi_{\delta\cup \{l\}}$. 
+
+	
+	This means if $l$ is added to the propagation queue via unit propagation at assignment $\gamma$ then if the final assignment $\beta$ conflicts with $l$, $\phi_\beta$ falsifies a clause. By monotonicity $\phi_{\alpha}\wedge \bigwedge\{\neg c \mid c \in C\}$ logically implies $\beta$ so is inconsistent.
+	Likewise if $l$ is added because $\neg l$ is in $C$ but $\neg l$ also appeared in $\beta$ then $\phi_{\alpha}\wedge \bigwedge\{\neg c \mid c \in C\}$ logically implies both $l$ and $\lnot l$. Hence inconsistent. Finally we could have that $C$ contains a complementary pair in which case we know $\phi_{\alpha}\wedge \bigwedge\{\neg c \mid c \in C\}$ is propositionally inconsistent. These exhaust all ways that we can return true.
+\end{proof}
+	
+	\begin{corollary}[RUP]
+		Suppose we have a DQBF $(\Pi \phi)$ with quantifier prefix $\Pi$ containing a list of universal variables $U$ and a list of existential variables $E$ each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. $\phi$ is the propositional matrix written as a conjunctive normal form using only variables from $U$ and $E$. %$\alpha$ is a Boolean assignment to the variables of $\phi$.
+		In addition suppose we have a clause $C$ such that \texttt{negate\_and\_propagate}($C$) at state  $(\Pi \phi|_\alpha)$ returns true (i.e. there is a conflict).
+		
+		Then if $\Pi \phi$ is satisfiable then so is $\Pi \phi\wedge C$
+	\end{corollary}
+	\begin{proof}
+		Suppose $\Pi \phi$ is satisfiable, i.e. there is a set of Skolem functions $f=\{f_e \mid e\in E \}$ (with appropriate domains i.e. $dom(f_e)=D_e$) that satisfy all clauses of $\phi$ under every universal assignment.
+		
+		Suppose we have some universal assignment $\alpha$ we can extend it to $\beta= \alpha\cup \{e^{f_e(\alpha|_{D_e})} | e\in E\}$ and it will satisfy $\phi$. We argue that is will also satisfy $C$.
+		Suppose it does not, 
+		then it falsifies all literals in $C$. 		If $C$ contains a complementary pair of literals it will be satisfied by any total assignment, so we know this cannot only happen when this is not the case. 
+		Therefore $\{\neg c \mid c \in C\}$ is a consistent partial assignment. But since \texttt{negate\_and\_propagate}($C$) returns conflict, by the previous lemma we know $\phi_{\{\neg c \mid c \in C\}}$ is a contradiction, hence  $\beta$ that extends it canoot have satisfied $\phi$ to begin with
+	\end{proof}
+	
+	\begin{theorem}[DQRATE]
+		Suppose we have a DQBF $(\Pi \phi)$ with quantifier prefix $\Pi$ containing a list of universal variables $U$ and a list of existential variables $E$ each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. $\phi$ is the propositional matrix written as a conjunctive normal form using only variables from $U$ and $E$.
+		
+		Suppose $C$ is clause containing the existential literal $l$. And now suppose for every clause $D$ with $\bar l \in D$ that \texttt{negate\_and\_propagate}($O^l_D$) returns a conflict (true) at state $\Pi \phi_{\{\neg c \mid c \in C\}}$. $O^l_D$ is the outer clause (wrt $l$) of $D$, it is a subset of $D\setminus\{\bar l\}$ that contains only universal literals that of universals in $x=var(l)$'s dependency set and existential literals whose dependency set is a subset $x$'s.
+		
+		Then if $\Pi \phi$ is satisfiable then so is $\Pi \phi\wedge C$
+	\end{theorem}
+	
+	\begin{proof}
+		The argument works from Skolem modification.
+		Suppose $\Pi \phi$ is satisfiable, i.e. there is a set of Skolem functions $f=\{f_e \mid e\in E \}$ (with appropriate domains i.e. $\dom(f_e)=D_e$) that satisfy all clauses of $\phi$ under every universal assignment.
+		We will modify $f_x$ to $f'_x$ so that $\phi$ remains satisfied under all assignments.
+		
+		If $x=l$ then  we define $f'_x$ as true if $f_x$ is true or if $\bigwedge^{\bar l \in D }_{D\in \phi} O^l_D$ is true (i.e all outer clauses of $D$ (wrt $l$) such that $\bar l$ is in $D$  are simultaneously satisfied) and false otherwise.
+		If $x=\lnot l$ then we define $f'_x$ as false if $f_x$ is false or if $\bigwedge^{\bar l \in D}_{D\in \phi} O^l_D$ is true, and true otherwise. 
+		
+		The outer condition is critical because the domain of $f_x$ restricts it to just universal variables in $D_x$, we can also synchronise it with other Skolem functions $f_e$ whose results would be known from this domain (exactly those existential variables $e$ in the outer set of $l$). I.e. $O^l_D$ is completely determined by $D_x$. 
+		
+		
+		Let $x^{0}=\lnot x$ and $x^1= x$.
+		Suppose we have universal assignment $\alpha$, we know that extending with $f$ satisfies $\phi$. i.e $\beta= \alpha\cup \{e^{f_e(\alpha |_{D_e})} | e\in E\}$ satisfies $\phi$.
+		Now we argue that $\beta'= \alpha\cup\{x^{f'_x(\alpha)}\}\cup \{e^{f_e(\alpha \{l \}|_{D_e})} | e\in E\setminus\{x\}\}$  satisfies $\phi\wedge C$.
+		
+		Suppose $\alpha\cup\{e^{f_e(\alpha|_{D_e})} | e\in E\setminus\{x\}\}$ satisfies $\bigwedge^{\bar l \in D }_{D\in \phi} O^l_D$ then $f'_x$ satisfies $l$ and satisfies $C$, and any clauses that contain $l$ in $\phi$. For clauses that contain $\bar l$ they are already satisfied because  $\bigwedge^{\bar l \in D }_{D\in \phi} O^l_D$ is true. The remaining clauses that contain no $l$ literal remain satisfied by $\alpha\cup\{e^{f_e(\alpha|_{D_e})} | e\in E\setminus\{x\}\}$ as this part is unchanged from $\beta$. 
+		
+		Now suppose  $\alpha\cup\{e^{f_e(\alpha|_{D_e})} | e\in E\setminus\{x\}\}$ falsifies $\bigwedge^{\bar l \in D }_{D\in \phi} O^l_D$, then it will behave exactly as $\beta$ and satisfy $\phi$. It must also satisfy some literal in $C$ otherwise $\phi$ cannot have been true because $\phi_{\{\neg c \mid c \in C\}}\wedge \lnot O^l_D$ is a contradiction for some $D$ from the previous lemma.
+		
+		
+
+		
+		
+	\end{proof}
+	
+	Note that if a clause is RUP it is satisfies the DQRATE property (as long as it has an existential variable).
+	
+	\begin{lemma}[Universal Addition]
+		Suppose we have a DQBF $\Pi \phi$ with quantifier prefix $\Pi$ containing a list of universal variables $U$ and a list of existential variables $E$ each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. $\phi$ is the propositional matrix written as a conjunctive normal form using only variables from $U$ and $E$.
+		Let $x$ be a variable not appearing in $\Pi$.
+		
+		Then if $\Pi \phi$ is satisfiable so is $\forall x \Pi \phi$, where no dependency set is altered.
+	\end{lemma}
+	\begin{proof}
+		Let $f=\{f_e \mid e\in E \}$ be a set of Skolem functions that satisfy $\Pi \phi$, in other words for any universal assignment $\alpha$ to $U$ , then $\beta= \alpha\cup \{e^{f_e(\alpha |_{D_e})} | e\in E\}$ satisfies $\phi$.
+		
+		Now suppose we have some complete assignment $\gamma$ to $U\cup\{u\}$, there is some assignment $\alpha$ to $U$ and some assignment $l$ to $\{u\}$ such that   $\gamma=\alpha\cup\{l \}$. Now, let $\delta = \gamma\cup \{e^{f_e(\gamma |_{D_e})} | e\in E\}$, then $\delta = \alpha\cup\{l\} \cup \{e^{f_e(\alpha |_{D_e})} | e\in E\}$ and since $\beta$ satisfies a literal in every clause $\delta$ simply extends it. So $\delta$ satisfies every clause in $\phi$. Since this works with every $\alpha$ $\forall x \Pi \phi$ is satisfiable.
+	\end{proof}
+	\begin{lemma}[Existential Addition]
+		Suppose we have a DQBF $\Pi \phi$ with quantifier prefix $\Pi$ containing a list of universal variables $U$ and a list of existential variables $E$ each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. $\phi$ is the propositional matrix written as a conjunctive normal form using only variables from $U$ and $E$.
+		Let $x$ be a variable not appearing in $\Pi$.
+		
+		Then if $\Pi \phi$ is satisfiable so is $\Pi \exists x(\varnothing) \phi$, where no other existing dependency set is altered.
+	\end{lemma}
+	\begin{proof}
+	Let $f=\{f_e \mid e\in E \}$ be a set of Skolem functions that satisfy $\Pi \phi$, in other words for any universal assignment $\alpha$ to $U$ , then $\beta= \alpha\cup \{e^{f_e(\alpha |_{D_e})} | e\in E\}$ satisfies $\phi$.
+	Let $f_x$ by the constant function that maps to $0$. $\gamma= \alpha\cup \{e^{f_e(\alpha |_{D_e})} | e\in E\cup\{x\}\}$ satisfies $\phi$, because $\beta$ is a sub-assignment and satisfies a literal in every clause. Therefore generalising to all $\alpha$, $\Pi \exists x(\varnothing) \phi$ is satisfiable.
+	\end{proof}
+	
+	\begin{lemma}[Dependency Addition]
+		Suppose we have a DQBF $\Pi\exists x(D_x) \phi$.
+		$\Pi$ contains a list of quantified universal variables $U$ and a list of existential variables $E$ with Henkin quantifier each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. $D_x$ is the dependency set of of $x$ and is also  subset of $U$.
+		$\phi$ is the propositional matrix written as a conjunctive normal form using only variables from $U$ and $E$ and $x$.
+		
+		Suppose there is some $u\in U$ not appearing to $D_x$. 
+		Then if $\Pi\exists x(D_x) \phi$ is satisfiable then so is $\Pi\exists x(D_x\cup\{u\}) \phi$.
+	\end{lemma}
+	
+	\begin{proof}
+			Let $f=\{f_e \mid e\in E'\cup \{x\} \}$ be a set of Skolem functions that satisfy $\Pi\exists x(D_x) \phi$. We will construct the set of Skolem functions $f'=\{f'_e \mid e\in E\cup \{x\} \}$ that satisfy $\Pi\exists x(D_x) \phi$.
+			For $e\neq x$ let $f'_e=f_e$.
+			Then for $f'_x$ we to deal with a larger domain.
+			Let $\alpha$ be an assignment to  $D_x$ then define 
+			$f'_x(\alpha\cup\{u\})=f_x(\alpha)= f_x(\alpha\cup\{\bar u\})$.
+			$f'$ will satisfy $\phi$ because when we have some assignment $\gamma$ to $U$ and we extend it we get $\beta= \gamma\cup \{e^{f_e(\gamma |_{D_e})} | e\in E\}\cup \{x^{f_x(\gamma |_{D_x})}\}= \gamma\cup \{e^{f_e(\gamma |_{D_e})} | e\in E\}\cup \{x^{f_x(\gamma |_{D_x\cup{u}})}\}$ which satisfies every clause in $\phi$.
+			
+			
+	\end{proof}
+	
+	
+
+	
+	
+	
+	For a DQBF $\Pi\phi$, we will denote membership $(u,x)\in \Dpu(\Pi\phi)$ to mean that $\exists$-variable $x$ really does depend on $\forall$ variable $u$ after considering the pure universal dependency scheme.
+	\begin{definition}
+		Let $\psi$ be a DQBF, $\chi$ a subset of the clauses in $\psi$, $\mathcal{S}$ a subset of variables appearing in $\psi$ and $u$ a universal literal.
+		We define the sets $\pathcpu(u,\psi, \chi, \mathcal{S})$ and  $\pathlpu(u,\psi, \chi, \mathcal{S})$.
+		Initially $\pathcpu(u,\psi, \chi, \mathcal{S})$ contains all clauses from $\chi$ and $\pathlpu (u, \psi, \chi, \mathcal{S})$ contains all $\mathcal{S}$-literals in $\chi$.
+		We expand these sets in a similar way as before, suppose $p\in \pathlpu (u,\psi, \chi, \mathcal{S})$ we include any $\psi$ clause $E$ with $\bar p\in E$ \textbf{and crucially} $\bar u \notin E$ into $\pathcpu(u,\psi, \chi, \mathcal{S})$, and also include the literals $\{x\in E \mid x\neq \bar p, x \in \mathcal{S}\}$ into
+		$\pathlpu (u,\psi, \chi, \mathcal{S})$, and as we increase this set we can further propagate until we reach fix-point.
+	\end{definition}
+	%\tomas{should we highlight here the difference to \Drrs? Maybe make a definition environment?}
+	
+	
+	\begin{definition}
+		\label{def:upure-connection}
+		Given a DQBF $\Pi\phi$ with CNF matrix $\phi$.
+		We say there is a pure path from universal literal $u$ to existential literal $x$ (denoted $u\pusim x$) if and only if $x\in \pathlpu (u,\psi, \phi_u, \mathcal{S})$.
+		Where $\phi_u$ is the set of clauses that contain literal $u$ and  $\mathcal{S}$ is the set of $\exists$ variables that contain $u$ in its dependency set. 
+	\end{definition}
+	%
+	%Definition~\ref{def:upure-connection} speaks of literals (in $\pathlpu$) reachable from some clause that contains $u$, but notice that $u \pusim x$ is equivalent (due to the symmetry in how the sets $\pathlpu$ and $\pathcpu$ are extended) to the following characterization.
+	%
+	%\begin{observation}
+	%	Given a DQBF $\Pi\phi$ with CNF matrix $\phi$.
+	%	\label{obs:upure-connection}	
+	%	$u \pusim x$ if and only if there is a clause $C$ with $u \in C$ such that $C \in \pathcpu(u, \psi, \phi_x \setminus \phi_{\bar u}, \mathcal{S})$, where $\mathcal{S}$ is as in Definition~\ref{def:upure-connection} and $\phi_x$, $\phi_{\bar u}$ are the sets of clauses that contain $x$ and $\bar u$, respectively.
+	%\end{observation}
+	
+	
+	\begin{definition}
+		\label{def:upure-non-dependency}
+		Given a DQBF $\Pi\phi$ with CNF matrix $\phi$, let $(u,x)$ be a pair with a $\forall$ variable $u$ and $\exists$ variable $x$. 
+		$(u,x)\in \Dpu(\Pi \phi)$ ($\in\Dpu$ when unambiguous) if and only if $u\in D{x}$ and either		
+		\begin{enumerate}
+			\item $u \pusim x$ and $\bar u \pusim \bar x$, or
+			\item $\bar u \pusim x$ and $u \pusim \bar x$.
+		\end{enumerate}
+
+		\end{definition}
+%	\begin{proof}
+%		See \textit{Strong (D)QBF Dependency Schemes via Pure 
+%			Paths with Applications to Proof Checking} by Chew and Peitl.
+%	\end{proof}
+		\begin{lemma}[Dependency Removal]
+		Suppose we have a DQBF $\Pi\exists x(D_x) \phi$.
+		$\Pi$ contains a list of quantified universal variables $U$ and a list of existential variables $E$ with Henkin quantifiers, each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. $D_x$ is the dependency set of of $x$ and is also  subset of $U$.
+		$\phi$ is the propositional matrix written as a conjunctive normal form using only variables from $U$ and $E$ and $x$.
+		
+		Suppose there is some $u \in D_x$, and none of these conditions are satisfied
+		\begin{itemize}
+			\item a $u$-pure path from $u$ to $l$ and a $\bar u $-pure path from $\bar u $ to $\bar l$
+			\item a  $u$-pure path from $u$ to $\bar l$ and a $\bar u $-path from $\bar u $ to $l$
+		\end{itemize}
+		Then if $\Pi\exists x(D_x) \phi$ is satisfiable then so is $\Pi\exists x(D_x\setminus\{u\}) \phi$.
+		
+	\end{lemma}
+	
+	\begin{proof}
+		Let $f=\{ f_e \mid e\in E\}$ be a set of Skolem functions that satisfies $\Pi\exists x(D_x) \phi$. 
+		We will construct a set of Skolem functions $f^*=\{ f^*_e \mid e\in E\}$ that satisfies $\Pi\exists x(D_x\setminus\{u\}) \phi$.
+		
+		We use the following definitions:
+		\begin{itemize}
+		\item If $\alpha$ is partial assignment to the universal variables, $\alpha^v$ is obtained by flipping the Boolean value of universal variable $v$.		
+		% definition
+		\item Given $f$ a \emph{dependency witness} is a  triple $(\alpha, y, v)$ where $f_y(\alpha)\neq  f_y(\alpha^v)$, $y$ is an existential variable, $v$ is a universal variable, $\alpha$ is an assignment to $D_y$
+		%\item The \textit{hairiness} $h(f)$ of Skolem set $f$ is the number of triples $(\alpha, y, v)$ for which $f_y(\alpha)\neq  f_y(\alpha^v)$
+		\item The set $\mathcal{S}_u=\{z:u \in D_z\}$
+		\item For universal literal $l$: $\phi_l= \{C \in \phi \mid l\in C\}$.
+		\item For an existential variable $z$, and assignment $\gamma\in \{0,1\}^U$: $\gamma_z= \gamma|_{D_{z}}$
+		\end{itemize}
+		
+		
+		Suppose $f$ has a dependency witness $(\alpha, x, u)$ where $u \in \mathrm{D}_x^\Pi \setminus \mathrm{D}_x^{\Pi'}$.
+		Let $l_u$ be the literal on $u$ satisfied by $\alpha$, $l_x$ the literal on $x$ satisfied by $f_x(\alpha)$.
+		Since $u \not \in \mathrm{D}_x^{\Pi'}$, by definition either $\bar l_u \not\pusim l_x$ or $l_u \not\pusim \bar l_x$.
+		Without loss of generality, let $\bar l_u \not\pusim l_x$ (in the other case, swap the roles of $\alpha$ and $\alpha^u$).
+		
+		Define $\mpool = \mpool(f, \bar l_u, l_x, \alpha)$ as the set of all Skolem sets $f'=\{f'_x \mid  x\in E\}$ respecting the prefix $\Pi$ with the following properties:
+		\begin{enumerate}
+			%\item $f'_x (\alpha) = f'_x(\alpha^u)$, i.e. $f'$ does not have the dependency witness in question;
+			%	\label{item:harmony}
+			\item The set of dependency witnesses in $f'$ and $u$ are a \emph{proper} subset of dependency witness in $f$ and $u$. i.e if $f'$ has a dependency witness $(\delta, y,u)$ then $f$ has dependency witness $(\delta, y,u)$ and there is least one dependency witness for $f$ that is not present for $f'$.
+			\label{item:hairiness}
+			\item For every existential variable $z$, for every
+			$ \gamma \in \{0,1\}^{D(z)}$, if  
+			 $f'_z (\gamma_z) \neq f_z(\gamma_z)$  then $\gamma_z$ satisfies $l_u$; i.e. $u\in D(z)$ and $l_u$'s polarity matches with $\gamma_z$.
+	
+			%and for any $z \in \var_\exists$, if $f_z(\beta_z) = f_z(\beta^u_z)$, then $f'_z(\beta_z) = f_z(\beta_z)$ whenever;
+			\label{item:assignment}
+			%\item $\forall z\in \var_\exists(\Pi)$, if $f'_z(\beta_z) \neq f'_z(\beta^u_z)$, then $f_z(\beta_z) \neq f_z(\beta^u_z)$, i.e.~any dependency witness $(\beta_z, z, u)$ for $f'$ is also a witness for $f$;
+			%	\label{item:flip}
+			\item For every existential variable $z$, for every $\gamma \in \{0,1\}^{D(z)}$, if  
+			$f'_z (\gamma_z) \neq f_z(\gamma_z)$  then
+			%$f'_{z}(\beta|_{\mathrm{D}_{z}^\Pi}) \neq f_z(\beta|_{\mathrm{D}_z^\Pi})$
+			for the literal $l_z$ satisfied by $f_z(\gamma_z)$, %is not in $\pathlpu(\bar l_u, \phi, \phi_{\bar l_u}, \mathcal{S})$, i.e.
+			$\bar l_u \not \pusim l_z$.
+			%\begin{enumerate}
+			%	\item $C \in \pathcpu(\bar l_u, \psi, \phi_{l_x} \setminus \phi_{l_u}, \mathcal{S})$, and
+			%	\item $\mathcal{S} \cap C \subseteq \pathlpu(\bar l_u, \psi, \phi_{l_x} \setminus \phi_{l_u}, \mathcal{S})$.
+			%\end{enumerate}
+			\label{item:path}
+		\end{enumerate}
+		We first show that $\mpool$ is non-empty. Let
+%		Let $f^0=\{f^0_y \mid y \in \var_\exists(\Pi)\}$ so that $f^0_y = f_y$ for all $y \neq x$ and $f^0_x(\tau)$ agrees with $f_x (\tau)  $, unless $\tau=\alpha$ in which case $f^0_x(\tau)=\neg f_x(\tau)$.
+			\[ f^0=\{f^0_z \mid z \in E \}\quad
+				f^0_z(\tau) = \begin{cases}
+						\neg f_x(\tau) & \text{ if } \tau = \alpha \text{ and } z=x\\
+						f_z (\tau)     & \text{ otherwise,}
+					\end{cases}
+			\]
+			%and , i.e.,
+			%flip the value of $f^0_x$ for $\alpha$.
+		\begin{enumerate}
+		\item
+		$f^0$ satisfies property~%\ref{item:harmony},
+		\ref{item:hairiness} because $(\alpha, x, u)$ and $(\alpha^u, x, u)$ are dependency witnesses that are removed. 
+		For any dependency witness $(\delta, w, u)$ present in $f^0$ then $w\neq x$ or ($\delta\neq \alpha$ and $\delta\neq \alpha^u$ ) and so $f^0_w(\delta)=f_w(\delta)$ and $f^0_w(\delta^u)=f_w(\delta^u)$ so $(\delta, w, u)$ is a dependency witness in $f$.
+		\item $f^0$ only differs from $f$ on $\alpha$ and its extensions, but $\alpha$ satisfies $l_u$.
+		\item $f_z^0$ only differs from $f_z$ when $z=x$ however we have assumed that $\bar l_u \not \pusim l_x$ and $f_x(\alpha)$ satisfies $l_x$. 
+		\end{enumerate}
+		Next we will define the inductive step. We show that if $f'\in \mpool$ is not a model then there is $f''\in \mpool$ where the dependency witnesses of $f''$ and $u$ are a proper subset of the dependency witnesses of $f'$.
+		
+		First we need to construct such a $f''$. We know that if $f'$ is not a model of $\Pi\exists x(D_x) \phi$, then there is some assignment $\gamma\in \{0,1\}^{E}$ and some clause $C\in \phi$ such that the assignment $\gamma \cup f'(\gamma)$ falsifies $C$. 
+		However we know that $\gamma \cup f(\gamma)$ satisfies $C$ because $f$ is a model. Hence there is some existential variable $z$ such that $f'_z(\gamma_z)\neq f_z(\gamma_z)$ and some literal $l_z$ in $z$ such that $f_z(\gamma_z)$ satisfies $l_z$ and $f'_z(\gamma_z)$ falsifies $l_z$. By property~\ref{item:assignment}: $ \gamma_z$ satisfies $l_u$, and by property~\ref{item:path}: $\bar l_u \not \pusim l_z$.
+		On $\gamma^u$, we have that $l_u$ is falsified so $f'$ and $f$ are equal by property~\ref{item:assignment}.  This means that $f'_z(\gamma^u_z)=f_z(\gamma^u_z)$. Therefore if $f_z(\gamma_z)\neq f_z(\gamma^u_z)$ (i.e. $(\gamma_z, z, u)$ is not a dependency witness in $f$) then 
+		$f'_z(\gamma_z)\neq f_z(\gamma_z)=f_z(\gamma^u_z)=f'_z(\gamma^u_z)$ (i.e. $(\gamma_z, z, u)$ is a dependency witness in $f'$) violating property~\ref{item:hairiness}, so $f_z(\gamma^u_z)\neq f_z(\gamma^u_z)$ and $f'_z(\gamma_z)=f'_z(\gamma^u_z)$.
+		
+		This means there is some other literal  $l_y\in C$ with variable $y$ such that it is satisfied in $\gamma^u \cup f(\gamma^u)$. As we observed that $f$ and $f'$ must agree on $\gamma^u$, $l_y$ is also satisfied by $\gamma^u \cup f'(\gamma^u)$.
+	 	$\gamma \cup f(\gamma)$ does not satisfy $l_y$ as it does not satisfy clause $C$. Therefore the only universal variable $y$ can be is $u$, however $l_y$ cannot be $l_u$, otherwise $\gamma \cup f(\gamma)$ would satisfy this (we come back to this for pure paths), and  $l_y$ cannot be $\bar l_u$ otherwise we would have $\bar l_u \not \pusim l_z$.
+	 	Therefore $y$ is existential. Let
+	 	
+	 	
+	 \[ f''=\{f''_w \mid w \in E \}\quad
+	 	f''_w(\tau) = \begin{cases}
+	 		\neg f'_w(\tau) & \text{ if } \tau = \gamma_y \text{ and } w=y\\
+	 		f'_w (\tau)     & \text{ otherwise,}
+	 	\end{cases}
+	 	\]
+	 we show that $f''\in\mpool$:
+	 \begin{enumerate}
+	 	\item (+ smaller than $f'$) As $\gamma \cup f(\gamma)$ falsifies $l_y$ and $\gamma \cup f(\gamma^u)$ satisfies $l_y$,	 	
+	 	$(\gamma_y, y, u)$ and  $(\gamma^u_y, y, u)$ are dependency witnesses for $f'$ and therefore must be for $f$ by induction hypothesis. $f''_y(\gamma_y)=  f''_y(\gamma^u_y)$ and thus these dependency witnesses are removed for $f''$. 
+	 	For any dependency witness $(\delta, w, u)$ in $f''$, $w\neq y$ or ($\delta\neq \gamma_y$ and $\delta\neq \gamma_y^u$ ), and so $f''_w(\delta)=f'_w(\delta)$ and $f''_w(\delta^u)=f'_w(\delta^u)$ so $(\delta, w, u)$ is a dependency witness in $f'$ and thus also in $f$. %This step also proves a strict subset of $f'$ as required.
+	 	\item $f''$ only differs from $f'$ on $\gamma_y$ and its extensions.
+	 	Since $(\gamma_y, y,u)$ is a dependency witness for $f'$, then $u\in D(y)$, and since it is consistent with $\gamma$ then $\gamma_y$ satisfies $l_u$.
+	 	\item $f_w^0$ only differs from $f'_w$ when $w=y$. 
+	 	We know that $(\gamma_y, y,u)$ is a dependency witness for $f$, so as $f_y(\gamma^u_y)$ satisfies $l_y$ then $f_y(\gamma_y)$ satisfies $\bar l_y$. Assume for contradiction, that $\bar l_u  \pusim \bar l_y$. We know that if $l_u$ was in $C$ then $\gamma$ would satisfy $C$ which is does not (this is the only observation needed to get from \Drrs to \Dpu). Hence extending $\bar l_u  \pusim \bar l_y$ through the positive $l_y$ to $l_z$ gives us a $\bar l_u$ pure path from $\bar l_u$ to $l_z$ giving us a contradiction.
+	 \end{enumerate}
+	 
+	 Since the set of dependency witnesses is finite the induction step eventually terminates with model where $(\alpha, x, u)$ is no longer a dependency witness, and we have strictly fewer dependency witnesses on $u$.
+	 We can repeat this for any other witness $(\alpha', x, u)$ until all witnesses of $(\alpha', x, u)$ are removed to get model $f^*$. We can restrict the domain of $f^*_x$ to remove $u$ and it will still be well defined and a winning Skolem function.
+		
+	\end{proof}
+		
+	\begin{lemma}[$\forall$\textsf{red} soundness]\label{lem:redsound}
+		
+		Suppose we have a DQBF $\Pi \phi\wedge (C\vee l )$ with quantifier prefix $\Pi$ containing a list of universal variables $U$ and a list of existential variables $E$ each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. 
+		$l$ is a universal literal, $C$ is a clause and $\phi$ is a formula in conjunctive normal form.
+		$\phi\wedge (C\vee l )$ is the propositional matrix and uses only variables from $U$ and $E$.
+		%Suppose $\Pi \phi \wedge L(u)$ is a true S-form DQBF, and $L$ contains no existential variables $x$ such that $u$ is in the dependency set of $x$.
+		Suppose $\neg l $ not in $C$ and $C$ contains no existential variables $x$ such that $u$ is in the dependency set of $x$. 
+		Then if $\Pi \phi\wedge (C\vee l )$ is satisfiable then $\Pi \phi\wedge (C\vee l )\wedge C$ is satisfiable. 
+		
+		%Then the S-form DQBF $\Pi \phi \wedge L(u)\wedge L(0)$ is true and the S-form DQBF $\Pi \phi \wedge L(u)\wedge L(1)$ is also true.
+	\end{lemma}
+	\begin{proof}
+		An S-form DQBF is true if and only if it has a set $f$ of satisfying Skolem functions, a function $f_e$ for each of its existential variables $e$.
+		Suppose $\Pi \phi \wedge (C\vee l )$ is satisfied by the set $f= \{f_x \mid e\in E\}$.
+		We will show that $\Pi \phi \wedge (C\vee l )\wedge C$ is satisfied by the same functions. 
+		
+		Consider an arbitrary universal assignment $\alpha$ and we extend it with $\beta=\alpha\cup\{e^{f_e(\alpha|_{D_e})} | e\in E\}$,
+		$\phi\wedge (C\vee l)$ is satisfied by $\beta$, the question is whether $C$ is also satisfied.
+		We are assuming that clauses do not contain repeated literals so $l$ is not in $C$.
+		If $\alpha$ falsifies $l$ then $C$ must be satisfied otherwise $C$ could not be satisfied.
+		If $\alpha$ satisfies $l$ then $\alpha\setminus \{l \}$ completely determines $C$ because $var(l)$ is not in the dependency set of any existential literals in $C$ and $\neg l$ not in $C$. This means $\alpha$ and $(\alpha\setminus \{l \})\cup\{ \neg l\}$ must determine $C$ in the same way under $f$ and we know  $(\alpha\setminus \{l \})\cup\{ \neg l\}$ when extended must satisfy $C$ hence $\beta$ satisfies $C$.
+	\end{proof}
+
+\begin{lemma}[DQRATU soundness]\label{lem:redsound}
+	
+	Suppose we have a DQBF $\Pi \phi\wedge (C\vee l )$ with quantifier prefix $\Pi$ containing a list of universal variables $U$ and a list of existential variables $E$ each existential variable $e$ is paired with a dependency set $D_e$ a subset of $U$. 
+	$l$ is a universal literal, $C$ is a clause and $\phi$ is a formula in conjunctive normal form.
+	$\phi\wedge (C\vee l )$ is the propositional matrix and uses only variables from $U$ and $E$.
+	%Suppose $\Pi \phi \wedge L(u)$ is a true S-form DQBF, and $L$ contains no existential variables $x$ such that $u$ is in the dependency set of $x$.
+	%Suppose $\neg l $ not in $C$ and $C$ contains no existential variables $x$ such that $u$ is in the dependency set of $x$. 
+	
+	 And now suppose for every clause $D\in \phi$ with $\bar l \in D$ that either:
+	 \begin{enumerate}
+	 	\item There is no $\bar l$-pure path in the variables that depend on $var(l)$ from $D$ to $C$ in $\Pi \phi \wedge C$.
+	 	\item  \texttt{negate\_and\_propagate}($O^l_D$) returns a conflict (true) at state $\Pi \phi_{\{\neg c \mid c \in C\}}$. $O^l_D$ is the outer clause (wrt $l$) of $D$, it is a subset of $D\setminus\{\bar l\}$ that contains only universal literals that of universals in $x=var(l)$'s dependency set and existential literals whose dependency set is a subset $x$'s.
+	 	
+	 \end{enumerate}
+
+	Then if $\Pi \phi\wedge (C\vee l )$ is satisfiable then $\Pi \phi\wedge (C\vee l )\wedge C$ is satisfiable.
+	
+	%Then the S-form DQBF $\Pi \phi \wedge L(u)\wedge L(0)$ is true and the S-form DQBF $\Pi \phi \wedge L(u)\wedge L(1)$ is also true.
+\end{lemma}
+
+	 
+\begin{proof}
+	Let $f=\{ f_e \mid e\in E\}$ be a set of Skolem functions that satisfies $\Pi \phi\wedge (C\vee l)$.
+	We will construct a set of Skolem functions $f^*=\{ f^*_e \mid e\in E\}$ that satisfies $\Pi \phi\wedge C$.
+	
+	Let the following set be defined
+	\begin{itemize}
+		\item $\mathcal{S}=\{z:\var(l) \in D_z\}$
+		\item $\pathlpu(\bar l_u, \phi\wedge, \{C\}, \mathcal{S})$ is the set of exit literals on $\bar l_u$-pure resolution paths in variables of $\mathcal{S}$, starting from $\{C\}$ ranging over $\phi\wedge C$ ).
+		\item $\pathcpu(\bar l_u, \phi\wedge, \{C\}, \mathcal{S})$  is the set of clauses on $\bar l_u$-pure resolution paths in variables of $\mathcal{S}$, starting from $\{C\}$ ranging over $\phi\wedge C$ ).
+		\item $\chi=\{D \in \phi \mid \neg l \in D\}\cap \pathcpu(\bar l_u, \phi\wedge C, \{C\}, \mathcal{S})$
+	\end{itemize} 
+	We consider $\pathlpu(\bar l_u, \phi\wedge, \{C\}, \mathcal{S})$ (the set of exit literals on $\bar l_u$-pure resolution paths in variables of $\mathcal{S}$, starting from $\{C\}$ ranging over $\phi\wedge C$ ).
+	And their variables will be those that we modify.
+	
+	$f^*_x(\alpha)= \begin{cases}
+		f_x(\alpha\setminus\{l\}\cup\{\bar l\}) & \bigwedge_{D \in \chi} O_D \text{ is satisfied under } \alpha\\ & \exists l\in \pathlpu(\bar l_u, \phi\wedge C, \{C\}, \mathcal{S}) \text{ s.t. } \var(l)=x, \\ f_x(\alpha)& \text{otherwise.}\end{cases}$
+		
+		
+	We now need to argue that under any universal assignment $\gamma$ these modified functions will satisfy every clause in $\phi$ as well as $C$. 
+	First suppose  $\bigwedge_{D \in \chi} O_D \text{ is satisfied under } \gamma$. 
+	Then the existential variables in $C$, act according $f_x(\gamma|_{D_x}\setminus\{l\}\cup\{\bar l\})$ which must satisfy the clause, because $u$ does not under $\gamma\setminus\{l\}\cup\{\bar l\}$. 
+	We also know any clause that has an $l$ literal in must be satisfied because if $\gamma$ includes $l$ then it is satisfied through that literal or if not the functions are all unchanged and retain satisfaction.
+	Now clauses that are connected to $C$ via a pure path without an $l$ or $\bar l$ literal, have all their $\mathcal{S}$ literals synchronised so either they play as $\gamma$ or $\gamma\setminus\{l\}\cup\{\bar l\}$ but must satisfy in the original case and so must again. 
+	Clauses not connected via a pure path retain the same skolems functions on all variables.
+	The remaining clauses are those in $\chi$ but these already are satisfied because their outer clauses are.
+	
+	Next if some outer clause from $\chi$ is falsified, we know that propositionally $C$ is implied and since the Skolem functions remain the same then all other clauses are satisfied.
+	
+	
+	
+	% find a skolem function f for $\Pi \phi\wedge (C\vee l )$, find f' by modifying f such that we satisfy $\Pi \phi\wedge C$
+	%for variables that depend on var l and are reachable (it is used as a pivot in the path) via \bar l pure resolution path from C, f' acts if if var l is l,  if all the item 2 outer clauses are satisfied  then behaves as f'.
+	% this does not affect item 1 clauses as the their literals are not reached.
+	% item 2 clauses are satisfied when all their outer clauses are, and must be satisfied when not because f'behaves as f, in this case we only ahve to worry about C, but the propagation check ensures this is true.
+	
+\end{proof}	
+
+\end{document}
+

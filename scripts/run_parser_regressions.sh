@@ -37,5 +37,6 @@ run_case "repro_proof_comment_ignored" repros/proof_comment_ignored.dqdimacs rep
 run_case "repro_proof_missing_zero" repros/proof_missing_zero.dqdimacs repros/proof_missing_zero.dqrat "c proof parse error: Line 1: expected 0 terminator in clause line"
 run_case "repro_formula_missing_zero" repros/formula_missing_zero.dqdimacs repros/formula_missing_zero.dqrat "c parse error: Line 2: expected 0 terminator in 'a' line"
 run_case "repro_prefix_after_matrix_started" repros/prefix_after_matrix_started.dqdimacs repros/prefix_after_matrix_started.dqrat "c parse error: Line 3: prefix line after matrix started"
+run_case "repro_prefix_dep_var_zero" repros/prefix_dep_var_zero.dqdimacs repros/prefix_dep_var_zero.dqrat "c parse error: Expected positive exi var in 'd' line"
 
 echo "All parser regressions passed."
