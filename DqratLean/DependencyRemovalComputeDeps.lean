@@ -201,6 +201,30 @@ private abbrev ComputeDepsActiveDeletionExternalDiagnosticLocalContinuation
       (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private theorem computeDeps_activeDeletion_externalPatchFailureContinuation_of_diagnostic
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexternal :
+      ComputeDepsActiveDeletionExternalDiagnosticLocalContinuation
+        s vars on_) :
+    FlexibleRepairExternalPatchFailureContinuation s vars on_ := by
+  intro skBase skCand σ τ flipVar hall hpool hnotMem hvalEq hwitCand
+    hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase hprogress
+    hfalse
+  have hdiag :
+      ¬ on_ < flipVar ∨
+        ∃ pos : Bool,
+          (getReachable s (mkLit on_ true)).getD
+              (mkLit flipVar pos).x false = true ∧
+          (getReachable s (mkLit on_ false)).getD
+              (mkLit flipVar (!pos)).x false = true :=
+    computeDeps_activeDeletion_externalDiagnostic_of_existential
+      dqbf cs hfull hnoCrossClosed hnotMem hexiFlip hcontainsFlip
+  exact hexternal hall hpool hnotMem hvalEq hwitCand hwitBase hexiFlip
+    hcontainsFlip hnoPathCand hnoPathBase hdiag hprogress hfalse
+
 /-!
 For the same-clause restartable-failure branch, the exact missing local packet
 is the cached current-frontier handler.  This is the point where the two-patch
@@ -374,15 +398,36 @@ private theorem
         s.clauses.matrixValue s.formula τ
           (patchDeleteWitnessAt s.formula flipVar σ skCand) = false) :
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand := by
+  have hsame_from_current :
+      ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ →
+      FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand := by
+    intro hcurrent hsame
+    exact
+      dependencyRemoval_sameClauseFailure_currentStrictStep_or_outcome_of_residualHandler
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (σ := σ)
+        hexi hcontains
+        (dependencyRemoval_sameClauseConcreteNondecreasingResidualHandler_of_current
+          (s := s) (vars := vars) (on_ := on_) hexi hcurrent)
+        hallBase htracked hproper hfalse hsame
   -- Remaining cached current-frontier seam:
   -- the exact same-clause theorem still needed here is
   -- `ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_`.
-  -- The current statement is one level too high: once the external patch-false
-  -- branch reduces to "already false on an internal cached literal", that data
-  -- is not yet a local repair result over `vars`; it has to re-enter the
-  -- cached current-frontier restart packet.  So the remaining `sorry` is
-  -- exactly the replacement of this mixed theorem by the named current-frontier
-  -- handler plus the cached external-to-frontier handoff.
+  -- The ordinary same-clause reduction itself is no longer the blocker:
+  -- once that current-frontier handler exists, `hsame_from_current` feeds it
+  -- through the existing residual-handler reduction immediately.
+  --
+  -- The current statement is still one level too high for the external branch:
+  -- once the external patch-false branch reduces to "already false on an
+  -- internal cached literal", that data is not yet a local repair result over
+  -- `vars`; it has to re-enter the cached current-frontier restart packet.
+  -- The reduced external diagnostic itself is already normalized by
+  -- `computeDeps_activeDeletion_externalPatchFailureContinuation_of_diagnostic`.
+  -- So the remaining `sorry` is exactly the cached current-frontier handoff,
+  -- plus the non-culprit internal-literal subcase of the public
+  -- `flexibleRepairPoolCandidate_external_patch_false_matrix_internal_or_flip`
+  -- split.
   sorry
 
 private theorem computeDeps_activeDeletion_trackedStrictFalseStep
