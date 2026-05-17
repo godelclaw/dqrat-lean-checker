@@ -236,6 +236,43 @@ private abbrev ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   DependencyRemovalSameClauseConcreteCurrentFrontierHandler s vars on_
 
+private abbrev
+    ComputeDepsActiveDeletionCurrentFrontierRemovedWitnessLowPhaseProgress
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  DependencyRemovalCurrentFrontierRemovedWitnessLowPhaseProgressDischarge
+    s vars on_
+
+private theorem
+    computeDeps_activeDeletion_currentFrontierHandler_of_removedWitnessLowPhase
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ of_ ∈ vars.toList,
+      s.formula.isVarExistential of_ = true)
+    (hlow :
+      ComputeDepsActiveDeletionCurrentFrontierRemovedWitnessLowPhaseProgress
+        s vars on_) :
+    ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ := by
+  intro skBase skCand skNext σ hallBase htracked hfalse htwo
+    hproperCand htrackedNext hltNextBase hproperNext hsubsetCandNext
+    hcurrent hexact
+  have hobs :
+      DependencyRemovalRemovedCurrentWitnessFrontierObservation
+        s vars on_ skBase skCand :=
+    dependencyRemoval_removedCurrentWitnessFrontierObservation_of_currentFrontier
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (skNext := skNext) (σ := σ)
+      hexi htracked hcurrent
+  rcases hlow hallBase htracked hfalse htwo hproperCand htrackedNext
+      hltNextBase hproperNext hsubsetCandNext hcurrent hexact hobs with
+    hlocal | hrank
+  · exact hlocal
+  · rcases hrank with ⟨phaseNext, hltRank⟩
+    exact Or.inr
+      ⟨skNext, htrackedNext,
+        dependencyRemoval_twoTierLowPhase_lt_to_count_lt
+          (s := s) (vars := vars) (on_ := on_)
+          (phaseNext := phaseNext) (skBase := skBase)
+          (skCand := skCand) (skNext := skNext) hltRank⟩
+
 /-!
 The last checker-side handoff now splits cleanly into two reusable packets:
 
@@ -248,6 +285,34 @@ The remaining work is precisely to connect the non-culprit
 packet.  Keeping that seam here leaves the local repair theorem below as pure
 orchestration.
 -/
+private theorem
+    computeDeps_activeDeletion_removedWitnessLowPhase_externalDiagnosticHandoff
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
+    ComputeDepsActiveDeletionCurrentFrontierRemovedWitnessLowPhaseProgress
+        s vars on_ ∧
+      ComputeDepsActiveDeletionExternalDiagnosticLocalContinuation
+        s vars on_ := by
+  /-
+  Smaller remaining seam:
+
+  * the current-frontier same-clause branch has been reduced to the existing
+    removed-witness low-phase narrative discharge; and
+  * the external patch-false internal-literal handoff still has to feed that
+    low-phase restart packet, while the culprit flip branch continues through
+    the external diagnostic continuation.
+  -/
+  sorry
+
 private theorem
     computeDeps_activeDeletion_cachedCurrentFrontierHandoff
     (dqbf : DQBF) (cs : ClauseStore)
@@ -264,19 +329,15 @@ private theorem
     ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ ∧
       ComputeDepsActiveDeletionExternalDiagnosticLocalContinuation
         s vars on_ := by
-  /-
-  Remaining seam:
-
-  * the cached current-frontier handler for same-clause restart states over
-    `vars`;
-  * the external patch-false internal-literal handoff from
-    `flexibleRepairPoolCandidate_external_patch_false_matrix_internal_or_flip`
-    back into that cached restart packet.
-
-  The culprit `flipVar` branch should keep using the existing external
-  diagnostic continuation.
-  -/
-  sorry
+  rcases
+      computeDeps_activeDeletion_removedWitnessLowPhase_externalDiagnosticHandoff
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+        hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed with
+    ⟨hlow, hexternal⟩
+  exact
+    ⟨computeDeps_activeDeletion_currentFrontierHandler_of_removedWitnessLowPhase
+        (s := s) (vars := vars) (on_ := on_) hexi hlow,
+      hexternal⟩
 
 /-!
 For the cached `computeDeps` consumer, the remaining semantic packet is kept at
