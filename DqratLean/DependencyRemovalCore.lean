@@ -21318,6 +21318,50 @@ theorem flexibleRepairPoolCandidate_external_patch_false_matrix_internal_or_flip
       ⟨cref, c, l, hget, hclause_false, hlmem, hvar, hltrue,
         hlfalse, hnoPath⟩
 
+theorem flexibleRepairPoolTracked_external_patch_false_matrix_internal_or_flip
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    {σSeed τ : UnivAssignment} {flipVar : Var}
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    (hexiFlip : s.formula.isVarExistential flipVar = true)
+    (hcontainsFlip :
+      (s.formula.depset.getD flipVar #[]).contains on_ = true)
+    (hnoPathSeed :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σSeed on_)))
+        (mkLit flipVar (s.formula.varValue σSeed skCand flipVar)))
+    (hfalse :
+      s.clauses.matrixValue s.formula τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand) = false) :
+    (FlexibleRepairPoolTracked s vars on_ skBase skCand ∧
+      ∃ cref c l,
+        s.clauses.getClause cref = some c ∧
+        s.formula.clauseValue τ skCand c.lits = false ∧
+        l ∈ c.lits.toList ∧
+        l.var ∈ vars.toList ∧
+        s.formula.litValue τ skBase l = true ∧
+        s.formula.litValue τ skCand l = false ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l) ∨
+    ∃ cref c l,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand) c.lits =
+          false ∧
+      l ∈ c.lits.toList ∧
+      l.var = flipVar ∧
+      s.formula.litValue τ skCand l = true ∧
+      s.formula.litValue τ
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand) l = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l := by
+  rcases flexibleRepairPoolCandidate_external_patch_false_matrix_internal_or_flip
+      (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+      (skCand := skCand) (σSeed := σSeed) (τ := τ)
+      (flipVar := flipVar)
+      htracked.1 hallBase hexiFlip hcontainsFlip hnoPathSeed hfalse with
+    hinternal | hflip
+  · exact Or.inl ⟨htracked, hinternal⟩
+  · exact Or.inr hflip
+
 private theorem flexibleRepairPoolCandidate_false_matrix_changed_lit
     {s : CheckState} {vars : Array Var} {on_ : Var}
     {skBase skCand : SkolemAssignment}
