@@ -310,6 +310,39 @@ private abbrev
     ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private theorem
+    computeDeps_activeDeletion_internalFalseClause_descent_of_trackedRestart
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {τ : UnivAssignment}
+    {cref : CRef} {c : Clause}
+    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_)
+    (hall : ∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true)
+    (hpool : FlexibleRepairPoolCandidate s vars on_ skBase skCand)
+    (hfoot :
+      FlexibleRepairPoolFiberFootprint s vars on_ skBase skCand)
+    (hlive :
+      FlexibleRepairPoolLiveWitnessFiberUnchanged s vars on_ skBase skCand)
+    (hget : s.clauses.getClause cref = some c)
+    (hclauseFalse :
+      s.formula.clauseValue τ skCand c.lits = false) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase := by
+  have htracked :
+      FlexibleRepairPoolTracked s vars on_ skBase skCand :=
+    ⟨hpool, hfoot, hlive⟩
+  have hfalse :
+      s.clauses.matrixValue s.formula τ skCand = false :=
+    matrixValue_false_of_false_clause
+      s.formula s.clauses τ skCand hget hclauseFalse
+  have hout :
+      DependencyRemovalDescentOutcome s vars on_ skBase :=
+    hrestart hall htracked
+      (dependencyRemoval_trackedFalseCandidate_hasProperSubset
+        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+        (skCand := skCand) (σ := τ) hall htracked hfalse)
+      hfalse
+  simpa [DeleteIndependenceDescentOutcome,
+    DependencyRemovalDescentOutcome] using hout
+
 private abbrev
     ComputeDepsActiveDeletionExternalFlipDiagnosticContinuation
     (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
