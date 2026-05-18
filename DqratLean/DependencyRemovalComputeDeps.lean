@@ -581,7 +581,9 @@ private theorem
     (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
     ComputeDepsActiveDeletionCurrentFrontierRemovedWitnessLowPhaseProgress
         s vars on_ ∧
-      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalContinuation
+      ComputeDepsActiveDeletionTrackedExternalInternalChangedLiteralHandoff
+        s vars on_ ∧
+      ComputeDepsActiveDeletionExternalFlipDiagnosticContinuation
         s vars on_ := by
   /-
   Smaller remaining seam:
@@ -591,12 +593,11 @@ private theorem
   * the external patch-false diagnostic branch has been split by
     `flexibleRepairPoolCandidate_external_patch_false_matrix_internal_or_flip`.
 
-  The internal-literal side now has a tracked producer/consumer bridge once a
-  tracked false-restart source is available.  The remaining local gap is the
-  honest source of the tracked current-frontier packet for this external
-  branch.  The caller below now consumes this tracked continuation directly,
-  so the boundary no longer asks for a continuation from an arbitrary plain
-  `FlexibleRepairPoolCandidate`.
+  The internal-literal side is now tracked all the way to this boundary.  The
+  remaining local gap is the honest source of that tracked current-frontier
+  packet for this external branch.  The caller below consumes the tracked
+  continuation directly, so the boundary no longer asks for a continuation
+  from an arbitrary plain `FlexibleRepairPoolCandidate`.
   -/
   sorry
 
@@ -617,10 +618,15 @@ private theorem
         s vars on_ ∧
       ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalContinuation
         s vars on_ := by
+  rcases
+      computeDeps_activeDeletion_removedWitnessLowPhase_externalBranchHandoffs
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+        hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed with
+    ⟨hlow, hinternal, hflip⟩
   exact
-    computeDeps_activeDeletion_removedWitnessLowPhase_externalBranchHandoffs
-      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
-      hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
+    ⟨hlow,
+      computeDeps_activeDeletion_trackedExternalDiagnosticLocalContinuation_of_branchHandoffs
+        (s := s) (vars := vars) (on_ := on_) hinternal hflip⟩
 
 private theorem
     computeDeps_activeDeletion_cachedCurrentFrontierHandoff
