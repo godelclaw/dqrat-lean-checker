@@ -504,6 +504,21 @@ private theorem
       hnoPathLit
 
 private theorem
+    computeDeps_activeDeletion_trackedExternalDiagnosticLocalContinuation_of_restart
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_)
+    (hflip :
+      ComputeDepsActiveDeletionExternalFlipDiagnosticContinuation
+        s vars on_) :
+    ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalContinuation
+      s vars on_ :=
+  computeDeps_activeDeletion_trackedExternalDiagnosticLocalContinuation_of_branchHandoffs
+    (s := s) (vars := vars) (on_ := on_)
+    (computeDeps_activeDeletion_trackedInternalChangedLiteralHandoff_of_restart
+      (s := s) (vars := vars) (on_ := on_) hrestart)
+    hflip
+
+private theorem
     computeDeps_activeDeletion_externalDiagnosticLocalContinuation_of_branchHandoffs
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hinternal :
@@ -566,9 +581,7 @@ private theorem
     (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
     ComputeDepsActiveDeletionCurrentFrontierRemovedWitnessLowPhaseProgress
         s vars on_ ∧
-      ComputeDepsActiveDeletionExternalInternalChangedLiteralHandoff
-        s vars on_ ∧
-      ComputeDepsActiveDeletionExternalFlipDiagnosticContinuation
+      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalContinuation
         s vars on_ := by
   /-
   Smaller remaining seam:
@@ -580,9 +593,10 @@ private theorem
 
   The internal-literal side now has a tracked producer/consumer bridge once a
   tracked false-restart source is available.  The remaining local gap is the
-  honest source of that restart/current-frontier packet for this external
-  branch.  The culprit-flip side remains the explicit reduced diagnostic
-  continuation; no opaque theorem hides either branch.
+  honest source of the tracked current-frontier packet for this external
+  branch.  The caller below now consumes this tracked continuation directly,
+  so the boundary no longer asks for a continuation from an arbitrary plain
+  `FlexibleRepairPoolCandidate`.
   -/
   sorry
 
@@ -601,17 +615,12 @@ private theorem
     (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
     ComputeDepsActiveDeletionCurrentFrontierRemovedWitnessLowPhaseProgress
         s vars on_ ∧
-      ComputeDepsActiveDeletionExternalDiagnosticLocalContinuation
+      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalContinuation
         s vars on_ := by
-  rcases
-      computeDeps_activeDeletion_removedWitnessLowPhase_externalBranchHandoffs
-        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
-        hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed with
-    ⟨hlow, hinternal, hflip⟩
   exact
-    ⟨hlow,
-      computeDeps_activeDeletion_externalDiagnosticLocalContinuation_of_branchHandoffs
-        (s := s) (vars := vars) (on_ := on_) hinternal hflip⟩
+    computeDeps_activeDeletion_removedWitnessLowPhase_externalBranchHandoffs
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
 
 private theorem
     computeDeps_activeDeletion_cachedCurrentFrontierHandoff
@@ -627,7 +636,7 @@ private theorem
     (hpaths : NoDeleteCrossPathsSet s vars on_)
     (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
     ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ ∧
-      ComputeDepsActiveDeletionExternalDiagnosticLocalContinuation
+      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalContinuation
         s vars on_ := by
   rcases
       computeDeps_activeDeletion_removedWitnessLowPhase_externalDiagnosticHandoff
@@ -805,7 +814,7 @@ private theorem
       computeDeps_activeDeletion_cachedCurrentFrontierHandoff
         (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
         hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed with
-    ⟨hcurrent, hexternal_local⟩
+    ⟨hcurrent, hexternal_tracked⟩
   have hsame_from_current :
       ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ →
       FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
@@ -819,19 +828,26 @@ private theorem
         (dependencyRemoval_sameClauseConcreteNondecreasingResidualHandler_of_current
           (s := s) (vars := vars) (on_ := on_) hexi hcurrent)
         hallBase htracked hproper hfalse hsame
-  have hexternal_cont :
-      FlexibleRepairExternalPatchFailureContinuation s vars on_ :=
-    computeDeps_activeDeletion_externalPatchFailureContinuation_of_diagnostic
-      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
-      hfull hnoCrossClosed hexternal_local
   rcases hhard with hsame | hexternal_fail
   · exact hsame_from_current hcurrent hsame
   · rcases hexternal_fail with
       ⟨τ, flipVar, hnotMem, hvalEq, hwitCand, hwitBase, hexiFlip,
         hcontainsFlip, hnoPathCand, hnoPathBase, hprogress, hfalsePatch⟩
+    have hdiag :
+        ¬ on_ < flipVar ∨
+          ∃ pos : Bool,
+            (getReachable s (mkLit on_ true)).getD
+                (mkLit flipVar pos).x false = true ∧
+            (getReachable s (mkLit on_ false)).getD
+                (mkLit flipVar (!pos)).x false = true :=
+      computeDeps_activeDeletion_externalDiagnostic_of_existential
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+        (on_ := on_) (of_ := flipVar)
+        hfull hnoCrossClosed hnotMem hexiFlip hcontainsFlip
     exact Or.inl
-      (hexternal_cont hallBase htracked.1 hnotMem hvalEq hwitCand hwitBase
-        hexiFlip hcontainsFlip hnoPathCand hnoPathBase hprogress hfalsePatch)
+      (hexternal_tracked hallBase htracked hnotMem hvalEq hwitCand
+        hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase hdiag
+        hprogress hfalsePatch)
 
 private theorem computeDeps_activeDeletion_trackedStrictFalseStep
     (dqbf : DQBF) (cs : ClauseStore)
