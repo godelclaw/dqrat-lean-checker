@@ -425,6 +425,60 @@ private abbrev
     DependencyRemovalLocalRepairResult s vars on_ skBase skCand
 
 private theorem
+    computeDeps_activeDeletion_tracked_varValue_eq_of_not_mem
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hnotMem : of_ ∉ vars.toList) (σ : UnivAssignment) :
+    s.formula.varValue σ skCand of_ =
+      s.formula.varValue σ skBase of_ := by
+  by_cases hsame :
+      s.formula.varValue σ skCand of_ =
+        s.formula.varValue σ skBase of_
+  · exact hsame
+  · exact False.elim (hnotMem ((htracked.1).2.2 of_ σ hsame).1)
+
+private theorem
+    computeDeps_activeDeletion_externalPatch_tracked_requires_baseValue
+    {s : CheckState} {vars : Array Var} {on_ flipVar : Var}
+    {skBase skCand : SkolemAssignment} {σSeed : UnivAssignment}
+    (htrackedPatch :
+      FlexibleRepairPoolTracked s vars on_ skBase
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand))
+    (hnotMem : flipVar ∉ vars.toList) :
+    ∀ ρ,
+      s.formula.varValue ρ
+          (patchDeleteWitnessAt s.formula flipVar σSeed skCand)
+          flipVar =
+        s.formula.varValue ρ skBase flipVar := by
+  intro ρ
+  exact
+    computeDeps_activeDeletion_tracked_varValue_eq_of_not_mem
+      (s := s) (vars := vars) (on_ := on_) (of_ := flipVar)
+      (skBase := skBase)
+      (skCand := patchDeleteWitnessAt s.formula flipVar σSeed skCand)
+      htrackedPatch hnotMem ρ
+
+private theorem
+    computeDeps_activeDeletion_externalPatch_not_tracked_of_changedBase
+    {s : CheckState} {vars : Array Var} {on_ flipVar : Var}
+    {skBase skCand : SkolemAssignment} {σSeed ρ : UnivAssignment}
+    (hnotMem : flipVar ∉ vars.toList)
+    (hchanged :
+      s.formula.varValue ρ
+          (patchDeleteWitnessAt s.formula flipVar σSeed skCand)
+          flipVar ≠
+        s.formula.varValue ρ skBase flipVar) :
+    ¬ FlexibleRepairPoolTracked s vars on_ skBase
+        (patchDeleteWitnessAt s.formula flipVar σSeed skCand) := by
+  intro htrackedPatch
+  exact hchanged
+    (computeDeps_activeDeletion_externalPatch_tracked_requires_baseValue
+      (s := s) (vars := vars) (on_ := on_) (flipVar := flipVar)
+      (skBase := skBase) (skCand := skCand) (σSeed := σSeed)
+      htrackedPatch hnotMem ρ)
+
+private theorem
     computeDeps_activeDeletion_trackedExternalDiagnosticLocalContinuation_of_branchHandoffs
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hinternal :
@@ -473,11 +527,28 @@ private theorem
     (computeDeps_activeDeletion_trackedExternalFlipDiagnosticContinuation_of_restart
       (s := s) (vars := vars) (on_ := on_) hrestart)
 
+private theorem
+    computeDeps_activeDeletion_trackedExternalDiagnosticLocalRepair_of_restart
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_) :
+    ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalRepair
+      s vars on_ := by
+  intro skBase skCand _σCur σ τ flipVar hall htracked _hproper
+    _hfalse hnotMem hvalEq hwitCand hwitBase hexiFlip hcontainsFlip
+    hnoPathCand hnoPathBase hdiag hprogress hfalsePatch
+  exact Or.inl
+    (computeDeps_activeDeletion_trackedExternalDiagnosticLocalContinuation_of_restart
+      (s := s) (vars := vars) (on_ := on_) hrestart
+      hall htracked hnotMem hvalEq hwitCand hwitBase hexiFlip
+      hcontainsFlip hnoPathCand hnoPathBase hdiag hprogress hfalsePatch)
+
 /-!
 This boundary must stay before the restart theorem.  The old monolithic proof
-asked the external branch for post-restart descent continuations here; the local
-repair proof below only needs the current-frontier low-phase packet and a
-tracked external diagnostic local-repair packet.
+asked the external branch for post-restart descent continuations here.  The
+post-restart adapter above is now explicit; the pre-restart obligation below is
+therefore the remaining place where the current-frontier low-phase packet and
+the external failed-patch residual still have to be connected without assuming
+restart.
 -/
 private theorem
     computeDeps_activeDeletion_removedWitnessLowPhase_externalLocalRepairBoundary
