@@ -543,15 +543,14 @@ private theorem
       hcontainsFlip hnoPathCand hnoPathBase hdiag hprogress hfalsePatch)
 
 /-!
-This boundary must stay before the restart theorem.  The old monolithic proof
-asked the external branch for post-restart descent continuations here.  The
-post-restart adapter above is now explicit; the pre-restart obligation below is
-therefore the remaining place where the current-frontier low-phase packet and
-the external failed-patch residual still have to be connected without assuming
-restart.
+This boundary must stay before the restart theorem.  The cached consumer only
+needs the current-frontier handler and the pre-restart external failed-patch
+local repair.  A removed-witness low-phase discharge remains one possible route
+to the current-frontier handler, but it is not the theorem this consumer should
+force.
 -/
 private theorem
-    computeDeps_activeDeletion_removedWitnessLowPhase_externalLocalRepairBoundary
+    computeDeps_activeDeletion_currentFrontier_externalLocalRepairBoundary
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs s)
@@ -563,43 +562,18 @@ private theorem
       (s.formula.depset.getD of_ #[]).contains on_ = true)
     (hpaths : NoDeleteCrossPathsSet s vars on_)
     (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
-    ComputeDepsActiveDeletionCurrentFrontierRemovedWitnessLowPhaseProgress
-        s vars on_ ∧
+    ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ ∧
       ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalRepair
         s vars on_ := by
   /-
   Remaining boundary:
 
-  produce the removed-witness low-phase current-frontier packet and handle the
-  external diagnostic failed-patch residual as a pre-restart local-repair step.
-  This is the non-cyclic interface: post-restart descent continuations are
+  produce the same-clause current-frontier packet actually consumed by the
+  local repair step, and handle the external diagnostic failed-patch residual as
+  a pre-restart local-repair step.  Post-restart descent continuations are
   derived only from `computeDeps_activeDeletion_trackedFalseRestart`.
   -/
   sorry
-
-private theorem
-    computeDeps_activeDeletion_removedWitnessLowPhase_externalLocalRepairHandoff
-    (dqbf : DQBF) (cs : ClauseStore)
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    (hfull : CheckState.FullCorrect dqbf cs s)
-    (hon_le : on_ ≤ s.formula.maxVar)
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
-    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
-    (hcontains : ∀ of_ ∈ vars.toList,
-      (s.formula.depset.getD of_ #[]).contains on_ = true)
-    (hpaths : NoDeleteCrossPathsSet s vars on_)
-    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
-    ComputeDepsActiveDeletionCurrentFrontierRemovedWitnessLowPhaseProgress
-        s vars on_ ∧
-      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalRepair
-        s vars on_ := by
-  rcases
-      computeDeps_activeDeletion_removedWitnessLowPhase_externalLocalRepairBoundary
-        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
-        hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed with
-    ⟨hlow, hexternal⟩
-  exact ⟨hlow, hexternal⟩
 
 private theorem
     computeDeps_activeDeletion_cachedCurrentFrontierHandoff
@@ -617,15 +591,10 @@ private theorem
     ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ ∧
       ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalRepair
         s vars on_ := by
-  rcases
-      computeDeps_activeDeletion_removedWitnessLowPhase_externalLocalRepairHandoff
-        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
-        hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed with
-    ⟨hlow, hexternal⟩
   exact
-    ⟨computeDeps_activeDeletion_currentFrontierHandler_of_removedWitnessLowPhase
-        (s := s) (vars := vars) (on_ := on_) hexi hlow,
-      hexternal⟩
+    computeDeps_activeDeletion_currentFrontier_externalLocalRepairBoundary
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
 
 /-!
 For the cached `computeDeps` consumer, the remaining semantic packet is kept at
