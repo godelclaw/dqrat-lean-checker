@@ -392,6 +392,38 @@ private abbrev
       (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
     DeleteIndependenceDescentOutcome s vars on_ skBase
 
+private abbrev
+    ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalRepair
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σCur σ τ : UnivAssignment}
+    {flipVar : Var},
+    (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σCur skCand = false →
+    flipVar ∉ vars.toList →
+    s.formula.varValue σ skCand flipVar =
+      s.formula.varValue σ skBase flipVar →
+    DeleteDepWitness s.formula flipVar on_ skCand σ →
+    DeleteDepWitness s.formula flipVar on_ skBase σ →
+    s.formula.isVarExistential flipVar = true →
+    (s.formula.depset.getD flipVar #[]).contains on_ = true →
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+      (mkLit flipVar (s.formula.varValue σ skCand flipVar)) →
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+      (mkLit flipVar (s.formula.varValue σ skBase flipVar)) →
+    (¬ on_ < flipVar ∨
+      ∃ pos : Bool,
+        (getReachable s (mkLit on_ true)).getD
+            (mkLit flipVar pos).x false = true ∧
+        (getReachable s (mkLit on_ false)).getD
+            (mkLit flipVar (!pos)).x false = true) →
+    TargetRepairProgressCandidate s vars on_ skBase
+      (patchDeleteWitnessAt s.formula flipVar σ skCand) →
+    s.clauses.matrixValue s.formula τ
+      (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
+    DependencyRemovalLocalRepairResult s vars on_ skBase skCand
+
 private theorem
     computeDeps_activeDeletion_trackedExternalDiagnosticLocalContinuation_of_branchHandoffs
     {s : CheckState} {vars : Array Var} {on_ : Var}
@@ -442,13 +474,13 @@ private theorem
       (s := s) (vars := vars) (on_ := on_) hrestart)
 
 /-!
-This boundary must stay on the tracked side.  The plain-candidate external
-handoff used by the old monolithic proof is deliberately absent here: it would
-ask the external branch to return a post-restart descent outcome before the
-tracked restart theorem has been produced.
+This boundary must stay before the restart theorem.  The old monolithic proof
+asked the external branch for post-restart descent continuations here; the local
+repair proof below only needs the current-frontier low-phase packet and a
+tracked external diagnostic local-repair packet.
 -/
 private theorem
-    computeDeps_activeDeletion_removedWitnessLowPhase_externalBranchHandoffs
+    computeDeps_activeDeletion_removedWitnessLowPhase_externalLocalRepairBoundary
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs s)
@@ -462,25 +494,20 @@ private theorem
     (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
     ComputeDepsActiveDeletionCurrentFrontierRemovedWitnessLowPhaseProgress
         s vars on_ ∧
-      ComputeDepsActiveDeletionTrackedExternalInternalChangedLiteralHandoff
-        s vars on_ ∧
-      ComputeDepsActiveDeletionTrackedExternalFlipDiagnosticContinuation
+      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalRepair
         s vars on_ := by
   /-
-  Remaining phase mismatch:
+  Remaining boundary:
 
-  `flexibleRepairPoolTracked_external_patch_false_matrix_internal_or_flip`
-  keeps tracked data in the external split, and the internal false-clause case
-  can now be converted to the pre-restart packet by
-  `computeDeps_activeDeletion_internalFalseClause_restartPacket` below.  This
-  theorem still asks for the post-restart descent continuations directly; the
-  sound rethread is to consume the restart packet in the local repair proof and
-  derive these continuations only after `computeDeps_activeDeletion_trackedFalseRestart`.
+  produce the removed-witness low-phase current-frontier packet and handle the
+  external diagnostic failed-patch residual as a pre-restart local-repair step.
+  This is the non-cyclic interface: post-restart descent continuations are
+  derived only from `computeDeps_activeDeletion_trackedFalseRestart`.
   -/
   sorry
 
 private theorem
-    computeDeps_activeDeletion_removedWitnessLowPhase_externalDiagnosticHandoff
+    computeDeps_activeDeletion_removedWitnessLowPhase_externalLocalRepairHandoff
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs s)
@@ -494,17 +521,14 @@ private theorem
     (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
     ComputeDepsActiveDeletionCurrentFrontierRemovedWitnessLowPhaseProgress
         s vars on_ ∧
-      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalContinuation
+      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalRepair
         s vars on_ := by
   rcases
-      computeDeps_activeDeletion_removedWitnessLowPhase_externalBranchHandoffs
+      computeDeps_activeDeletion_removedWitnessLowPhase_externalLocalRepairBoundary
         (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
         hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed with
-    ⟨hlow, hinternal, hflip⟩
-  exact
-    ⟨hlow,
-      computeDeps_activeDeletion_trackedExternalDiagnosticLocalContinuation_of_branchHandoffs
-        (s := s) (vars := vars) (on_ := on_) hinternal hflip⟩
+    ⟨hlow, hexternal⟩
+  exact ⟨hlow, hexternal⟩
 
 private theorem
     computeDeps_activeDeletion_cachedCurrentFrontierHandoff
@@ -520,10 +544,10 @@ private theorem
     (hpaths : NoDeleteCrossPathsSet s vars on_)
     (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
     ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ ∧
-      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalContinuation
+      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalRepair
         s vars on_ := by
   rcases
-      computeDeps_activeDeletion_removedWitnessLowPhase_externalDiagnosticHandoff
+      computeDeps_activeDeletion_removedWitnessLowPhase_externalLocalRepairHandoff
         (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
         hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed with
     ⟨hlow, hexternal⟩
@@ -880,7 +904,7 @@ private theorem
       computeDeps_activeDeletion_cachedCurrentFrontierHandoff
         (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
         hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed with
-    ⟨hcurrent, hexternal_tracked⟩
+    ⟨hcurrent, hexternal_local⟩
   have hsame_from_current :
       ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ →
       FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand σ →
@@ -939,10 +963,10 @@ private theorem
               (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
               (on_ := on_) (of_ := flipVar')
               hfull hnoCrossClosed hnotMem' hexiFlip' hcontainsFlip'
-          exact Or.inl
-            (hexternal_tracked hallBase htracked hnotMem' hvalEq'
-              hwitCand' hwitBase' hexiFlip' hcontainsFlip'
-              hnoPathCand' hnoPathBase' hdiag' hprogress' hfalse')
+          exact
+            hexternal_local hallBase htracked hproper hfalse hnotMem'
+              hvalEq' hwitCand' hwitBase' hexiFlip' hcontainsFlip'
+              hnoPathCand' hnoPathBase' hdiag' hprogress' hfalse'
         · refine Or.inl ?_
           left
           refine
@@ -956,10 +980,10 @@ private theorem
               exact False.elim (hfail' ⟨ρ, hval⟩)
           | true =>
               exact rfl
-      · exact Or.inl
-          (hexternal_tracked hallBase htracked hnotMem hvalEq hwitCand
-            hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase hdiag
-            hprogress hfalsePatch)
+      · exact
+          hexternal_local hallBase htracked hproper hfalse hnotMem hvalEq
+            hwitCand hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase
+            hdiag hprogress hfalsePatch
 
 private theorem computeDeps_activeDeletion_trackedStrictFalseStep
     (dqbf : DQBF) (cs : ClauseStore)
