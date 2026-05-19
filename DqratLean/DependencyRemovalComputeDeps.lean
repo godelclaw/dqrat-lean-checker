@@ -690,6 +690,67 @@ private theorem
       (on_ := on_) hfull hon_le hon_univ hgt hexi hcontains hpaths
       hallBase htracked hfalseCand
 
+private theorem
+    computeDeps_activeDeletion_internalFalseClause_localRepair_or_external
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hcurrent :
+      ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler
+        s vars on_)
+    {skBase skCand : SkolemAssignment} {τ : UnivAssignment}
+    {cref : CRef} {c : Clause}
+    (hallBase : ∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hproper :
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase)
+    (hget : s.clauses.getClause cref = some c)
+    (hclauseFalseCand :
+      s.formula.clauseValue τ skCand c.lits = false) :
+    DependencyRemovalLocalRepairResult s vars on_ skBase skCand ∨
+      ∃ flipVar,
+        flipVar ∉ vars.toList ∧
+        s.formula.varValue τ skCand flipVar =
+          s.formula.varValue τ skBase flipVar ∧
+        DeleteDepWitness s.formula flipVar on_ skCand τ ∧
+        DeleteDepWitness s.formula flipVar on_ skBase τ ∧
+        s.formula.isVarExistential flipVar = true ∧
+        (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
+          (mkLit flipVar (s.formula.varValue τ skCand flipVar)) ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
+          (mkLit flipVar (s.formula.varValue τ skBase flipVar)) ∧
+        TargetRepairProgressCandidate s vars on_ skBase
+          (patchDeleteWitnessAt s.formula flipVar τ skCand) := by
+  have hfalseCand :
+      s.clauses.matrixValue s.formula τ skCand = false :=
+    matrixValue_false_of_false_clause
+      s.formula s.clauses τ skCand hget hclauseFalseCand
+  rcases
+      computeDeps_activeDeletion_internalFalseClause_restartPacket
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+        (on_ := on_) hfull hon_le hon_univ hgt hexi hcontains hpaths
+        hallBase htracked hget hclauseFalseCand with
+    hstrict | hrest
+  · exact Or.inl (Or.inr hstrict)
+  · rcases hrest with hexternal | hsame
+    · exact Or.inr hexternal
+    · exact Or.inl
+        (dependencyRemoval_sameClauseFailure_currentStrictStep_or_outcome_of_residualHandler
+          (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
+          (skCand := skCand) (σ := τ)
+          hexi hcontains
+          (dependencyRemoval_sameClauseConcreteNondecreasingResidualHandler_of_current
+            (s := s) (vars := vars) (on_ := on_) hexi hcurrent)
+          hallBase htracked hproper hfalseCand hsame)
+
 /-!
 After the tracked-candidate split, the only open local repair packet is the
 honest hard residual:
