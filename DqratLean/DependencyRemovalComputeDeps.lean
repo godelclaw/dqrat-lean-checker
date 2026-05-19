@@ -172,59 +172,6 @@ Under `FullCorrect`, the dummy `flipVar ∉ exivars` case in the older
 external-diagnostic interface is impossible, so we normalize to this smaller
 handler shape before feeding the cached local-frontier assembly.
 -/
-private abbrev ComputeDepsActiveDeletionExternalDiagnosticLocalContinuation
-    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
-  ∀ {skBase skCand : SkolemAssignment} {σ τ : UnivAssignment}
-    {flipVar : Var},
-    (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
-    FlexibleRepairPoolCandidate s vars on_ skBase skCand →
-    flipVar ∉ vars.toList →
-    s.formula.varValue σ skCand flipVar =
-      s.formula.varValue σ skBase flipVar →
-    DeleteDepWitness s.formula flipVar on_ skCand σ →
-    DeleteDepWitness s.formula flipVar on_ skBase σ →
-    s.formula.isVarExistential flipVar = true →
-    (s.formula.depset.getD flipVar #[]).contains on_ = true →
-    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
-      (mkLit flipVar (s.formula.varValue σ skCand flipVar)) →
-    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
-      (mkLit flipVar (s.formula.varValue σ skBase flipVar)) →
-    (¬ on_ < flipVar ∨
-      ∃ pos : Bool,
-        (getReachable s (mkLit on_ true)).getD
-            (mkLit flipVar pos).x false = true ∧
-        (getReachable s (mkLit on_ false)).getD
-            (mkLit flipVar (!pos)).x false = true) →
-    TargetRepairProgressCandidate s vars on_ skBase
-      (patchDeleteWitnessAt s.formula flipVar σ skCand) →
-    s.clauses.matrixValue s.formula τ
-      (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
-    DeleteIndependenceDescentOutcome s vars on_ skBase
-
-private theorem computeDeps_activeDeletion_externalPatchFailureContinuation_of_diagnostic
-    (dqbf : DQBF) (cs : ClauseStore)
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    (hfull : CheckState.FullCorrect dqbf cs s)
-    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
-    (hexternal :
-      ComputeDepsActiveDeletionExternalDiagnosticLocalContinuation
-        s vars on_) :
-    FlexibleRepairExternalPatchFailureContinuation s vars on_ := by
-  intro skBase skCand σ τ flipVar hall hpool hnotMem hvalEq hwitCand
-    hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase hprogress
-    hfalse
-  have hdiag :
-      ¬ on_ < flipVar ∨
-        ∃ pos : Bool,
-          (getReachable s (mkLit on_ true)).getD
-              (mkLit flipVar pos).x false = true ∧
-          (getReachable s (mkLit on_ false)).getD
-              (mkLit flipVar (!pos)).x false = true :=
-    computeDeps_activeDeletion_externalDiagnostic_of_existential
-      dqbf cs hfull hnoCrossClosed hnotMem hexiFlip hcontainsFlip
-  exact hexternal hall hpool hnotMem hvalEq hwitCand hwitBase hexiFlip
-    hcontainsFlip hnoPathCand hnoPathBase hdiag hprogress hfalse
-
 /-!
 For the same-clause restartable-failure branch, the exact missing local packet
 is the cached current-frontier handler.  This is the point where the two-patch
@@ -272,43 +219,6 @@ private theorem
           (s := s) (vars := vars) (on_ := on_)
           (phaseNext := phaseNext) (skBase := skBase)
           (skCand := skCand) (skNext := skNext) hltRank⟩
-
-private abbrev
-    ComputeDepsActiveDeletionExternalInternalChangedLiteralHandoff
-    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
-  ∀ {skBase skCand : SkolemAssignment} {σ τ : UnivAssignment}
-    {flipVar : Var} {cref : CRef} {c : Clause} {l : Literal},
-    (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
-    FlexibleRepairPoolCandidate s vars on_ skBase skCand →
-    flipVar ∉ vars.toList →
-    s.formula.varValue σ skCand flipVar =
-      s.formula.varValue σ skBase flipVar →
-    DeleteDepWitness s.formula flipVar on_ skCand σ →
-    DeleteDepWitness s.formula flipVar on_ skBase σ →
-    s.formula.isVarExistential flipVar = true →
-    (s.formula.depset.getD flipVar #[]).contains on_ = true →
-    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
-      (mkLit flipVar (s.formula.varValue σ skCand flipVar)) →
-    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
-      (mkLit flipVar (s.formula.varValue σ skBase flipVar)) →
-    (¬ on_ < flipVar ∨
-      ∃ pos : Bool,
-        (getReachable s (mkLit on_ true)).getD
-            (mkLit flipVar pos).x false = true ∧
-        (getReachable s (mkLit on_ false)).getD
-            (mkLit flipVar (!pos)).x false = true) →
-    TargetRepairProgressCandidate s vars on_ skBase
-      (patchDeleteWitnessAt s.formula flipVar σ skCand) →
-    s.clauses.matrixValue s.formula τ
-      (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
-    s.clauses.getClause cref = some c →
-    s.formula.clauseValue τ skCand c.lits = false →
-    l ∈ c.lits.toList →
-    l.var ∈ vars.toList →
-    s.formula.litValue τ skBase l = true →
-    s.formula.litValue τ skCand l = false →
-    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l →
-    DeleteIndependenceDescentOutcome s vars on_ skBase
 
 private abbrev
     ComputeDepsActiveDeletionTrackedExternalInternalChangedLiteralHandoff
@@ -396,46 +306,6 @@ private theorem
       (skCand := skCand) (τ := τ) (cref := cref) (c := c)
       hrestart hall htracked.1 htracked.2.1 htracked.2.2
       hget hclauseFalseCand
-
-private abbrev
-    ComputeDepsActiveDeletionExternalFlipDiagnosticContinuation
-    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
-  ∀ {skBase skCand : SkolemAssignment} {σ τ : UnivAssignment}
-    {flipVar : Var} {cref : CRef} {c : Clause} {l : Literal},
-    (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
-    FlexibleRepairPoolCandidate s vars on_ skBase skCand →
-    flipVar ∉ vars.toList →
-    s.formula.varValue σ skCand flipVar =
-      s.formula.varValue σ skBase flipVar →
-    DeleteDepWitness s.formula flipVar on_ skCand σ →
-    DeleteDepWitness s.formula flipVar on_ skBase σ →
-    s.formula.isVarExistential flipVar = true →
-    (s.formula.depset.getD flipVar #[]).contains on_ = true →
-    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
-      (mkLit flipVar (s.formula.varValue σ skCand flipVar)) →
-    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
-      (mkLit flipVar (s.formula.varValue σ skBase flipVar)) →
-    (¬ on_ < flipVar ∨
-      ∃ pos : Bool,
-        (getReachable s (mkLit on_ true)).getD
-            (mkLit flipVar pos).x false = true ∧
-        (getReachable s (mkLit on_ false)).getD
-            (mkLit flipVar (!pos)).x false = true) →
-    TargetRepairProgressCandidate s vars on_ skBase
-      (patchDeleteWitnessAt s.formula flipVar σ skCand) →
-    s.clauses.matrixValue s.formula τ
-      (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
-    s.clauses.getClause cref = some c →
-    s.formula.clauseValue τ
-      (patchDeleteWitnessAt s.formula flipVar σ skCand) c.lits =
-        false →
-    l ∈ c.lits.toList →
-    l.var = flipVar →
-    s.formula.litValue τ skCand l = true →
-    s.formula.litValue τ
-      (patchDeleteWitnessAt s.formula flipVar σ skCand) l = false →
-    ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l →
-    DeleteIndependenceDescentOutcome s vars on_ skBase
 
 private abbrev
     ComputeDepsActiveDeletionTrackedExternalFlipDiagnosticContinuation
@@ -561,65 +431,21 @@ private theorem
 private theorem
     computeDeps_activeDeletion_trackedExternalDiagnosticLocalContinuation_of_restart
     {s : CheckState} {vars : Array Var} {on_ : Var}
-    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_)
-    (hflip :
-      ComputeDepsActiveDeletionTrackedExternalFlipDiagnosticContinuation
-        s vars on_) :
+    (hrestart : DependencyRemovalTrackedFalseRestart s vars on_) :
     ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalContinuation
       s vars on_ :=
   computeDeps_activeDeletion_trackedExternalDiagnosticLocalContinuation_of_branchHandoffs
     (s := s) (vars := vars) (on_ := on_)
     (computeDeps_activeDeletion_trackedInternalChangedLiteralHandoff_of_restart
       (s := s) (vars := vars) (on_ := on_) hrestart)
-    hflip
-
-private theorem
-    computeDeps_activeDeletion_externalDiagnosticLocalContinuation_of_branchHandoffs
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    (hinternal :
-      ComputeDepsActiveDeletionExternalInternalChangedLiteralHandoff
-        s vars on_)
-    (hflip :
-      ComputeDepsActiveDeletionExternalFlipDiagnosticContinuation
-        s vars on_) :
-    ComputeDepsActiveDeletionExternalDiagnosticLocalContinuation
-      s vars on_ := by
-  intro skBase skCand σ τ flipVar hall hpool hnotMem hvalEq
-    hwitCand hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase
-    hdiag hprogress hfalse
-  rcases
-      flexibleRepairPoolCandidate_external_patch_false_matrix_internal_or_flip
-        (s := s) (vars := vars) (on_ := on_) (skBase := skBase)
-        (skCand := skCand) (σSeed := σ) (τ := τ)
-        (flipVar := flipVar)
-        hpool hall hexiFlip hcontainsFlip hnoPathCand hfalse with
-    hinternalBranch | hflipBranch
-  · rcases hinternalBranch with
-      ⟨cref, c, l, hget, hclauseFalseCand, hlmem, hlvar,
-        hltrue, hlfalse, hnoPathLit⟩
-    exact hinternal hall hpool hnotMem hvalEq hwitCand hwitBase
-      hexiFlip hcontainsFlip hnoPathCand hnoPathBase hdiag hprogress
-      hfalse hget hclauseFalseCand hlmem hlvar hltrue hlfalse
-      hnoPathLit
-  · rcases hflipBranch with
-      ⟨cref, c, l, hget, hclauseFalsePatch, hlmem, hlvar,
-        hltrue, hlfalse, hnoPathLit⟩
-    exact hflip hall hpool hnotMem hvalEq hwitCand hwitBase
-      hexiFlip hcontainsFlip hnoPathCand hnoPathBase hdiag hprogress
-      hfalse hget hclauseFalsePatch hlmem hlvar hltrue hlfalse
-      hnoPathLit
+    (computeDeps_activeDeletion_trackedExternalFlipDiagnosticContinuation_of_restart
+      (s := s) (vars := vars) (on_ := on_) hrestart)
 
 /-!
-The last checker-side handoff now splits cleanly into two reusable packets:
-
-* the cached same-clause current-frontier handler used by the residual
-  pipeline, and
-* the external diagnostic continuation used for the culprit flip branch.
-
-The remaining work is precisely to connect the non-culprit
-`matrix_internal_or_flip` subcase back into this cached current-frontier
-packet.  Keeping that seam here leaves the local repair theorem below as pure
-orchestration.
+This boundary must stay on the tracked side.  The plain-candidate external
+handoff used by the old monolithic proof is deliberately absent here: it would
+ask the external branch to return a post-restart descent outcome before the
+tracked restart theorem has been produced.
 -/
 private theorem
     computeDeps_activeDeletion_removedWitnessLowPhase_externalBranchHandoffs
@@ -641,18 +467,15 @@ private theorem
       ComputeDepsActiveDeletionTrackedExternalFlipDiagnosticContinuation
         s vars on_ := by
   /-
-  Smaller remaining seam:
+  Remaining phase mismatch:
 
-  * the current-frontier same-clause branch has been reduced to the existing
-    removed-witness low-phase narrative discharge; and
-  * the external patch-false diagnostic branch has been split by
-    `flexibleRepairPoolTracked_external_patch_false_matrix_internal_or_flip`.
-
-  Both external subcases now keep the tracked candidate all the way to this
-  boundary.  The remaining local gap is the honest source of the tracked
-  current-frontier/restart packet for this external branch.  The caller below
-  consumes the tracked continuation directly, so the boundary no longer asks
-  for a continuation from an arbitrary plain `FlexibleRepairPoolCandidate`.
+  `flexibleRepairPoolTracked_external_patch_false_matrix_internal_or_flip`
+  keeps tracked data in the external split, and the internal false-clause case
+  can now be converted to the pre-restart packet by
+  `computeDeps_activeDeletion_internalFalseClause_restartPacket` below.  This
+  theorem still asks for the post-restart descent continuations directly; the
+  sound rethread is to consume the restart packet in the local repair proof and
+  derive these continuations only after `computeDeps_activeDeletion_trackedFalseRestart`.
   -/
   sorry
 
@@ -821,6 +644,51 @@ private theorem
         exact ⟨flipVar, hnotMem, hvalEq, hwitCand, hwitBase, hexiFlip,
           hcontainsFlip, hnoPathCand, hnoPathBase, hprogress⟩
       · exact Or.inr (Or.inr hsame)
+
+private theorem
+    computeDeps_activeDeletion_internalFalseClause_restartPacket
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    {skBase skCand : SkolemAssignment} {τ : UnivAssignment}
+    {cref : CRef} {c : Clause}
+    (hallBase : ∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true)
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hget : s.clauses.getClause cref = some c)
+    (hclauseFalseCand :
+      s.formula.clauseValue τ skCand c.lits = false) :
+    FlexibleRepairTrackedStrictStep s vars on_ skBase skCand ∨
+      (∃ flipVar,
+        flipVar ∉ vars.toList ∧
+        s.formula.varValue τ skCand flipVar =
+          s.formula.varValue τ skBase flipVar ∧
+        DeleteDepWitness s.formula flipVar on_ skCand τ ∧
+        DeleteDepWitness s.formula flipVar on_ skBase τ ∧
+        s.formula.isVarExistential flipVar = true ∧
+        (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
+          (mkLit flipVar (s.formula.varValue τ skCand flipVar)) ∧
+        ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_)))
+          (mkLit flipVar (s.formula.varValue τ skBase flipVar)) ∧
+        TargetRepairProgressCandidate s vars on_ skBase
+          (patchDeleteWitnessAt s.formula flipVar τ skCand)) ∨
+      FlexibleRepairSameClauseFlipFailure s vars on_ skBase skCand τ := by
+  have hfalseCand :
+      s.clauses.matrixValue s.formula τ skCand = false :=
+    matrixValue_false_of_false_clause
+      s.formula s.clauses τ skCand hget hclauseFalseCand
+  exact
+    computeDeps_activeDeletion_failedTrackedCandidate_trackedStrictStep_or_external_or_sameClauseFailure
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hallBase htracked hfalseCand
 
 /-!
 After the tracked-candidate split, the only open local repair packet is the
