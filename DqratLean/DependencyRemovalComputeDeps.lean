@@ -910,10 +910,56 @@ private theorem
         (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
         (on_ := on_) (of_ := flipVar)
         hfull hnoCrossClosed hnotMem hexiFlip hcontainsFlip
-    exact Or.inl
-      (hexternal_tracked hallBase htracked hnotMem hvalEq hwitCand
-        hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase hdiag
-        hprogress hfalsePatch)
+    rcases
+        computeDeps_activeDeletion_externalPatchFalse_split_localRepair_or_external_or_flip
+          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+          (on_ := on_) hfull hon_le hon_univ hgt hexi hcontains hpaths
+          hcurrent hallBase htracked hproper hexiFlip hcontainsFlip
+          hnoPathCand hfalsePatch with
+      hlocal | hrest
+    · exact hlocal
+    · rcases hrest with hexternal | _hflip
+      · rcases hexternal with
+          ⟨flipVar', hnotMem', hvalEq', hwitCand', hwitBase',
+            hexiFlip', hcontainsFlip', hnoPathCand', hnoPathBase',
+            hprogress'⟩
+        by_cases hfail' :
+            ∃ τ',
+              s.clauses.matrixValue s.formula τ'
+                (patchDeleteWitnessAt s.formula flipVar' τ skCand) = false
+        · rcases hfail' with ⟨τ', hfalse'⟩
+          have hdiag' :
+              ¬ on_ < flipVar' ∨
+                ∃ pos : Bool,
+                  (getReachable s (mkLit on_ true)).getD
+                      (mkLit flipVar' pos).x false = true ∧
+                  (getReachable s (mkLit on_ false)).getD
+                      (mkLit flipVar' (!pos)).x false = true :=
+            computeDeps_activeDeletion_externalDiagnostic_of_existential
+              (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+              (on_ := on_) (of_ := flipVar')
+              hfull hnoCrossClosed hnotMem' hexiFlip' hcontainsFlip'
+          exact Or.inl
+            (hexternal_tracked hallBase htracked hnotMem' hvalEq'
+              hwitCand' hwitBase' hexiFlip' hcontainsFlip'
+              hnoPathCand' hnoPathBase' hdiag' hprogress' hfalse')
+        · refine Or.inl ?_
+          left
+          refine
+            ⟨patchDeleteWitnessAt s.formula flipVar' τ skCand, ?_,
+              hprogress'.1⟩
+          intro ρ
+          cases hval :
+              s.clauses.matrixValue s.formula ρ
+                (patchDeleteWitnessAt s.formula flipVar' τ skCand) with
+          | false =>
+              exact False.elim (hfail' ⟨ρ, hval⟩)
+          | true =>
+              exact rfl
+      · exact Or.inl
+          (hexternal_tracked hallBase htracked hnotMem hvalEq hwitCand
+            hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase hdiag
+            hprogress hfalsePatch)
 
 private theorem computeDeps_activeDeletion_trackedStrictFalseStep
     (dqbf : DQBF) (cs : ClauseStore)
