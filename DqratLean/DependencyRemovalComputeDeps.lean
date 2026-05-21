@@ -501,6 +501,76 @@ private abbrev
           dependencyRemovalTwoTierRank s vars on_ true skBase skCand ∧
         ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false
 
+private abbrev
+    ComputeDepsActiveDeletionTrackedExternalHardHighPhaseRankStep
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σCur : UnivAssignment},
+    (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σCur skCand = false →
+    ((∃ σ τ flipVar,
+      flipVar ∉ vars.toList ∧
+      s.formula.varValue σ skCand flipVar =
+        s.formula.varValue σ skBase flipVar ∧
+      DeleteDepWitness s.formula flipVar on_ skCand σ ∧
+      DeleteDepWitness s.formula flipVar on_ skBase σ ∧
+      s.formula.isVarExistential flipVar = true ∧
+      (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+        (mkLit flipVar (s.formula.varValue σ skCand flipVar)) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+        (mkLit flipVar (s.formula.varValue σ skBase flipVar)) ∧
+      (¬ on_ < flipVar ∨
+        ∃ pos : Bool,
+          (getReachable s (mkLit on_ true)).getD
+              (mkLit flipVar pos).x false = true ∧
+          (getReachable s (mkLit on_ false)).getD
+              (mkLit flipVar (!pos)).x false = true) ∧
+      TargetRepairProgressCandidate s vars on_ skBase
+        (patchDeleteWitnessAt s.formula flipVar σ skCand) ∧
+      s.clauses.matrixValue s.formula τ
+        (patchDeleteWitnessAt s.formula flipVar σ skCand) = false) ∨
+    ∃ σ τ flipVar cref c l,
+      flipVar ∉ vars.toList ∧
+      s.formula.varValue σ skCand flipVar =
+        s.formula.varValue σ skBase flipVar ∧
+      DeleteDepWitness s.formula flipVar on_ skCand σ ∧
+      DeleteDepWitness s.formula flipVar on_ skBase σ ∧
+      s.formula.isVarExistential flipVar = true ∧
+      (s.formula.depset.getD flipVar #[]).contains on_ = true ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+        (mkLit flipVar (s.formula.varValue σ skCand flipVar)) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+        (mkLit flipVar (s.formula.varValue σ skBase flipVar)) ∧
+      (¬ on_ < flipVar ∨
+        ∃ pos : Bool,
+          (getReachable s (mkLit on_ true)).getD
+              (mkLit flipVar pos).x false = true ∧
+          (getReachable s (mkLit on_ false)).getD
+              (mkLit flipVar (!pos)).x false = true) ∧
+      TargetRepairProgressCandidate s vars on_ skBase
+        (patchDeleteWitnessAt s.formula flipVar σ skCand) ∧
+      s.clauses.matrixValue s.formula τ
+        (patchDeleteWitnessAt s.formula flipVar σ skCand) = false ∧
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue τ
+        (patchDeleteWitnessAt s.formula flipVar σ skCand) c.lits =
+          false ∧
+      l ∈ c.lits.toList ∧
+      l.var = flipVar ∧
+      s.formula.litValue τ skCand l = true ∧
+      s.formula.litValue τ
+        (patchDeleteWitnessAt s.formula flipVar σ skCand) l = false ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(τ on_))) l) →
+    DependencyRemovalDescentOutcome s vars on_ skBase ∨
+      ∃ phaseNext skNext,
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        dependencyRemovalTwoTierRank s vars on_ phaseNext skBase skNext <
+          dependencyRemovalTwoTierRank s vars on_ true skBase skCand ∧
+        ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false
+
 private theorem
     computeDeps_activeDeletion_localRepairResult_to_phasedRankStep
     {s : CheckState} {vars : Array Var} {on_ : Var} {phase : Bool}
@@ -757,42 +827,18 @@ private theorem
     (hpaths : NoDeleteCrossPathsSet s vars on_)
     (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
     ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ ∧
-      ComputeDepsActiveDeletionTrackedExternalDiagnosticHighPhaseRankStep
+      ComputeDepsActiveDeletionTrackedExternalHardHighPhaseRankStep
         s vars on_ := by
   /-
   Remaining boundary:
 
   produce the same-clause current-frontier packet consumed by the restart step,
-  and reduce the high-phase external diagnostic failed-patch residual to one
-  phased rank step.  The false phase is discharged by the proper-subset rank
-  drop, and a full external local-repair continuation would be circular here.
+  and handle the hard high-phase external residual left after the producer
+  split has discharged internal local-repair branches.  The false phase is
+  discharged by the proper-subset rank drop, and a full external local-repair
+  continuation would be circular here.
   -/
   sorry
-
-private theorem
-    computeDeps_activeDeletion_cachedCurrentFrontierRankHandoff
-    (dqbf : DQBF) (cs : ClauseStore)
-    {s : CheckState} {vars : Array Var} {on_ : Var}
-    (hfull : CheckState.FullCorrect dqbf cs s)
-    (hon_le : on_ ≤ s.formula.maxVar)
-    (hon_univ : s.formula.isVarExistential on_ = false)
-    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
-    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
-    (hcontains : ∀ of_ ∈ vars.toList,
-      (s.formula.depset.getD of_ #[]).contains on_ = true)
-    (hpaths : NoDeleteCrossPathsSet s vars on_)
-    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
-    ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ ∧
-      ComputeDepsActiveDeletionTrackedExternalDiagnosticRankStep
-        s vars on_ := by
-  exact
-    let hboundary :=
-      computeDeps_activeDeletion_currentFrontier_externalHighPhaseRankBoundary
-      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
-      hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
-    ⟨hboundary.1,
-      computeDeps_activeDeletion_trackedExternalDiagnosticRankStep_of_highPhase
-        (s := s) (vars := vars) (on_ := on_) hboundary.2⟩
 
 /-!
 For the cached `computeDeps` consumer, the remaining semantic packet is kept at
@@ -1088,6 +1134,122 @@ private theorem
     · exact Or.inl hlocal
     · exact Or.inr (Or.inl hexternal)
   · exact Or.inr (Or.inr hflip)
+
+private theorem
+    computeDeps_activeDeletion_trackedExternalDiagnosticHighPhaseRankStep_of_current_hard
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hcurrent :
+      ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler
+        s vars on_)
+    (hhard :
+      ComputeDepsActiveDeletionTrackedExternalHardHighPhaseRankStep
+        s vars on_) :
+    ComputeDepsActiveDeletionTrackedExternalDiagnosticHighPhaseRankStep
+      s vars on_ := by
+  intro skBase skCand σCur σ τ flipVar hallBase htracked hproper
+    hfalse hnotMem hvalEq hwitCand hwitBase hexiFlip hcontainsFlip
+    hnoPathCand hnoPathBase hdiag hprogress hfalsePatch
+  rcases
+      computeDeps_activeDeletion_externalPatchFalse_split_localRepair_or_external_or_flip
+        (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+        (on_ := on_) hfull hon_le hon_univ hgt hexi hcontains hpaths
+        hcurrent hallBase htracked hproper hexiFlip hcontainsFlip
+        hnoPathCand hfalsePatch with
+    hlocal | hrest
+  · exact
+      computeDeps_activeDeletion_localRepairResult_to_phasedRankStep
+        (s := s) (vars := vars) (on_ := on_) (phase := true)
+        (skBase := skBase) (skCand := skCand) hallBase hlocal
+  · rcases hrest with hexternal | hflip
+    · rcases hexternal with
+        ⟨flipVar', hnotMem', hvalEq', hwitCand', hwitBase',
+          hexiFlip', hcontainsFlip', hnoPathCand', hnoPathBase',
+          hprogress'⟩
+      by_cases hfail' :
+          ∃ τ',
+            s.clauses.matrixValue s.formula τ'
+              (patchDeleteWitnessAt s.formula flipVar' τ skCand) = false
+      · rcases hfail' with ⟨τ', hfalse'⟩
+        have hdiag' :
+            ¬ on_ < flipVar' ∨
+              ∃ pos : Bool,
+                (getReachable s (mkLit on_ true)).getD
+                    (mkLit flipVar' pos).x false = true ∧
+                (getReachable s (mkLit on_ false)).getD
+                    (mkLit flipVar' (!pos)).x false = true :=
+          computeDeps_activeDeletion_externalDiagnostic_of_existential
+            (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+            (on_ := on_) (of_ := flipVar')
+            hfull hnoCrossClosed hnotMem' hexiFlip' hcontainsFlip'
+        exact
+          hhard hallBase htracked hproper hfalse
+            (Or.inl
+              ⟨τ, τ', flipVar', hnotMem', hvalEq', hwitCand',
+                hwitBase', hexiFlip', hcontainsFlip', hnoPathCand',
+                hnoPathBase', hdiag', hprogress', hfalse'⟩)
+      · refine Or.inl ?_
+        left
+        refine
+          ⟨patchDeleteWitnessAt s.formula flipVar' τ skCand, ?_,
+            hprogress'.1⟩
+        intro ρ
+        cases hval :
+            s.clauses.matrixValue s.formula ρ
+              (patchDeleteWitnessAt s.formula flipVar' τ skCand) with
+        | false =>
+            exact False.elim (hfail' ⟨ρ, hval⟩)
+        | true =>
+            exact rfl
+    · rcases hflip with
+        ⟨cref, c, l, hget, hclauseFalsePatch, hlmem, hlvar,
+          hltrue, hlfalse, hnoPathLit⟩
+      exact
+        hhard hallBase htracked hproper hfalse
+          (Or.inr
+            ⟨σ, τ, flipVar, cref, c, l, hnotMem, hvalEq, hwitCand,
+              hwitBase, hexiFlip, hcontainsFlip, hnoPathCand,
+              hnoPathBase, hdiag, hprogress, hfalsePatch, hget,
+              hclauseFalsePatch, hlmem, hlvar, hltrue, hlfalse,
+              hnoPathLit⟩)
+
+private theorem
+    computeDeps_activeDeletion_cachedCurrentFrontierRankHandoff
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
+    ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ ∧
+      ComputeDepsActiveDeletionTrackedExternalDiagnosticRankStep
+        s vars on_ := by
+  let hboundary :=
+    computeDeps_activeDeletion_currentFrontier_externalHighPhaseRankBoundary
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
+  exact
+    ⟨hboundary.1,
+      computeDeps_activeDeletion_trackedExternalDiagnosticRankStep_of_highPhase
+        (s := s) (vars := vars) (on_ := on_)
+        (computeDeps_activeDeletion_trackedExternalDiagnosticHighPhaseRankStep_of_current_hard
+          (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+          (on_ := on_) hfull hon_le hon_univ hgt hexi hcontains
+          hpaths hnoCrossClosed hboundary.1 hboundary.2)⟩
 
 /-!
 After the tracked-candidate split, the only open local repair packet is the
