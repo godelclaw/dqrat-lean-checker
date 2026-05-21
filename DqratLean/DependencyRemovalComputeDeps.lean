@@ -464,6 +464,64 @@ private abbrev
         ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false
 
 private theorem
+    computeDeps_activeDeletion_localRepairResult_to_phasedRankStep
+    {s : CheckState} {vars : Array Var} {on_ : Var} {phase : Bool}
+    {skBase skCand : SkolemAssignment}
+    (hallBase : ∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true)
+    (hlocal :
+      DependencyRemovalLocalRepairResult s vars on_ skBase skCand) :
+    DependencyRemovalDescentOutcome s vars on_ skBase ∨
+      ∃ phaseNext skNext,
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        dependencyRemovalTwoTierRank s vars on_ phaseNext skBase skNext <
+          dependencyRemovalTwoTierRank s vars on_ phase skBase skCand ∧
+        ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false := by
+  rcases hlocal with houtcome | hstrict
+  · exact Or.inl houtcome
+  · rcases hstrict with ⟨skNext, htrackedNext, hltNextCand⟩
+    by_cases hfailNext :
+        ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false
+    · rcases hfailNext with ⟨ρ, hfalseNext⟩
+      refine Or.inr ⟨phase, skNext, htrackedNext, ?_, ?_, ρ, hfalseNext⟩
+      · exact
+          dependencyRemoval_trackedFalseCandidate_hasProperSubset
+            (s := s) (vars := vars) (on_ := on_)
+            (skBase := skBase) (skCand := skNext)
+            hallBase htrackedNext hfalseNext
+      · exact
+          dependencyRemoval_twoTierRank_count
+            (s := s) (vars := vars) (on_ := on_)
+            (phase := phase) (skBase := skBase)
+            (skNext := skNext) (skCur := skCand) hltNextCand
+    · refine Or.inl ?_
+      left
+      refine ⟨skNext, ?_, htrackedNext.1.1⟩
+      intro ρ
+      cases hval : s.clauses.matrixValue s.formula ρ skNext with
+      | false => exact False.elim (hfailNext ⟨ρ, hval⟩)
+      | true => exact rfl
+
+private theorem
+    computeDeps_activeDeletion_trackedExternalDiagnosticRankStep_of_localRepair
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexternal_local :
+      ComputeDepsActiveDeletionTrackedExternalDiagnosticLocalRepair
+        s vars on_) :
+    ComputeDepsActiveDeletionTrackedExternalDiagnosticRankStep
+      s vars on_ := by
+  intro phase skBase skCand σCur σ τ flipVar hallBase htracked hproper
+    hfalse hnotMem hvalEq hwitCand hwitBase hexiFlip hcontainsFlip
+    hnoPathCand hnoPathBase hdiag hprogress hfalsePatch
+  exact
+    computeDeps_activeDeletion_localRepairResult_to_phasedRankStep
+      (s := s) (vars := vars) (on_ := on_) (phase := phase)
+      (skBase := skBase) (skCand := skCand) hallBase
+      (hexternal_local hallBase htracked hproper hfalse hnotMem hvalEq
+        hwitCand hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase
+        hdiag hprogress hfalsePatch)
+
+private theorem
     computeDeps_activeDeletion_tracked_varValue_eq_of_not_mem
     {s : CheckState} {vars : Array Var} {on_ of_ : Var}
     {skBase skCand : SkolemAssignment}
@@ -1088,28 +1146,10 @@ private theorem computeDeps_activeDeletion_phasedRankedFalseStep
         hfull hon_le hon_univ hgt hexi hcontains hpaths hallBase htracked
         hfalse with
     hstrict | hrest
-  · rcases hstrict with ⟨skNext, htrackedNext, hltNextCand⟩
-    by_cases hfailNext :
-        ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false
-    · rcases hfailNext with ⟨ρ, hfalseNext⟩
-      refine Or.inr ⟨phase, skNext, htrackedNext, ?_, ?_, ρ, hfalseNext⟩
-      · exact
-          dependencyRemoval_trackedFalseCandidate_hasProperSubset
-            (s := s) (vars := vars) (on_ := on_)
-            (skBase := skBase) (skCand := skNext)
-            hallBase htrackedNext hfalseNext
-      · exact
-          dependencyRemoval_twoTierRank_count
-            (s := s) (vars := vars) (on_ := on_)
-            (phase := phase) (skBase := skBase)
-            (skNext := skNext) (skCur := skCand) hltNextCand
-    · refine Or.inl ?_
-      left
-      refine ⟨skNext, ?_, htrackedNext.1.1⟩
-      intro ρ
-      cases hval : s.clauses.matrixValue s.formula ρ skNext with
-      | false => exact False.elim (hfailNext ⟨ρ, hval⟩)
-      | true => exact rfl
+  · exact
+      computeDeps_activeDeletion_localRepairResult_to_phasedRankStep
+        (s := s) (vars := vars) (on_ := on_) (phase := phase)
+        (skBase := skBase) (skCand := skCand) hallBase (Or.inr hstrict)
   · rcases hrest with hexternal | hsame
     · rcases hexternal with
         ⟨flipVar, hnotMem, hvalEq, hwitCand, hwitBase, hexiFlip,
@@ -1154,30 +1194,10 @@ private theorem computeDeps_activeDeletion_phasedRankedFalseStep
           (dependencyRemoval_sameClauseConcreteNondecreasingResidualHandler_of_current
             (s := s) (vars := vars) (on_ := on_) hexi hcurrent)
           hallBase htracked hproper hfalse hsame
-      rcases hlocal with houtcome | hstrict
-      · exact Or.inl houtcome
-      · rcases hstrict with ⟨skNext, htrackedNext, hltNextCand⟩
-        by_cases hfailNext :
-            ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false
-        · rcases hfailNext with ⟨ρ, hfalseNext⟩
-          refine Or.inr ⟨phase, skNext, htrackedNext, ?_, ?_, ρ, hfalseNext⟩
-          · exact
-              dependencyRemoval_trackedFalseCandidate_hasProperSubset
-                (s := s) (vars := vars) (on_ := on_)
-                (skBase := skBase) (skCand := skNext)
-                hallBase htrackedNext hfalseNext
-          · exact
-              dependencyRemoval_twoTierRank_count
-                (s := s) (vars := vars) (on_ := on_)
-                (phase := phase) (skBase := skBase)
-                (skNext := skNext) (skCur := skCand) hltNextCand
-        · refine Or.inl ?_
-          left
-          refine ⟨skNext, ?_, htrackedNext.1.1⟩
-          intro ρ
-          cases hval : s.clauses.matrixValue s.formula ρ skNext with
-          | false => exact False.elim (hfailNext ⟨ρ, hval⟩)
-          | true => exact rfl
+      exact
+        computeDeps_activeDeletion_localRepairResult_to_phasedRankStep
+          (s := s) (vars := vars) (on_ := on_) (phase := phase)
+          (skBase := skBase) (skCand := skCand) hallBase hlocal
 
 private theorem computeDeps_activeDeletion_trackedFalseRestart
     (dqbf : DQBF) (cs : ClauseStore)
