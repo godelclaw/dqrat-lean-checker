@@ -2706,7 +2706,7 @@ private theorem deleteWitnessFiberCountSetList_lt_of_subset_missing
             ⟨of_, hof_tail, args, hold, hnew⟩
         exact Nat.add_lt_add_of_le_of_lt hhead htail
 
-private theorem deleteWitnessFiberCountSet_lt_of_properSubset
+theorem deleteWitnessFiberCountSet_lt_of_properSubset
     {f : DQBF} {vars : Array Var} {on_ : Var}
     {skNew skOld : SkolemAssignment}
     (hproper : DeleteWitnessFiberSetProperSubset f vars on_ skNew skOld) :

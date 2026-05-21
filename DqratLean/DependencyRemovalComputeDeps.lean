@@ -463,6 +463,44 @@ private abbrev
           dependencyRemovalTwoTierRank s vars on_ phase skBase skCand ∧
         ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false
 
+private abbrev
+    ComputeDepsActiveDeletionTrackedExternalDiagnosticHighPhaseRankStep
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σCur σ τ : UnivAssignment}
+    {flipVar : Var},
+    (∀ ρ, s.clauses.matrixValue s.formula ρ skBase = true) →
+    FlexibleRepairPoolTracked s vars on_ skBase skCand →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σCur skCand = false →
+    flipVar ∉ vars.toList →
+    s.formula.varValue σ skCand flipVar =
+      s.formula.varValue σ skBase flipVar →
+    DeleteDepWitness s.formula flipVar on_ skCand σ →
+    DeleteDepWitness s.formula flipVar on_ skBase σ →
+    s.formula.isVarExistential flipVar = true →
+    (s.formula.depset.getD flipVar #[]).contains on_ = true →
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+      (mkLit flipVar (s.formula.varValue σ skCand flipVar)) →
+    ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_)))
+      (mkLit flipVar (s.formula.varValue σ skBase flipVar)) →
+    (¬ on_ < flipVar ∨
+      ∃ pos : Bool,
+        (getReachable s (mkLit on_ true)).getD
+            (mkLit flipVar pos).x false = true ∧
+        (getReachable s (mkLit on_ false)).getD
+            (mkLit flipVar (!pos)).x false = true) →
+    TargetRepairProgressCandidate s vars on_ skBase
+      (patchDeleteWitnessAt s.formula flipVar σ skCand) →
+    s.clauses.matrixValue s.formula τ
+      (patchDeleteWitnessAt s.formula flipVar σ skCand) = false →
+    DependencyRemovalDescentOutcome s vars on_ skBase ∨
+      ∃ phaseNext skNext,
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        dependencyRemovalTwoTierRank s vars on_ phaseNext skBase skNext <
+          dependencyRemovalTwoTierRank s vars on_ true skBase skCand ∧
+        ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false
+
 private theorem
     computeDeps_activeDeletion_localRepairResult_to_phasedRankStep
     {s : CheckState} {vars : Array Var} {on_ : Var} {phase : Bool}
@@ -501,6 +539,66 @@ private theorem
       cases hval : s.clauses.matrixValue s.formula ρ skNext with
       | false => exact False.elim (hfailNext ⟨ρ, hval⟩)
       | true => exact rfl
+
+private theorem
+    computeDeps_activeDeletion_falsePhase_self_rankDrop
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hproper :
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase) :
+    dependencyRemovalTwoTierRank s vars on_ true skBase skCand <
+      dependencyRemovalTwoTierRank s vars on_ false skBase skCand := by
+  exact
+    dependencyRemoval_twoTierRank_false_to_true_of_base_lt
+      (s := s) (vars := vars) (on_ := on_)
+      (skBase := skBase) (skCand := skCand) (skNext := skCand)
+      (deleteWitnessFiberCountSet_lt_of_properSubset
+        (f := s.formula) (vars := vars) (on_ := on_)
+        (skNew := skCand) (skOld := skBase) hproper)
+
+private theorem
+    computeDeps_activeDeletion_trackedExternalDiagnostic_falsePhaseRankStep
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σCur : UnivAssignment}
+    (htracked : FlexibleRepairPoolTracked s vars on_ skBase skCand)
+    (hproper :
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase)
+    (hfalse : s.clauses.matrixValue s.formula σCur skCand = false) :
+    DependencyRemovalDescentOutcome s vars on_ skBase ∨
+      ∃ phaseNext skNext,
+        FlexibleRepairPoolTracked s vars on_ skBase skNext ∧
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        dependencyRemovalTwoTierRank s vars on_ phaseNext skBase skNext <
+          dependencyRemovalTwoTierRank s vars on_ false skBase skCand ∧
+        ∃ ρ, s.clauses.matrixValue s.formula ρ skNext = false := by
+  exact Or.inr
+    ⟨true, skCand, htracked, hproper,
+      computeDeps_activeDeletion_falsePhase_self_rankDrop
+        (s := s) (vars := vars) (on_ := on_)
+        (skBase := skBase) (skCand := skCand) hproper,
+      σCur, hfalse⟩
+
+private theorem
+    computeDeps_activeDeletion_trackedExternalDiagnosticRankStep_of_highPhase
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hhigh :
+      ComputeDepsActiveDeletionTrackedExternalDiagnosticHighPhaseRankStep
+        s vars on_) :
+    ComputeDepsActiveDeletionTrackedExternalDiagnosticRankStep
+      s vars on_ := by
+  intro phase skBase skCand σCur σ τ flipVar hallBase htracked hproper
+    hfalse hnotMem hvalEq hwitCand hwitBase hexiFlip hcontainsFlip
+    hnoPathCand hnoPathBase hdiag hprogress hfalsePatch
+  cases phase
+  · exact
+      computeDeps_activeDeletion_trackedExternalDiagnostic_falsePhaseRankStep
+        (s := s) (vars := vars) (on_ := on_)
+        (skBase := skBase) (skCand := skCand) (σCur := σCur)
+        htracked hproper hfalse
+  · exact
+      hhigh hallBase htracked hproper hfalse hnotMem hvalEq hwitCand
+        hwitBase hexiFlip hcontainsFlip hnoPathCand hnoPathBase hdiag
+        hprogress hfalsePatch
 
 private theorem
     computeDeps_activeDeletion_trackedExternalDiagnosticRankStep_of_localRepair
@@ -646,7 +744,7 @@ of the external failed-patch residual.  The local-repair packet for the external
 diagnostic branch is derived only after the tracked restart theorem.
 -/
 private theorem
-    computeDeps_activeDeletion_currentFrontier_externalRankBoundary
+    computeDeps_activeDeletion_currentFrontier_externalHighPhaseRankBoundary
     (dqbf : DQBF) (cs : ClauseStore)
     {s : CheckState} {vars : Array Var} {on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs s)
@@ -659,14 +757,15 @@ private theorem
     (hpaths : NoDeleteCrossPathsSet s vars on_)
     (hnoCrossClosed : DeleteDependencyNoCrossDepClosedSet s vars on_) :
     ComputeDepsActiveDeletionSameClauseCurrentFrontierHandler s vars on_ ∧
-      ComputeDepsActiveDeletionTrackedExternalDiagnosticRankStep
+      ComputeDepsActiveDeletionTrackedExternalDiagnosticHighPhaseRankStep
         s vars on_ := by
   /-
   Remaining boundary:
 
   produce the same-clause current-frontier packet consumed by the restart step,
-  and reduce the external diagnostic failed-patch residual to one phased rank
-  step.  A full external local-repair continuation would be circular here.
+  and reduce the high-phase external diagnostic failed-patch residual to one
+  phased rank step.  The false phase is discharged by the proper-subset rank
+  drop, and a full external local-repair continuation would be circular here.
   -/
   sorry
 
@@ -687,9 +786,13 @@ private theorem
       ComputeDepsActiveDeletionTrackedExternalDiagnosticRankStep
         s vars on_ := by
   exact
-    computeDeps_activeDeletion_currentFrontier_externalRankBoundary
+    let hboundary :=
+      computeDeps_activeDeletion_currentFrontier_externalHighPhaseRankBoundary
       (dqbf := dqbf) (cs := cs) (s := s) (vars := vars) (on_ := on_)
       hfull hon_le hon_univ hgt hexi hcontains hpaths hnoCrossClosed
+    ⟨hboundary.1,
+      computeDeps_activeDeletion_trackedExternalDiagnosticRankStep_of_highPhase
+        (s := s) (vars := vars) (on_ := on_) hboundary.2⟩
 
 /-!
 For the cached `computeDeps` consumer, the remaining semantic packet is kept at
