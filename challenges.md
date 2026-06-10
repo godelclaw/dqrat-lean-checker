@@ -5,18 +5,14 @@ remaining proof gap, and help finish it honestly.
 
 ## What Is Left
 
-As of the current green state, the library has exactly one theorem-body
-`sorry`:
-
-1. `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet`
-   (`DqratLean/DeletionExhibition.lean`)
-
-This is the negative-`e` / dependency-deletion blocker in its honest final
-form: full exhibition of the reflexive resolution-path dependency scheme,
-a published theorem (Wimmer et al. SAT 2016; Beyersdorff & Blinkhorn
-JAR 2019). The wrapper chain up to `processProof_sound'` is green modulo
-this one theorem. Fast iteration: `lake build DqratLean.DeletionExhibition`
-rebuilds only the leaf module.
+As of 2026-06-10 there is nothing left: the library is **sorry-free** and
+`processProof_sound'` passes the axiom audit (only `propext`,
+`Classical.choice`, `Quot.sound`). The former negative-`e` blocker was
+closed by transcribing the reformed-model construction of Beyersdorff,
+Blinkhorn, Chew, Schmidt, Suda (JAR 2019) — see
+`DqratLean/DeletionExhibition.lean`, `docs/deletion_exhibition_proof.md`,
+and `docs/papers/`. A reviewer's remaining work is auditing statements,
+not filling proofs.
 
 ## Build And Test
 

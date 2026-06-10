@@ -23,9 +23,13 @@ The alignment table lives in the header of `DqratLean/DeletionExhibition.lean`.
 - Lemma 5 (reforms preserve earlier exhibitions): NOT NEEDED — the checker
   deletes one universal per step and re-runs the theorem on the updated
   formula.
-- Lemma 2 (reformed paths satisfy every clause): OPEN — the two sorries
-  `reformLeft_matrix_true` / `reformRight_matrix_true`, with the paper's
-  proof transcribed in comments at the sorry sites.
+- Lemma 2 (reformed paths satisfy every clause): PROVED
+  (`reformLeft_matrix_true` / `reformRight_matrix_true`), following the
+  paper's argument exactly: disagreement-literal extraction
+  (`reformLeft_disagree_inv`), exclusion of `on_`-literals (value side +
+  one-clause path), per-literal transfer to the flipped assignment with the
+  path-extension step for dependent existentials, and contradiction with
+  the model. The whole development is now sorry-free.
 
 ## Lemma 2: the remaining Lean work (left stage; right is the mirror)
 

@@ -419,6 +419,57 @@ Paper proof (verbatim structure, left stage; `σ on_ = false`, comp = flip):
 6. All literals of `C` are false under `(flipUniv on_ σ, sk)`:
    `matrixValue_false_of_false_clause` contradicts `hall (flipUniv on_ σ)`. ∎
 -/
+/-- A clause with all literals false has false value. -/
+private theorem clauseValue_false_of_all_lits_false
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (lits : Array Literal)
+    (hallf : ∀ l ∈ lits.toList, f.litValue σ sk l = false) :
+    f.clauseValue σ sk lits = false := by
+  cases hval : f.clauseValue σ sk lits
+  · rfl
+  · exfalso
+    simp only [DQBF.clauseValue, Array.any_eq_true] at hval
+    rcases hval with ⟨i, hi, hl⟩
+    have := hallf lits[i] (Array.mem_toList_iff.mpr (Array.getElem_mem hi))
+    rw [this] at hl
+    cases hl
+
+/-- Inversion: a variable whose value changes under the left reform at `σ`
+    must be a reformed dependent existential on the `¬u` half-space
+    (paper: "there exists an existential variable x appearing in C on which
+    P and ref(P,M,u) disagree", plus the consequences of Def. 12). -/
+private theorem reformLeft_disagree_inv
+    (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
+    {σ : UnivAssignment} {z : Var}
+    (hne : st.formula.varValue σ (reformLeft st on_ sk) z ≠
+      st.formula.varValue σ sk z) :
+    st.formula.isVarExistential z = true ∧
+      (st.formula.depset.getD z #[]).contains on_ = true ∧
+      σ on_ = false ∧
+      ¬ DeletePurePath st on_ (mkLit on_ true)
+        (mkLit z (!(st.formula.varValue (flipUniv on_ σ) sk z))) ∧
+      st.formula.varValue σ (reformLeft st on_ sk) z =
+        st.formula.varValue (flipUniv on_ σ) sk z := by
+  by_cases hexi : st.formula.isVarExistential z = true
+  · by_cases hnc : (st.formula.depset.getD z #[]).contains on_ = false
+    · exact absurd (varValue_reformLeft_of_not_contains st on_ sk σ hnc) hne
+    · have hcont : (st.formula.depset.getD z #[]).contains on_ = true := by
+        simpa using hnc
+      by_cases hσ : σ on_ = true
+      · exact absurd (varValue_reformLeft_of_on_true st on_ sk hσ) hne
+      · have hσf : σ on_ = false := by simpa using hσ
+        by_cases hpath : DeletePurePath st on_ (mkLit on_ true)
+            (mkLit z (!(st.formula.varValue (flipUniv on_ σ) sk z)))
+        · exact absurd
+            (varValue_reformLeft_refused st on_ sk hexi hcont hσf hpath) hne
+        · exact ⟨hexi, hcont, hσf, hpath,
+            varValue_reformLeft_reformed st on_ sk hexi hcont hσf hpath⟩
+  · exfalso
+    apply hne
+    have hexi' : st.formula.isVarExistential z = false := by simpa using hexi
+    rw [DQBF.varValue, DQBF.varValue, hexi']
+    simp
+
 theorem reformLeft_matrix_true
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -427,11 +478,234 @@ theorem reformLeft_matrix_true
     {sk : SkolemAssignment}
     (hall : ∀ σ, st.clauses.matrixValue st.formula σ sk = true) :
     ∀ σ, st.clauses.matrixValue st.formula σ (reformLeft st on_ sk) = true := by
-  sorry
+  intro σ
+  cases hfalse : st.clauses.matrixValue st.formula σ (reformLeft st on_ sk) with
+  | true => rfl
+  | false =>
+  exfalso
+  obtain ⟨cref, c, hget, hcfalse⟩ :=
+    matrixValue_false_implies_exists_false_clause st.formula st.clauses σ
+      (reformLeft st on_ sk) hfalse
+  have hcl_false : ∀ l ∈ c.lits.toList,
+      st.formula.litValue σ (reformLeft st on_ sk) l = false :=
+    clauseValue_false_implies_all_lits_false_early st.formula σ
+      (reformLeft st on_ sk) c.lits hcfalse
+  have hctrue : st.formula.clauseValue σ sk c.lits = true :=
+    clauseValue_of_matrixValue st.formula st.clauses σ sk cref c (hall σ) hget
+  obtain ⟨lx, hlx_mem, hlx_true, hlx_false⟩ :=
+    clauseValue_true_false_implies_exists_true_false_lit st.formula σ
+      sk (reformLeft st on_ sk) c.lits hctrue hcfalse
+  -- the disagreement variable x := lx.var
+  have hvne : st.formula.varValue σ (reformLeft st on_ sk) lx.var ≠
+      st.formula.varValue σ sk lx.var := by
+    intro heq
+    have hlit_eq : st.formula.litValue σ (reformLeft st on_ sk) lx =
+        st.formula.litValue σ sk lx := by
+      simp [DQBF.litValue, heq]
+    rw [hlit_eq, hlx_true] at hlx_false
+    cases hlx_false
+  obtain ⟨hexi_x, hcont_x, hσ, hnopath, hval_reform⟩ :=
+    reformLeft_disagree_inv st on_ sk hvne
+  -- (paper step 2): sk's σ-side value is the negation of the flip-side value
+  have hval_sk : st.formula.varValue σ sk lx.var =
+      !(st.formula.varValue (flipUniv on_ σ) sk lx.var) := by
+    have hne2 : st.formula.varValue σ sk lx.var ≠
+        st.formula.varValue (flipUniv on_ σ) sk lx.var := by
+      intro h
+      exact hvne (hval_reform.trans h.symm)
+    cases h1 : st.formula.varValue σ sk lx.var <;>
+      cases h2 : st.formula.varValue (flipUniv on_ σ) sk lx.var <;>
+        simp_all
+  -- lx is the σ-side true literal of x, i.e. `mkLit x (!v)`
+  have hlx_eq : lx =
+      mkLit lx.var (!(st.formula.varValue (flipUniv on_ σ) sk lx.var)) := by
+    have h := lit_eq_mkLit_varValue_of_var_and_true st.formula lx.var σ sk lx
+      rfl hlx_true
+    rw [hval_sk] at h
+    exact h
+  -- lx is false on the complementary side (paper: comp(P)[x] = ¬x)
+  have hlx_flip_false :
+      st.formula.litValue (flipUniv on_ σ) sk lx = false := by
+    rw [hlx_eq]
+    cases hv : st.formula.varValue (flipUniv on_ σ) sk lx.var
+    · simp [litValue_mkLit_true, hv]
+    · simp [litValue_mkLit_false, hv]
+  -- (paper step 3): C contains no on_-literal
+  have hno_neg : mkLit on_ false ∉ c.lits.toList := by
+    intro hmem
+    have htrue' : st.formula.litValue σ (reformLeft st on_ sk)
+        (mkLit on_ false) = true := by
+      rw [litValue_mkLit_false]
+      simp [DQBF.varValue, hon_univ, hσ]
+    have h := hcl_false (mkLit on_ false) hmem
+    rw [htrue'] at h
+    cases h
+  have hlx_ne_start :
+      mkLit lx.var (!(st.formula.varValue (flipUniv on_ σ) sk lx.var)) ≠
+        mkLit on_ true := by
+    intro h
+    have hvv := congrArg Literal.var h
+    rw [mkLit_var_early, mkLit_var_early] at hvv
+    rw [hvv, hon_univ] at hexi_x
+    cases hexi_x
+  have hno_pos : mkLit on_ true ∉ c.lits.toList := by
+    intro hmem
+    apply hnopath
+    refine DeletePurePath.first hget hmem ?_ (hlx_eq ▸ hlx_mem) hlx_ne_start
+      (by rw [mkLit_var_early]; exact hexi_x)
+      (by rw [mkLit_var_early]; exact hcont_x)
+    rw [mkLit_negate]
+    simpa using hno_neg
+  -- (paper steps 4-5): every literal of C is false at (flip σ, sk)
+  have hall_flip : ∀ l ∈ c.lits.toList,
+      st.formula.litValue (flipUniv on_ σ) sk l = false := by
+    intro l hl
+    by_cases hlx' : l = lx
+    · rw [hlx']
+      exact hlx_flip_false
+    · by_cases hvar_x : l.var = lx.var
+      · -- same variable, other polarity: true under the reform — contra
+        exfalso
+        have hl_neg : l = lx.negate := lit_ne_pivot_of_same_var l lx hvar_x hlx'
+        have hneg_eq : lx.negate = mkLit lx.var
+            (st.formula.varValue (flipUniv on_ σ) sk lx.var) := by
+          have h := congrArg Literal.negate hlx_eq
+          rw [mkLit_negate, Bool.not_not] at h
+          exact h
+        have hl_eq : l = mkLit lx.var
+            (st.formula.varValue (flipUniv on_ σ) sk lx.var) :=
+          hl_neg.trans hneg_eq
+        have hl_true_reform :
+            st.formula.litValue σ (reformLeft st on_ sk) l = true := by
+          rw [hl_eq]
+          cases hv : st.formula.varValue (flipUniv on_ σ) sk lx.var
+          · simp [litValue_mkLit_false, hval_reform, hv]
+          · simp [litValue_mkLit_true, hval_reform, hv]
+        have h := hcl_false l hl
+        rw [hl_true_reform] at h
+        cases h
+      · by_cases hexi_l : st.formula.isVarExistential l.var = true
+        · by_cases hcont_l :
+              (st.formula.depset.getD l.var #[]).contains on_ = true
+          · -- dependent existential y ≠ x (paper step 5)
+            cases hl_flip_true : st.formula.litValue (flipUniv on_ σ) sk l with
+            | false => rfl
+            | true =>
+            exfalso
+            have hl_eq : l = mkLit l.var
+                (st.formula.varValue (flipUniv on_ σ) sk l.var) :=
+              lit_eq_mkLit_varValue_of_var_and_true st.formula l.var
+                (flipUniv on_ σ) sk l rfl hl_flip_true
+            by_cases hpathy : DeletePurePath st on_ (mkLit on_ true)
+                (mkLit l.var
+                  (!(st.formula.varValue (flipUniv on_ σ) sk l.var)))
+            · -- a refusal path for y extends through C to lx — contra (1)
+              apply hnopath
+              refine DeletePurePath.step hpathy hget ?_ ?_
+                (hlx_eq ▸ hlx_mem) ?_
+                (by rw [mkLit_var_early]; exact hexi_x)
+                (by rw [mkLit_var_early]; exact hcont_x)
+              · rw [mkLit_negate, Bool.not_not, ← hl_eq]
+                exact hl
+              · rw [mkLit_negate]
+                simpa using hno_neg
+              · rw [mkLit_negate, Bool.not_not, ← hl_eq]
+                intro h
+                have hvv := congrArg Literal.var h
+                rw [mkLit_var_early] at hvv
+                exact hvar_x hvv.symm
+            · -- the reform of y fired: l is true under the reform — contra
+              have hy_val := varValue_reformLeft_reformed st on_ sk hexi_l
+                hcont_l hσ hpathy
+              have hl_true_reform :
+                  st.formula.litValue σ (reformLeft st on_ sk) l = true := by
+                rw [hl_eq]
+                cases hv : st.formula.varValue (flipUniv on_ σ) sk l.var
+                · simp [litValue_mkLit_false, hy_val, hv]
+                · simp [litValue_mkLit_true, hy_val, hv]
+              have h := hcl_false l hl
+              rw [hl_true_reform] at h
+              cases h
+          · -- non-dependent existential: flip- and reform-invariant
+            have hcont_l' :
+                (st.formula.depset.getD l.var #[]).contains on_ = false := by
+              simpa using hcont_l
+            rw [litValue_flipUniv_eq_of_existential_not_contains st.formula
+              on_ σ sk l hexi_l hcont_l']
+            have hvv := varValue_reformLeft_of_not_contains st on_ sk σ
+              (z := l.var) hcont_l'
+            have hlit : st.formula.litValue σ (reformLeft st on_ sk) l =
+                st.formula.litValue σ sk l := by
+              simp [DQBF.litValue, hvv]
+            rw [← hlit]
+            exact hcl_false l hl
+        · -- universal literal
+          have hexi_l' : st.formula.isVarExistential l.var = false := by
+            simpa using hexi_l
+          by_cases hvar_on : l.var = on_
+          · exfalso
+            have hl_form := literal_eq_mkLit_var_isPos l
+            rw [hvar_on] at hl_form
+            cases hpos : l.isPos
+            · rw [hpos] at hl_form
+              exact hno_neg (hl_form ▸ hl)
+            · rw [hpos] at hl_form
+              exact hno_pos (hl_form ▸ hl)
+          · rw [litValue_flipUniv_eq_of_universal_ne st.formula on_ σ sk l
+              hexi_l' hvar_on]
+            have hvv : st.formula.varValue σ (reformLeft st on_ sk) l.var =
+                st.formula.varValue σ sk l.var := by
+              rw [DQBF.varValue, DQBF.varValue, hexi_l']
+              simp
+            have hlit : st.formula.litValue σ (reformLeft st on_ sk) l =
+                st.formula.litValue σ sk l := by
+              simp [DQBF.litValue, hvv]
+            rw [← hlit]
+            exact hcl_false l hl
+  -- (paper step 6): contradiction with the model at the flipped assignment
+  have hcflip : st.formula.clauseValue (flipUniv on_ σ) sk c.lits = false :=
+    clauseValue_false_of_all_lits_false st.formula (flipUniv on_ σ) sk c.lits
+      hall_flip
+  have hmat := matrixValue_false_of_false_clause st.formula st.clauses
+    (flipUniv on_ σ) sk hget hcflip
+  rw [hall (flipUniv on_ σ)] at hmat
+  cases hmat
 
 /-- Mirror of `reformLeft_matrix_true` for the right stage (paper Lemma 2
     applied to right paths: start literal `mkLit on_ false`, half-space
     `σ on_ = true`). The proof is the same with polarities swapped. -/
+private theorem reformRight_disagree_inv
+    (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
+    {σ : UnivAssignment} {z : Var}
+    (hne : st.formula.varValue σ (reformRight st on_ sk) z ≠
+      st.formula.varValue σ sk z) :
+    st.formula.isVarExistential z = true ∧
+      (st.formula.depset.getD z #[]).contains on_ = true ∧
+      σ on_ = true ∧
+      ¬ DeletePurePath st on_ (mkLit on_ false)
+        (mkLit z (!(st.formula.varValue (flipUniv on_ σ) sk z))) ∧
+      st.formula.varValue σ (reformRight st on_ sk) z =
+        st.formula.varValue (flipUniv on_ σ) sk z := by
+  by_cases hexi : st.formula.isVarExistential z = true
+  · by_cases hnc : (st.formula.depset.getD z #[]).contains on_ = false
+    · exact absurd (varValue_reformRight_of_not_contains st on_ sk σ hnc) hne
+    · have hcont : (st.formula.depset.getD z #[]).contains on_ = true := by
+        simpa using hnc
+      by_cases hσ : σ on_ = false
+      · exact absurd (varValue_reformRight_of_on_false st on_ sk hσ) hne
+      · have hσt : σ on_ = true := by simpa using hσ
+        by_cases hpath : DeletePurePath st on_ (mkLit on_ false)
+            (mkLit z (!(st.formula.varValue (flipUniv on_ σ) sk z)))
+        · exact absurd
+            (varValue_reformRight_refused st on_ sk hexi hcont hσt hpath) hne
+        · exact ⟨hexi, hcont, hσt, hpath,
+            varValue_reformRight_reformed st on_ sk hexi hcont hσt hpath⟩
+  · exfalso
+    apply hne
+    have hexi' : st.formula.isVarExistential z = false := by simpa using hexi
+    rw [DQBF.varValue, DQBF.varValue, hexi']
+    simp
+
 theorem reformRight_matrix_true
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -440,7 +714,186 @@ theorem reformRight_matrix_true
     {sk : SkolemAssignment}
     (hall : ∀ σ, st.clauses.matrixValue st.formula σ sk = true) :
     ∀ σ, st.clauses.matrixValue st.formula σ (reformRight st on_ sk) = true := by
-  sorry
+  intro σ
+  cases hfalse : st.clauses.matrixValue st.formula σ (reformRight st on_ sk) with
+  | true => rfl
+  | false =>
+  exfalso
+  obtain ⟨cref, c, hget, hcfalse⟩ :=
+    matrixValue_false_implies_exists_false_clause st.formula st.clauses σ
+      (reformRight st on_ sk) hfalse
+  have hcl_false : ∀ l ∈ c.lits.toList,
+      st.formula.litValue σ (reformRight st on_ sk) l = false :=
+    clauseValue_false_implies_all_lits_false_early st.formula σ
+      (reformRight st on_ sk) c.lits hcfalse
+  have hctrue : st.formula.clauseValue σ sk c.lits = true :=
+    clauseValue_of_matrixValue st.formula st.clauses σ sk cref c (hall σ) hget
+  obtain ⟨lx, hlx_mem, hlx_true, hlx_false⟩ :=
+    clauseValue_true_false_implies_exists_true_false_lit st.formula σ
+      sk (reformRight st on_ sk) c.lits hctrue hcfalse
+  have hvne : st.formula.varValue σ (reformRight st on_ sk) lx.var ≠
+      st.formula.varValue σ sk lx.var := by
+    intro heq
+    have hlit_eq : st.formula.litValue σ (reformRight st on_ sk) lx =
+        st.formula.litValue σ sk lx := by
+      simp [DQBF.litValue, heq]
+    rw [hlit_eq, hlx_true] at hlx_false
+    cases hlx_false
+  obtain ⟨hexi_x, hcont_x, hσ, hnopath, hval_reform⟩ :=
+    reformRight_disagree_inv st on_ sk hvne
+  have hval_sk : st.formula.varValue σ sk lx.var =
+      !(st.formula.varValue (flipUniv on_ σ) sk lx.var) := by
+    have hne2 : st.formula.varValue σ sk lx.var ≠
+        st.formula.varValue (flipUniv on_ σ) sk lx.var := by
+      intro h
+      exact hvne (hval_reform.trans h.symm)
+    cases h1 : st.formula.varValue σ sk lx.var <;>
+      cases h2 : st.formula.varValue (flipUniv on_ σ) sk lx.var <;>
+        simp_all
+  have hlx_eq : lx =
+      mkLit lx.var (!(st.formula.varValue (flipUniv on_ σ) sk lx.var)) := by
+    have h := lit_eq_mkLit_varValue_of_var_and_true st.formula lx.var σ sk lx
+      rfl hlx_true
+    rw [hval_sk] at h
+    exact h
+  have hlx_flip_false :
+      st.formula.litValue (flipUniv on_ σ) sk lx = false := by
+    rw [hlx_eq]
+    cases hv : st.formula.varValue (flipUniv on_ σ) sk lx.var
+    · simp [litValue_mkLit_true, hv]
+    · simp [litValue_mkLit_false, hv]
+  -- (mirror of paper step 3): C contains no on_-literal
+  have hno_pos : mkLit on_ true ∉ c.lits.toList := by
+    intro hmem
+    have htrue' : st.formula.litValue σ (reformRight st on_ sk)
+        (mkLit on_ true) = true := by
+      rw [litValue_mkLit_true]
+      simp [DQBF.varValue, hon_univ, hσ]
+    have h := hcl_false (mkLit on_ true) hmem
+    rw [htrue'] at h
+    cases h
+  have hlx_ne_start :
+      mkLit lx.var (!(st.formula.varValue (flipUniv on_ σ) sk lx.var)) ≠
+        mkLit on_ false := by
+    intro h
+    have hvv := congrArg Literal.var h
+    rw [mkLit_var_early, mkLit_var_early] at hvv
+    rw [hvv, hon_univ] at hexi_x
+    cases hexi_x
+  have hno_neg : mkLit on_ false ∉ c.lits.toList := by
+    intro hmem
+    apply hnopath
+    refine DeletePurePath.first hget hmem ?_ (hlx_eq ▸ hlx_mem) hlx_ne_start
+      (by rw [mkLit_var_early]; exact hexi_x)
+      (by rw [mkLit_var_early]; exact hcont_x)
+    rw [mkLit_negate]
+    simpa using hno_pos
+  have hall_flip : ∀ l ∈ c.lits.toList,
+      st.formula.litValue (flipUniv on_ σ) sk l = false := by
+    intro l hl
+    by_cases hlx' : l = lx
+    · rw [hlx']
+      exact hlx_flip_false
+    · by_cases hvar_x : l.var = lx.var
+      · exfalso
+        have hl_neg : l = lx.negate := lit_ne_pivot_of_same_var l lx hvar_x hlx'
+        have hneg_eq : lx.negate = mkLit lx.var
+            (st.formula.varValue (flipUniv on_ σ) sk lx.var) := by
+          have h := congrArg Literal.negate hlx_eq
+          rw [mkLit_negate, Bool.not_not] at h
+          exact h
+        have hl_eq : l = mkLit lx.var
+            (st.formula.varValue (flipUniv on_ σ) sk lx.var) :=
+          hl_neg.trans hneg_eq
+        have hl_true_reform :
+            st.formula.litValue σ (reformRight st on_ sk) l = true := by
+          rw [hl_eq]
+          cases hv : st.formula.varValue (flipUniv on_ σ) sk lx.var
+          · simp [litValue_mkLit_false, hval_reform, hv]
+          · simp [litValue_mkLit_true, hval_reform, hv]
+        have h := hcl_false l hl
+        rw [hl_true_reform] at h
+        cases h
+      · by_cases hexi_l : st.formula.isVarExistential l.var = true
+        · by_cases hcont_l :
+              (st.formula.depset.getD l.var #[]).contains on_ = true
+          · cases hl_flip_true : st.formula.litValue (flipUniv on_ σ) sk l with
+            | false => rfl
+            | true =>
+            exfalso
+            have hl_eq : l = mkLit l.var
+                (st.formula.varValue (flipUniv on_ σ) sk l.var) :=
+              lit_eq_mkLit_varValue_of_var_and_true st.formula l.var
+                (flipUniv on_ σ) sk l rfl hl_flip_true
+            by_cases hpathy : DeletePurePath st on_ (mkLit on_ false)
+                (mkLit l.var
+                  (!(st.formula.varValue (flipUniv on_ σ) sk l.var)))
+            · apply hnopath
+              refine DeletePurePath.step hpathy hget ?_ ?_
+                (hlx_eq ▸ hlx_mem) ?_
+                (by rw [mkLit_var_early]; exact hexi_x)
+                (by rw [mkLit_var_early]; exact hcont_x)
+              · rw [mkLit_negate, Bool.not_not, ← hl_eq]
+                exact hl
+              · rw [mkLit_negate]
+                simpa using hno_pos
+              · rw [mkLit_negate, Bool.not_not, ← hl_eq]
+                intro h
+                have hvv := congrArg Literal.var h
+                rw [mkLit_var_early] at hvv
+                exact hvar_x hvv.symm
+            · have hy_val := varValue_reformRight_reformed st on_ sk hexi_l
+                hcont_l hσ hpathy
+              have hl_true_reform :
+                  st.formula.litValue σ (reformRight st on_ sk) l = true := by
+                rw [hl_eq]
+                cases hv : st.formula.varValue (flipUniv on_ σ) sk l.var
+                · simp [litValue_mkLit_false, hy_val, hv]
+                · simp [litValue_mkLit_true, hy_val, hv]
+              have h := hcl_false l hl
+              rw [hl_true_reform] at h
+              cases h
+          · have hcont_l' :
+                (st.formula.depset.getD l.var #[]).contains on_ = false := by
+              simpa using hcont_l
+            rw [litValue_flipUniv_eq_of_existential_not_contains st.formula
+              on_ σ sk l hexi_l hcont_l']
+            have hvv := varValue_reformRight_of_not_contains st on_ sk σ
+              (z := l.var) hcont_l'
+            have hlit : st.formula.litValue σ (reformRight st on_ sk) l =
+                st.formula.litValue σ sk l := by
+              simp [DQBF.litValue, hvv]
+            rw [← hlit]
+            exact hcl_false l hl
+        · have hexi_l' : st.formula.isVarExistential l.var = false := by
+            simpa using hexi_l
+          by_cases hvar_on : l.var = on_
+          · exfalso
+            have hl_form := literal_eq_mkLit_var_isPos l
+            rw [hvar_on] at hl_form
+            cases hpos : l.isPos
+            · rw [hpos] at hl_form
+              exact hno_neg (hl_form ▸ hl)
+            · rw [hpos] at hl_form
+              exact hno_pos (hl_form ▸ hl)
+          · rw [litValue_flipUniv_eq_of_universal_ne st.formula on_ σ sk l
+              hexi_l' hvar_on]
+            have hvv : st.formula.varValue σ (reformRight st on_ sk) l.var =
+                st.formula.varValue σ sk l.var := by
+              rw [DQBF.varValue, DQBF.varValue, hexi_l']
+              simp
+            have hlit : st.formula.litValue σ (reformRight st on_ sk) l =
+                st.formula.litValue σ sk l := by
+              simp [DQBF.litValue, hvv]
+            rw [← hlit]
+            exact hcl_false l hl
+  have hcflip : st.formula.clauseValue (flipUniv on_ σ) sk c.lits = false :=
+    clauseValue_false_of_all_lits_false st.formula (flipUniv on_ σ) sk c.lits
+      hall_flip
+  have hmat := matrixValue_false_of_false_clause st.formula st.clauses
+    (flipUniv on_ σ) sk hget hcflip
+  rw [hall (flipUniv on_ σ)] at hmat
+  cases hmat
 
 /-!
 ## Paper Lemma 4: the reformed model exhibits the independence

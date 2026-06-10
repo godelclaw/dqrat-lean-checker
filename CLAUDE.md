@@ -72,14 +72,12 @@ def DQBFFalse (f : DQBF) (cs : ClauseStore) : Prop  -- ¬ DQBFTrue
 - Full wrapper chain: `checkAction_sound`, `processProof_sound'`
 - ClauseStore operations
 
-### The single open theorem
-- `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet`
-  (`DqratLean/DeletionExhibition.lean`) — full exhibition of the reflexive
-  resolution-path dependency scheme (known true: Wimmer et al. SAT 2016;
-  Beyersdorff & Blinkhorn JAR 2019). Everything else compiles sorry-free;
-  this is the only `sorry` in the library. See `sound_todo.md` for the
-  merged-witness proof plan. Iterate with
-  `lake build DqratLean.DeletionExhibition` (sub-second).
+### Complete (2026-06-10)
+- `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet` and the entire
+  deletion rule family are PROVED (`DqratLean/DeletionExhibition.lean`,
+  transcribing Beyersdorff-Blinkhorn-Chew-Schmidt-Suda JAR 2019).
+- The library is sorry-free; `processProof_sound'` depends only on
+  `propext`, `Classical.choice`, `Quot.sound`.
 
 ## Verification Approach
 

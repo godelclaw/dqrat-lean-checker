@@ -20,13 +20,9 @@ What is already done on this branch:
   - `checkActionsBasic_sound`
   - `processProofBasic_sound`
 
-What is not finished yet:
-- One semantic theorem for the dependency-deletion (negative-`e`) rule:
-  - `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet`
-    (`DqratLean/DeletionExhibition.lean`)
-
-Everything downstream of it — `checkAction_sound`, `processProof_sound'` —
-is already written and green modulo that single theorem.
+Nothing is unfinished: the soundness development is **sorry-free**.
+The axiom audit shows `processProof_sound'` depends only on `propext`,
+`Classical.choice`, and `Quot.sound`.
 
 The DQRATE seam was substantive, not just inconvenient:
 `DqratLean/Counterexamples.lean` contains an occurrence-hole witness showing that
@@ -35,12 +31,11 @@ accept an unsound addition. The branch now carries the stronger
 live-occurrence invariant where the RAT proof actually needs it, and
 `checkDQRATE_sound_spec` is proved on that executable-aligned route.
 
-As of the current green branch state, the only theorem-body `sorry` in the
-whole library is `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet` in
-`DqratLean/DeletionExhibition.lean`: full exhibition of the reflexive
-resolution-path dependency scheme, a published theorem (Wimmer et al.,
-SAT 2016; Beyersdorff & Blinkhorn, JAR 2019). See `sound_todo.md` for the
-transcription plan.
+The dependency-deletion rule is justified by full exhibition of the
+reflexive resolution-path dependency scheme, formalized in
+`DqratLean/DeletionExhibition.lean` by transcribing Beyersdorff, Blinkhorn,
+Chew, Schmidt, Suda (JAR 2019, archived in `docs/papers/`); see
+`docs/deletion_exhibition_proof.md` for the paper-to-Lean map.
 
 The current negative-`e` frontier is subtler than "prove `notDependsOn`
 eliminates both-bad patterns for one fixed old witness." The repo now contains
@@ -144,9 +139,8 @@ Useful milestones inside `DqratLean/Soundness.lean`:
 - `checkActionsBasic_sound`
 - `processProofBasic_sound`
 
-Current full-checker frontier:
-- `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet`
-  (`DqratLean/DeletionExhibition.lean`)
+Current full-checker frontier: none — `checkAction_sound` and
+`processProof_sound'` are fully proved.
 
 ## Notes For Reviewers
 

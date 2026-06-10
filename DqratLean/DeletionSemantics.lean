@@ -924,3 +924,36 @@ theorem DQBFTrue_forceDelDeps_filter_existential_iff
     intro σ
     simpa [matrixValue_forceDelDeps_filter_existential_eq f cs vars on_ σ sk]
       using hall σ
+
+theorem clauseValue_false_implies_all_lits_false_early
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal)
+    (hfalse : f.clauseValue σ sk lits = false) :
+    ∀ l ∈ lits.toList, f.litValue σ sk l = false := by
+  intro l hl
+  rcases Bool.eq_false_or_eq_true (f.litValue σ sk l) with hl_true | hl_false
+  · exfalso
+    have hmem : l ∈ lits := Array.mem_toList_iff.mp hl
+    rcases Array.mem_iff_getElem.mp hmem with ⟨i, hi, rfl⟩
+    have hclause_true : f.clauseValue σ sk lits = true := by
+      simp only [DQBF.clauseValue, Array.any_eq_true]
+      exact ⟨i, hi, hl_true⟩
+    rw [hclause_true] at hfalse
+    cases hfalse
+  · exact hl_false
+
+theorem clauseValue_true_false_implies_exists_true_false_lit
+    (f : DQBF) (σ : UnivAssignment)
+    (skTrue skFalse : SkolemAssignment)
+    (lits : Array Literal)
+    (htrue : f.clauseValue σ skTrue lits = true)
+    (hfalse : f.clauseValue σ skFalse lits = false) :
+    ∃ l ∈ lits.toList,
+      f.litValue σ skTrue l = true ∧
+      f.litValue σ skFalse l = false := by
+  have hfalse_lits :
+      ∀ l ∈ lits.toList, f.litValue σ skFalse l = false :=
+    clauseValue_false_implies_all_lits_false_early f σ skFalse lits hfalse
+  simp only [DQBF.clauseValue, Array.any_eq_true] at htrue
+  rcases htrue with ⟨i, hi, hli_true⟩
+  refine ⟨lits[i], Array.mem_toList_iff.mpr (Array.getElem_mem hi), hli_true, ?_⟩
+  exact hfalse_lits _ (Array.mem_toList_iff.mpr (Array.getElem_mem hi))
