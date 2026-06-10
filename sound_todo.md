@@ -7,9 +7,16 @@ to full soundness of the executable-aligned checker.
 
 - `scripts/build_and_test.sh` is green: full build, `DqratLean.Soundness`,
   parser regressions, executable smoke test.
-- Exactly ONE theorem-body `sorry` remains in the whole library:
-  `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet` in
-  `DqratLean/DeletionExhibition.lean`.
+- Exactly TWO theorem-body `sorry`s remain in the whole library, both in
+  `DqratLean/DeletionExhibition.lean`: `reformLeft_matrix_true` and
+  `reformRight_matrix_true` — the two polarity instances of Lemma 2 of
+  Beyersdorff-Blinkhorn-Chew-Schmidt-Suda (JAR 2019), whose proof is
+  transcribed line-by-line in comments at the sorry sites.
+  The construction (two-stage reformed model, paper Defs. 12-13), its
+  evaluation rules, and the Lemma 4 analogue (exhibition,
+  `reformSkolem_exhibits_mem`) are PROVED; the frontier theorem
+  `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet` assembles from
+  these. Papers archived in `docs/papers/`.
 - Everything else is proved: parser correctness, DEL/addClause/UR, RUP,
   DQRATE (`checkDQRATE_sound_spec` on the `FullCorrect` surface), add-only
   existential modification, and the full wrapper chain
@@ -39,7 +46,18 @@ scheme**, a published theorem:
 
 So the remaining work is theorem *transcription*, not theorem discovery.
 
-## Plan: one-shot merged-witness construction (in DeletionExhibition.lean)
+## Plan: the JAR 2019 reformed-model construction (in DeletionExhibition.lean)
+
+STATUS 2026-06-10 (evening): steps below superseded by the faithful paper
+transcription. DONE: reformLeft/reformRight/reformSkolem (paper Defs. 12-13),
+all evaluation rules, Lemma 4 analogue (`reformSkolem_exhibits_mem`), and
+the assembly of the bridge theorem. REMAINING: the two Lemma 2 analogues
+(`reformLeft_matrix_true` / `reformRight_matrix_true`); their paper proof is
+transcribed in the module — the Lean work is the per-literal clause analysis
+using `matrixValue_false_implies_exists_false_clause`, the
+`litValue_false_true_flip_*` lemmas, and a `DeletePurePath` extension step.
+
+### Original sketch (historical)
 
 1. `reduce_to_pathComplete` — trade `FullCorrect` for the two
    `DeletePurePathComplete st on_ (mkLit on_ pos)` facts via

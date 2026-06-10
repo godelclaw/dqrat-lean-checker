@@ -1,0 +1,2121 @@
+
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+
+ 
+ 
+ 
+
+ 
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ Reinterpreting Dependency Schemes: Soundness Meets Incompleteness in DQBF - PMC
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ Skip to main content
+ 
+
+
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ An official website of the United States government
+ 
+ Here's how you know 
+ 
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+
+ 
+ Here's how you know 
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ Official websites use .gov 
+ 
+ A
+ .gov website belongs to an official
+ government organization in the United States.
+ 
+ 
+ 
+
+ 
+ 
+
+ 
+ 
+ Secure .gov websites use HTTPS 
+ 
+ A lock (
+ 
+ 
+ Lock 
+ 
+ Locked padlock icon
+ 
+ 
+ 
+ ) or https:// means you've safely
+ connected to the .gov website. Share sensitive
+ information only on official, secure websites.
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+
+
+
+ 
+
+
+ Search
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+
+ 
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+
+
+
+ 
+
+
+
+ Log in 
+
+ 
+ 
+
+
+
+ 
+
+
+
+ 
+ 
+
+
+
+ 
+
+
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ Dashboard
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ Publications
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ Account settings
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+
+ Log out
+
+ 
+ 
+ 
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ Search…
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+ Search NCBI
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+
+ 
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+ Primary site navigation
+ 
+
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+
+
+ 
+ 
+ 
+ 
+ Search
+ 
+
+ 
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+
+ 
+
+ 
+ 
+
+ 
+ 
+ 
+
+ 
+ 
+ 
+ Logged in as:
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ Dashboard
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ Publications
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ Account settings
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+
+ Log in
+
+ 
+ 
+ 
+ 
+ 
+
+
+ 
+ 
+
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+ 
+ Search PMC Full-Text Archive 
+ 
+ 
+ 
+ 
+ Search in PMC 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ Journal List
+ 
+ 
+ 
+ 
+ 
+ 
+ User Guide
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+
+
+ 
+ 
+
+ 
+ 
+
+ 
+
+ 
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ PERMALINK 
+ 
+ 
+ 
+ 
+ Copy 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ As a library, NLM provides access to scientific literature. Inclusion in an NLM database does not imply endorsement of, or agreement with,
+ the contents by NLM or the National Institutes of Health. 
+ Learn more:
+ PMC Disclaimer 
+ |
+ 
+ PMC Copyright Notice
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ J Autom Reason . 2018 Sep 24;63(3):597–623. doi: 10.1007/s10817-018-9482-4 
+ 
+ 
+ Search in PMC 
+ Search in PubMed 
+ View in NLM Catalog 
+ Add to search 
+ 
+ Reinterpreting Dependency Schemes: Soundness Meets Incompleteness in DQBF 
+ Olaf Beyersdorff 
+ Olaf Beyersdorff 
+ 
+ 1 School of Computing, University of Leeds, Leeds, UK 
+ Find articles by Olaf Beyersdorff 
+ 
+ 
+ 1 , Joshua Blinkhorn 
+ Joshua Blinkhorn 
+ 
+ 1 School of Computing, University of Leeds, Leeds, UK 
+ Find articles by Joshua Blinkhorn 
+ 
+ 
+ 1, ✉ , Leroy Chew 
+ Leroy Chew 
+ 
+ 1 School of Computing, University of Leeds, Leeds, UK 
+ Find articles by Leroy Chew 
+ 
+ 
+ 1 , Renate Schmidt 
+ Renate Schmidt 
+ 
+ 2 School of Computer Science, University of Manchester, Manchester, UK 
+ Find articles by Renate Schmidt 
+ 
+ 
+ 2 , Martin Suda 
+ Martin Suda 
+ 
+ 3 Institute of Information Systems, Vienna University of Technology, Vienna, Austria 
+ Find articles by Martin Suda 
+ 
+ 
+ 3 
+ 
+ 
+ Author information 
+ Article notes 
+ Copyright and License information 
+ 
+ 
+ 
+ 
+ 1 School of Computing, University of Leeds, Leeds, UK 
+ 
+ 2 School of Computer Science, University of Manchester, Manchester, UK 
+ 
+ 3 Institute of Information Systems, Vienna University of Technology, Vienna, Austria 
+ 
+ ✉ Corresponding author. 
+ 
+ 
+ Received 2017 Nov 24; Accepted 2018 Sep 15; Issue date 2019. 
+ 
+ © The Author(s) 2018 
+ Open Access This article is distributed under the terms of the Creative Commons Attribution 4.0 International License ( http://creativecommons.org/licenses/by/4.0 /), which permits unrestricted use, distribution, and reproduction in any medium, provided you give appropriate credit to the original author(s) and the source, provide a link to the Creative Commons license, and indicate if changes were made. 
+ PMC Copyright notice 
+ 
+ 
+ PMCID: PMC6710225  PMID: 31496547 
+ 
+ Abstract 
+ Dependency quantified Boolean formulas (DQBF) and QBF dependency schemes have been treated separately in the literature, even though both treatments extend QBF by replacing the linear order of the quantifier prefix with a partial order. We propose to merge the two, by reinterpreting a dependency scheme as a mapping from QBF into DQBF. Our approach offers a fresh insight on the nature of soundness in proof systems for QBF with dependency schemes, in which a natural property called ‘full exhibition’ is central. We apply our approach to QBF proof systems from two distinct paradigms, termed ‘universal reduction’ and ‘universal expansion’. We show that full exhibition is sufficient (but not necessary) for soundness in universal reduction systems for QBF with dependency schemes, whereas for expansion systems the same property characterises soundness exactly. We prove our results by investigating DQBF proof systems, and then employing our reinterpretation of dependency schemes. Finally, we show that the reflexive resolution path dependency scheme is fully exhibited, thereby proving a conjecture of Slivovsky. 
+ Keywords: Quantified Boolean formulas, DQBF, Dependency schemes Introduction 
+ Research in automated reasoning has led to significant advances in the efficient solution of computationally hard problems [ 41 ]. SAT is the canonical NP -complete decision problem [ 14 ], yet state-of-the-art solvers using conflict-driven clause learning (CDCL) [ 5 , 34 ] routinely solve instances with millions of variables [ 41 ]. Any decision procedure implicitly defines a proof system [ 15 ] for the input language, and proof-theoretic techniques can therefore be used to evaluate concrete implementations. CDCL, for example, is built on resolution , a well-studied propositional proof system on which there is a significant volume of research. This means that the trace of a CDCL solver on an unsatisfiable instance can be interpreted as a resolution proof of unsatisfiability. 
+ SAT implementations serve a host of applications in computer science [ 10 ], in which they may be employed as NP oracles in decision procedures for even harder problems [ 28 ]. One such problem is the decision problem for quantified Boolean formulas (QBF), the canonical PSPACE -complete language [ 38 ]. QBF extends propositional logic with existential and universal quantification over Boolean variables. Problem instances are typically written in prenex normal form, where variables are quantified in a linear order preceding the proposition. 
+ Quantification presents a challenge for practitioners, as the quantifier prefix imposes dependencies between oppositely-quantified variables; for example, the chosen value of an existential x may depend upon that of every universal u that occurs earlier in the prefix. Put another way, a model for a QBF (the analogue of a satisfying assignment for a propositional formula) is a set of functions { f x } indexed over the existential variables, where f x assigns a truth value to every set of truth values for the universals preceding x . 
+ This restricts the allowable order of variable assignments during search, which negatively impacts decision heuristics [ 26 ]. It is has been shown that many of these dependencies are ‘spurious’, in the sense that a model for the QBF exists in which the value of x does not change with respect to u [ 31 ], i.e. the truth value for u is absent from the input to f x . In such cases the solver may assign variables more freely, improving the role of decision heuristics in search [ 26 ]. This has given rise to ‘dependency-aware’ QBF solving [ 27 ] based on dependency schemes [ 31 ], efficient algorithms that attempt to identify spurious dependencies. 
+ There are a host of QBF proof systems in the literature [ 4 , 8 , 37 , 39 ], many of which have associated implementations [ 23 , 27 , 39 ]. In this paper, we focus on the four QBF systems depicted in Fig.  1 and investigate how the addition of a dependency scheme affects the soundness of the system. On the expansion side, the fundamental calculus ∀ Exp + Res [ 23 ] uses annotations to represent duplicate existential variables in the full expansion of a QBF (in which all universal variables have been eliminated), and is otherwise identical to propositional resolution. The stronger system IR - calc [ 7 ], inspired by resolution in first-order logic, uses an additional instantiation rule to model ‘partial’ expansions. On the reduction side, the base system Q - Res [ 24 ] employs resolution over existential variables in addition to a ∀ -reduction rule that allows universal variables to be removed from clauses under certain conditions. QU - Res [ 19 ] is a stronger calculus that extends Q - Res with resolution over universal pivots. All four systems are sound and complete for the language of false QBFs (i.e., they are refutational calculi). 
+ Fig. 1. 
+ 
+ Open in a new tab 
+ The simulation order of the four QBF proof systems considered in this paper Our work establishes a relationship between QBF dependency schemes and dependency quantified Booelean formulas (DQBF) [ 21 ]. DQBF is a superset of QBF in which the linear order of the prefix is supplanted by Henkin quantifiers [ 21 ]. This allows arbitrary variable dependencies to be given explicitly using support sets , and results in a more expressive language that is NEXP -complete [ 1 ]. Complexity has not deterred researchers, and there is already a body of work on DQBF theory [ 13 , 42 ], solving [ 17 , 20 ], applications [ 1 , 12 , 20 ] and associated proof systems [ 3 , 29 ]. 
+ Our Contributions 
+ DQBF and QBF dependency schemes have largely been treated separately in the literature; we contend that they are in fact very closely related. The key insight is that a dependency scheme, by identifying and removing spurious variable dependencies, is effectively replacing the linear order of quantification with a partial order. A DQBF, which specifies the allowable dependencies for variables with support sets, is capable of expressing such a partial order. For that reason, we propose to redefine a dependency scheme as a mapping from QBF into DQBF , in which the spurious dependencies identified by the scheme are left out of the support sets of the image formula. 
+ Adopting this DQBF-centric approach yields benefits that surpass mere notational convenience. For example, a dependency scheme property known as full exhibition 1 [ 6 , 35 ] can be defined succinctly as follows: D is fully exhibited if and only if it maps every true QBF to a true DQBF. Second, new QBF calculi incorporating dependency schemes can be defined (and existing ones redefined) simply as the fragment of a corresponding DQBF system operating on the image formulas of the scheme. That is, given a DQBF calculus DQBF - P , we can define a class of QBF systems P ( D ) (parametrised by dependency scheme D ) as follows: for a fixed D , P ( D ) is the set of DQBF - P derivations from the image of D (a set of DQBFs). This allows us to translate results on soundness—and even incompleteness—from DQBF - P to P ( D ), where P is any of the systems in Fig.  1 . 
+ We summarise our results below. Part of this article is based on preliminary results reported in the conference proceedings [ 6 , 9 ], which are here further elaborated and extended. 
+ New Results for Reduction Systems We first generalise some existing results in the literature for DQBF - Q - Res and Q ( D ) - Res to the stronger systems DQBF - QU - Res and QU ( D ) - Res . We first show that DQBF - QU - Res is sound; under our new interpretation this implies that QU ( D ) - Res is sound if D is fully exhibited. We also modify the example formula from [ 3 ] to show that DQBF - QU - Res is incomplete. Moreover, we use the modified formula to construct a dependency scheme D that is not fully exhibited, but for which QU ( D ) - Res is sound, thereby proving that full exhibition is not a necessary condition for soundness in the reduction systems parametrised by dependency scheme. Proceeding from the single example, we show that incompleteness in DQBF - QU - Res is closely related to soundness in QU ( D ) - Res . Formally, we prove that the false DQBFs that cannot be refuted in DQBF - QU - Res are precisely those formulas that are the image of a true QBF in some D for which QU ( D ) - Res is sound. 
+ New Sound and Complete Expansion Systems We lift the expansion-based QBF systems ∀ Exp + Res and IR - calc to DQBF in the natural way, naming the new systems DQBF - ∀ Exp + Res and DQBF - IR - calc . Utilising a known transformation to the EPR fragment of first-order logic, we prove that both calculi are sound and complete for DQBF. We propose new expansion-based QBF systems ∀ Exp ( D ) + Res and IR ( D ) - calc (parametrised by dependency scheme), defined conveniently in terms of their DQBF counterparts. Thanks to the first-order translation exploited at the DQBF level, we prove that each system is sound if and only if D is fully exhibited. We thereby provide a solid theoretical model for dependency schemes in expansion-based solving. 
+ Full Exhibition of D rrs In the penultimate section of the paper, we show that the reflexive resolution path dependency scheme D rrs is fully exhibited, thus proving Slivovsky’s conjecture [ 35 ]. This is a welcome result for two reasons. Firstly, D rrs is arguably the most important scheme in the literature, being the strongest known D for which Q ( D ) - Res is sound. Secondly, in tandem with our other results this implies that P ( D rrs ) is sound, where P is any of the four systems in Fig.  1 . In particular, this promotes the use of the scheme in expansion-based solving, and therefore supports proposed future directions for QBF practice [ 22 ]. Related Work 
+ A host of dependency schemes have been proposed in the literature, including the standard ( D std ) [ 31 ] and reflexive resolution path ( D rrs ) [ 37 ] dependency schemes. Early experiments with the dependency-aware QCDCL solver DepQBF [ 27 ] demonstrated improved performance on certain benchmark sets [ 26 ]. A solid theoretical model for dependency-aware solving did not appear until later, in the shape of the calculus Q ( D ) - Res [ 37 ], the parameterisation of Q - Res by the dependency scheme D . Dependency-awareness has not yet been implemented in expansion-based solvers, but it has been cited by the authors of RAReQS as a direction for future development [ 22 ]. 
+ The proposal of Q ( D ) - Res raised some unexpected issues regarding soundness in dependency-aware solving. Perhaps most surprisingly, the so-called ‘optimal’ dependency scheme D opt (conceived as the ideal scheme for QCDCL [ 26 ]) was shown to be unsuitable— Q ( D opt ) - Res is not sound [ 37 ]. Thus, as the soundness of Q ( D ) - Res is not guaranteed, the question arose of how to determine whether or not the calculus is sound for a given scheme D . In the absence of general methods, complicated ad hoc proofs of soundness (such as that for Q ( D rrs ) - Res [ 37 ]) have been published. A more elegant method was used by Slivovsky [ 35 ] to show the soundness of Q ( D std ) - Res , using full exhibition . The proof proceeds by showing that (1) Q ( D ) - Res is sound if D is fully exhibited and (2) D std is fully exhibited. Slivovsky conjectured that D rrs is also fully exhibited [ 35 ], leaving the proof as an open problem. Organisation of the Paper 
+ After providing the necessary background in Sect.  2 , we introduce the DQBF redefinition of dependency scheme in Sect.  3 . Reduction and expansion systems are the focus of Sects.  4 and 5 , respectively. In Sect.  6 , we prove that D rrs is fully exhibited. We offer some conclusions and further discussion in Sect.  7 . Preliminaries 
+ Dependency Duantified Boolean Formulas A dependency quantified Boolean formula (DQBF) is a formula over Boolean variables in which dependencies are given explicitly in the quantifier prefix. We deal exclusively with prenex Skolem-form DQBFs of the form Φ = Q · ϕ , where: 
+ 
+ Q = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) is the quantifier prefix in which all variables of ϕ are quantified either existentially or universally, and each existential variable x i is associated with a support set S i ⊆ { u 1 , … , u m } of universal variables. 
+ ϕ is a conjunctive normal form (CNF) matrix consisting of a conjunction of clauses, each of which is a disjunction of literals, and a literal is either a variable or its negation. 
+ 
+ A quantified Boolean formula (QBF) is a DQBF in which the support sets are nested. 2 That is, Φ is a QBF if and only if S i ⊆ S j for each i , j ∈ [ n ] with i < j . We write DQBF and QBF to denote the set of all DQBFs and all QBFs respectively. 
+ For a literal l , we write var ( l ) = z iff l = ¬ z or l = z . For a clause C , we write vars ( C ) = { var ( l ) ∣ l ∈ C } . For a DQBF Φ , vars ( Φ ) denotes the variables appearing in the quantifier prefix. We also use C ∃ (respectively C ∀ ) to denote the set of existential (respectively universal) literals in C . The empty clause is denoted by ⊥ . 
+ An assignment to a set V ⊆ vars ( Φ ) is a function α : V → { 0 , 1 } mapping variables to truth values, conventionally represented as a set of literals in which the literal ¬ v (respectively v ) represents the assignment v ↦ 0 (respectively v ↦ 1 ) for any v ∈ V . To simplify the presentation, we treat assignments interchangeably as either functions or as sets of literals, and remind the reader of the dual view wherever appropriate. 
+ DQBF Models Given a DQBF Φ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ , a Skolem-function model (or model for short) for Φ is a set of functions F = { f 1 , ⋯ , f n } satisfying the following conditions: 
+ 
+ for each i ∈ [ n ] , f i is a function whose domain is the set of total assignments to S i , that maps each such assignment to a truth value. 
+ The propositional formula ϕ ′ , obtained by substituting each existential variable x i with (a propositional representation of) its Skolem function f i , is a tautology. 
+ 
+ A DQBF is true if and only if it has a model. The model F itself can be represented as a function mapping total assignments to the universals { u 1 , ⋯ , u m } (typically denoted α ) to total assignments to the existentials { x 1 , ⋯ , x m } , in which F ( α ) is the assignment mapping each x i to f i ( α i ) , where α i is the restriction of α to the support set S i . In this light, condition (b) above can be restated as ‘for every total assignment to the universals α the matrix ϕ is true under the joint assignment α ∪ F ( α ) ’. 
+ For some technical portions of the paper, we prefer an equivalent formulation of DQBF semantics, based on an adaptation of QBF assignment trees [ 32 ]. The nesting of support sets in a QBF prefix allows a model to be depicted naturally as a tree, with branching over universal variables. A DQBF model F can also be depicted as a tree, in which branching on all universals takes place consecutively from the root, as shown in Fig.  2 . For each α in the domain of F , the literals of the set α ∪ F ( α ) are written (in the order they appear in the prefix, i.e., all universals first) on a unique path from the root of the tree to some leaf. As such, F can be uniquely identified with a set of 2 m paths , each of which is one of the sets α ∪ F ( α ) . An arbitrary assignment tree T for Φ represents a model if and only if it implicitly defines a set of Skolem functions. This proves to be a convenient interpretation specifically for the detailed proofs in Sect.  6 . We therefore postpone further details on assignment trees to that section. 
+ Fig. 2. 
+ 
+ Open in a new tab 
+ An assignment tree T for a DQBF Φ = ∀ u 1 ∀ u 2 ∀ u 3 ∃ x 1 ( u 1 ) ∃ x 2 ( u 2 , u 3 ) · ϕ , whose matrix ϕ is satisfied if and only if x 1 = u 1 and x 2 = u 2 ⊕ u 3 . T represents a model for Φ , since it implicitly defines the unique Skolem functions that satisfy the matrix Proof Systems Resolution is a well-studied refutational proof system for propositional CNF formulas with a single inference rule: the resolvent C 1 ∪ C 2 may be derived from clauses C 1 ∪ { x } and C 2 ∪ { ¬ x } , where variable x is called the pivot . Resolution is sound and refutationally complete: that is, the empty clause ⊥ can be derived from a CNF if and only if it is unsatisfiable. All the proof systems for DQBF (and QBF) considered in this paper are refutational calculi (i.e., they prove falsity) based on resolution. 
+ Q-resolution ( Q - Res ) [ 24 ] is the standard refutational calculus for prenex QBF. In addition to resolution over existential pivots, the calculus has a universal reduction rule which allows a clause C to be derived from C ∪ { l } , provided var ( l ) is a universal variable absent from the support set of each existential variable appearing in C . Tautologies are explicitly forbidden; one may not derive a clause containing both z and ¬ z . QU - Res [ 19 ] is the extension of Q - Res that allows resolution over universal pivots. We omit their formal definitions, since (on the set of QBFs) each coincides with the corresponding DQBF system, whose definition appears in the main text. 
+ For a DQBF resolution system P , a P - derivation of a clause C from a PCNF Φ is a sequence C 1 , ⋯ , C k of clauses in which C = C k , and each clause is either an axiom or is derived from previous clauses in the sequence using an inference rule. A refutation of Φ is a derivation of the empty clause ⊥ from Φ . 
+ A proof system P p-simulates a system Q (denoted Q ≤ p P ) if each Q -proof can be transformed in polynomial time into a P -proof of the same formula [ 15 ]. The systems P and Q are p-equivalent (denoted P ≡ p Q ) if Q ≤ p P and P ≤ p Q . A DQBF Interpretation of Dependency Schemes 
+ In this section, we recall the traditional interpretation of dependency schemes, before presenting our new interpretation based on DQBF. 
+ The Traditional Interpretation of Dependency Schemes 
+ The traditional interpretation of dependency schemes originates from [ 30 ]. That model was soon modified to work with binary relations [ 31 ], and was subsequently employed by a number of authors, e.g. [ 6 , 26 , 36 ]. We give a high level description, for comparison with the DQBF interpretation proposed in the next subsection. 
+ For an arbitrary QBF Φ , the trivial dependency relation D trv ( Φ ) is the set of pairs ( z 1 , z 2 ) ∈ vars ( Φ ) × vars ( Φ ) for which (1) z 1 and z 2 are oppositely quantified, and (2) z 1 is quantified before z 2 when the quantifier prefix is arranged in the natural linear order (cf. [ 31 ]). (Using our DQBF notation, condition (2) means that z 1 is in the support set of z 2 if the latter is existential, otherwise z 2 is not in the support set of z 1 .) From there, a dependency scheme D is a function that maps each QBF to a binary relation, and satisfies D ( Φ ) ⊆ D trv ( Φ ) for each QBF Φ . 3 The binary relation identifies sets of pairs ( z 1 , z 2 ) for which z 2 is considered dependent on z 1 . Accordingly, the existence of a pair ( z 1 , z 2 ) ∈ D ( Φ ) should be interpreted as ‘ z 2  depends on z 1 in Φ according to D ’. Pairs not included in the binary relation represent independencies; that is, a pair ( z 1 , z 2 ) ∈ D trv ( Φ ) \ D ( Φ ) should be interpreted as ‘ z 2 is independent of z 1 in Φ according to D ’. 
+ An important point for the present context is that we may restrict our attention to the (in)dependence of existentials on universals. The dual notion of (in)dependence of universals on existentials, which is equally important in practice, does not feature in theoretical models of solving. This is a quite convenient state of affairs, afforded by the fact that theorists deal with refutational calculi. Redefining Dependency Schemes in Terms of DQBF 
+ The principal idea is that the binary relation D ( Φ ) can be written as a DQBF quantifier prefix. This proposal seems perfectly natural. In practice, the primary purpose for a dependency scheme is to replace the linear order of a QBF prefix with a partial order that more accurately reflects the dependency structure of the instance. Note that a DQBF prefix, in general, represents a partial order. In other words, a dependency scheme can be viewed as a transformation that maps a QBF to a suitable DQBF (with the same matrix), whose quantifier prefix expresses dependencies according to the scheme. As we consider only existential dependencies in our theoretical models, we can work exclusively with Skolem-form DQBFs. 
+ Since dependency schemes are in the business of identifying non-trivial independencies, we inevitably want to map QBFs to DQBFs in which the support sets are smaller (whereas the variable sets and the matrix should not change). We define a strength relation to capture this notion. 
+ Definition 1 
+ (strength) Let Φ : = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ . A DQBF Φ ′ is stronger than   Φ if and only if Φ ′ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ′ ) ⋯ ∃ x n ( S n ′ ) · ϕ and S i ′ ⊆ S i for each i ∈ [ n ] . 
+ A dependency scheme may now be naturally (and concisely) defined as a function mapping QBFs to stronger DQBFs. Definition 2 
+ (dependency scheme) A dependency scheme is a function D : QBF → DQBF that maps each QBF Φ to a stronger DQBF D ( Φ ) . 
+ The DQBF interpretation also facilitates an illuminating definition of an important property called full exhibition [ 6 , 35 ]. Full exhibition will feature prominently in this work, in which we demonstrate the greater potential of the concept in connection with the soundness of dependency systems. 
+ According to previous work [ 6 , 35 ], a dependency scheme D is said to be fully exhibited if and only if the following property holds for each true QBF Φ : there exists a particular model for Φ in which, for each existential x and universal u in vars ( Φ ) , x does not depend on u whenever x is independent of u in Φ according to D . This is precisely the same as saying that the associated DQBF D ( Φ ) is true. Hence we considerably simplify the definition of the concept. Definition 3 
+ (full exhibition) A dependency scheme D is fully exhibited if and only if it maps each true QBF to a true DQBF. 
+ Note that a false QBF is always mapped to a false DQBF by any dependency scheme, due to the strength condition. 
+ We conclude this section by showing that the pairwise comparison of schemes also fits neatly into our reinterpretation. Schemes are compared by the notion of generality, whereby one scheme is considered more general than another if it is capable of identifying more non-trivial independencies. Definition 4 
+ (generality) Let D and D ′ be dependency schemes. We say that D is at least as general as D ′ if and only if D ( Φ ) is stronger than D ′ ( Φ ) for each QBF Φ . Variable Dependencies in Q - Res and QU - Res 
+ 
+ DQBF Systems 
+ Balabanov et al. [ 3 ] introduced the DQBF calculus DQBF - Q - Res as the natural generalisation of the QBF system Q - Res . The salient feature of DQBF - Q - Res is that ∀ -reduction of a universal literal l from a clause C is allowed if and only if var ( l ) does not appear in the support set of any existential variable appearing in C . (Note that Q - Res and DQBF - Q - Res are equivalent on QBFs.) 
+ The calculus is easily extended to include resolution over universal pivots. We call the resulting system DQBF - QU - Res , as it is the natural generalisation of QU - Res to DQBF. The formal description of both systems is given in Fig.  3 . Balabanov et al. [ 3 ] went on to show that DQBF - Q - Res is sound, yet incomplete, for DQBF. In this subsection, we show that both results carry over to DQBF - QU - Res . 
+ Fig. 3. 
+ 
+ Open in a new tab 
+ The rules of the proof systems DQBF - Q - Res [ 3 ] and DQBF - QU - Res . The input DQBF is denoted Φ : = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ Inspection of the original proof of soundness for DQBF - Q - Res [ 3 , Theorem 5] reveals that the argument does not rely on the existential quantification of a pivot variable, and therefore lifts to DQBF - QU - Res . Nonetheless, we provide a complete proof of the result, keeping the present work self-contained. Moreover, our proof method (which differs from [ 3 ]) is better suited to the context of this paper. 
+ Theorem 1 
+ The DQBF calculus DQBF - QU - Res is sound. Proof 
+ We show that there is no DQBF - QU - Res refutation of a true DQBF. Aiming for contradiction, let Φ = Q · ϕ be a true DQBF and suppose that π = C 1 , … , C k is a DQBF - QU - Res refutation of Φ . Further, for each i ∈ [ k ] , let ϕ i = { C 1 , ⋯ , C i } . 
+ Now, let F be any model for Φ . We prove by induction on i ∈ [ k ] that F is a model for Q · ϕ i . Hence at step i = k , we deduce that Φ = Q · ϕ k is true, a clear contradiction since ϕ k contains the empty clause C k = ⊥ . 
+ The base case i = 1 is established trivially, since C 1 must be an axiom clause from ϕ . For the inductive step, let 1 < i ≤ k , suppose that F is a model for Q · ϕ i - 1 , and let α be a total assignment to the universal variables of Φ . The case where C i is an axiom is identical to the base case, hence we assume that C i is derived either by resolution or by ∀ -reduction. In either case we show that α ∪ F ( α ) satisfies C i , and hence F is a model for Q · ϕ i - 1 ∪ { C i } = Q · ϕ i , completing the inductive step. 
+ 
+ Suppose that C i was derived by resolution from clauses C a and C b . Then, since C a , C b ∈ ϕ i - 1 , α ∪ F ( α ) satisfies both clauses by the inductive hypothesis, and hence satisfies C i by the logical correctness of propositional resolution. 
+ Suppose, on the other hand, that C i was derived by ∀ -reduction from some clause C i ∪ { l } , and assume w.l.o.g. that l ∈ α . Also, let α ′ be the assignment that agrees with α on every universal variable except var ( l ) ; that is, define α ′ : = ( α ∪ { ¬ l } ) \ { l } . Since ¬ l ∈ α ′ , and α ′ ∪ F ( α ′ ) satisfies C i ∪ { l } by the inductive hypothesis, α ′ ∪ F ( α ′ ) satisfies C i . By definition of ∀ -reduction, var ( l ) = u is a universal variable satisfying u ∉ S for each support set S of an existential in vars ( C i ) . It follows that F ( α ) and F ( α ′ ) agree on all existential variables in C i . Also, α and α ′ agree on all universal variables except u . Noting that ¬ l ∉ C i (since C i ∪ { l } is not a tautology), variable u does not appear in C i , and it follows that α ∪ F ( α ) and α ′ ∪ F ( α ′ ) agree on vars ( C i ) . Therefore α ∪ F ( α ) satisfies C i . 
+ 
+ □ 
+ We conclude this subsection by showing that DQBF - QU - Res is incomplete. Balabanov et al. [ 3 ] gave the following false DQBF that cannot be refuted in DQBF - Q - Res . Example 1 
+ Let Ψ be the DQBF with prefix 
+ ∀ u 1 ∀ u 2 ∃ x 1 ( u 1 ) ∃ x 2 ( u 2 ) 
+ and matrix consisting of the clauses 
+ { x 1 , x 2 , u 1 } , { ¬ x 1 , ¬ x 2 , u 1 } , { x 1 , x 2 , ¬ u 1 , ¬ u 2 } , { ¬ x 1 , ¬ x 2 , ¬ u 1 , ¬ u 2 } , { x 1 , ¬ x 2 , ¬ u 1 , u 2 } , { ¬ x 1 , x 2 , ¬ u 1 , u 2 } . 
+ In the following example, we modify the above formula Ψ by doubling universal variables, a useful technique introduced by Balabanov et al. [ 4 ]. The modified formula Ψ ′ remains false, while the addition of duplicate variables ensures that no resolution steps over universal pivots are possible. Example 2 
+ Let Ψ ′ be the DQBF with prefix 
+ ∀ u 1 ∀ u 1 ′ ∀ u 2 ∀ u 2 ′ ∃ x 1 ( u 1 , u 1 ′ ) ∃ x 2 ( u 2 , u 2 ′ ) 
+ and matrix consisting of the clauses 
+ { x 1 , x 2 , u 1 , u 1 ′ } , { ¬ x 1 , ¬ x 2 , u 1 , u 1 ′ } , { x 1 , x 2 , ¬ u 1 , ¬ u 1 ′ , ¬ u 2 , ¬ u 2 ′ } , { ¬ x 1 , ¬ x 2 , ¬ u 1 , ¬ u 1 ′ , ¬ u 2 , ¬ u 2 ′ } , { x 1 , ¬ x 2 , ¬ u 1 , ¬ u 1 ′ , u 2 , u 2 ′ } , { ¬ x 1 , x 2 , ¬ u 1 , ¬ u 1 ′ , u 2 , u 2 ′ } . 
+ We first show that Ψ ′ is false. Note that, due to the doubling of universal variables, any model F ′ for Ψ ′ gives rise to a model F for the original formula Ψ , in which the duplicates u 1 ′ and u 2 ′ are removed. (This is achieved by restricting the domain of F ′ to those assignments in which u i and u i ′ are assigned similarly for i ∈ { 1 , 2 } , and then ignoring the assignments to u 1 ′ and u 2 ′ .) However, it was shown by Balabanov et al. [ 3 ] that no model for the original formula exists. 
+ Now we show that there is no DQBF - QU - Res refutation of Φ . In fact, no clauses whatsoever can be derived from the matrix of Ψ ′ . This is easy to verify as follows. Any resolution step produces a tautological resolvent, which is explicitly forbidden. No ∀ -reduction step is possible, because every clause contains both existential variables x 1 and x 2 , and the union of support sets S 1 ∪ S 2 contains all the universal variables of Φ . Systems for QBF with Dependency Schemes 
+ A major benefit of the DQBF interpretation is that QBF calculi augmented with dependency schemes can be defined as fragments of DQBF calculi. In this subsection, we expose the connection between DQBF - QU - Res and the QBF calculus QU ( D ) - Res , the system that supplements Q ( D ) - Res [ 37 ] with resolution over universal pivots. In addition to improved understanding, the connection fosters further proofs of soundness that are almost immediate. 
+ Recalling our discussion of the traditional interpretation of dependency schemes in Sect.  3.1 , we make the following observation: for a QBF Φ , the allowable inferences in Q ( D ) - Res (as originally presented by Slivovsky and Szeider [ 37 ]) are exactly those inferences allowable in a DQBF - Q - Res derivation from the DQBF D ( Φ ) . This continues to hold in the presence of universal resolution. 
+ Following this observation, it is indeed possible to formulate the definition of QU ( D ) - Res neatly in terms of DQBF - QU - Res , since the former is essentially the restriction of the latter to the image of D . To do this, we first define a general notion of projection that captures the condition by which a QBF proof system is a fragment of a DQBF system. 
+ Definition 5 
+ (projection) Let D be a dependency scheme and let Q be a DQBF calculus. The projection P of Q according to D is the QBF calculus whose derivations from Φ are exactly the Q -derivations from D ( Φ ) , for each QBF Φ . Definition 6 
+ For each dependency scheme D , the QBF calculus QU ( D ) - Res is the projection of DQBF - QU - Res according to D . 
+ The idea of defining QBF systems parametrised by dependency scheme as projections of DQBF systems is entirely consistent with existing literature, i.e. with the existing definition of Q ( D ) - Res . Proposition 1 
+ Q ( D ) - Res is the projection of DQBF - Q - Res according to D , for each dependency scheme D . Proof 
+ Let D be a dependency scheme. To verify the observation, we show that the three rules of inference in Q ( D ) - Res (as presented in [ 35 ]) are exactly equivalent to the three rules of DQBF - Q - Res when the input formula is a QBF Φ : = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ . By T ( Φ ) ⊆ { ( u i , x j ) : u i ∈ S j } we denote the traditional interpretation of the dependency scheme D on Φ (as in Subsect.  3.1 ), and observe that ( u i , x j ) ∈ T ( Φ ) ⇔ u i ∈ S j ′ , where S j ′ is the support set for x j in D ( Φ ) . 
+ The ‘input clause’ and ‘resolution’ rules of Q ( D ) - Res are exactly identical to the axiom and resolution rules in DQBF - Q - Res . The ‘ ∀ ( D ) -reduction’ rule allows a clause C \ { l } to be inferred from C provided that var ( l ) is universal and ( var ( l ) , x j ) ∉ T ( Φ ) for each existential x j ∈ vars ( C ) . Since ( var ( l ) , x j ) ∉ T ( Φ ) ⇔ var ( l ) ∉ S j ′ , exactly the same inferences can be made by the reduction rule in DQBF - Q - Res . □ 
+ The notion of projection, in combination with Theorem  1 , fosters a straightforward proof of the following soundness theorem, which extends the analogous result for Q ( D ) - Res [ 35 ]. Theorem 2 
+ The QBF calculus QU ( D ) - Res is sound if D is fully exhibited. Proof 
+ Let D be fully exhibited and let Φ be a true QBF. Since D ( Φ ) is true (by definition of full exhibition), there is no DQBF - QU - Res refutation of D ( Φ ) , by Theorem  1 . As QU ( D ) - Res is the projection of DQBF - QU - Res according to D , there is no Q ( D ) - Res refutation of Φ , so QU ( D ) - Res is sound. □ 
+ Note that QU ( D ) - Res is complete regardless of the choice of D , since it trivially p -simulates the complete system QU - Res . 
+ Whereas full exhibition is sufficient for soundness in QU ( D ) - Res , it is not necessary; that is, full exhibition does not characterise soundness there. Considering Example  2 , it is possible for a scheme D to map a true QBF to a false DQBF that cannot be refuted in DQBF - QU - Res . In such a situation, D is not fully exhibited, but QU ( D ) - Res remains sound, precisely because the DQBF - QU - Res fragment to which it corresponds is incomplete. Proposition 2 
+ There exists a dependency scheme D that is not fully exhibited for which QU ( D ) - Res is sound. Proof 
+ Let Ψ ′ = Q · ψ be the DQBF from Example  2 , and recall that the existential variables of Ψ ′ are x 1 and x 2 with corresponding support sets S 1 ′ = { u 1 , u 1 ′ } and S 2 ′ = { u 2 , u 2 ′ } . 
+ Now, let Ψ : = ∀ u 1 ∀ u 1 ′ ∀ u 2 ∀ u 2 ′ ∃ x 1 ( S 1 ) ∃ x 2 ( S 2 ) · ψ be the formula with support sets S 1 : = S 2 : = { u 1 , u 1 ′ , u 2 , u 2 ′ } . Observe that Ψ is a QBF and that Ψ ′ is stronger than Ψ . Moreover, Ψ is a true QBF: For an assignment to the universal variables including u 1 = 1 and u 2 = 0 , putting x 1 = x 2 satisfies all the clauses in ψ . In all other cases, putting x 1 ≠ x 2 satisfies all clauses. 
+ Now, we construct a dependency scheme D as follows. Let D ( Ψ ) = Ψ ′ , and let D ( Φ ) = Φ for every other QBF Φ ≠ Ψ . Note that D is not fully exhibited, since it maps the true QBF Ψ to the false DQBF Ψ ′ . Also note that QU ( D ) - Res and QU - Res are identical on all QBFs other than Ψ . 
+ We observe that QU ( D ) - Res cannot refute Ψ , as there is no DQBF - QU - Res refutation of Ψ ′ (Example  2 ). Nor can QU ( D ) - Res refute any other true QBF, by the soundness of QU - Res . Therefore QU ( D ) - Res is sound. □ 
+ The relationship between soundness and incompleteness, exploited in the preceding proof, allows us to equate two open problems. That is, if one determines the set of dependency schemes for which QU ( D ) - Res is sound, then one determines the set of false DQBFs that DQBF - QU - Res cannot refute. A characterisation of soundness in QU ( D ) - Res , therefore, also characterises incompleteness in DQBF - QU - Res , and vice versa. We formalise that notion exactly with the following theorem. Theorem 3 
+ Let I be the set of false DQBFs that have no DQBF - QU - Res refutation, and let S be the set of dependency schemes D for which QU ( D ) - Res is sound. Then I is the set of false DQBFs that are the image of a true QBF under some D ∈ S . Proof 
+ If Φ is true and QU ( D ) - Res is sound, then D ( Φ ) has no DQBF - QU - Res refutation (by definition of projection). Hence we only need show that each DQBF in I is the image of a true QBF under some dependency scheme in S . 
+ Let Φ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ be a DQBF in the set I , and consider the QBF Φ ′ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ′ ) ⋯ ∃ x n ( S n ′ ) · ϕ in which S i ′ = { u 1 , ⋯ , u m } for each i ∈ [ n ] . Note that Φ is stronger than Φ ′ . 
+ We first show that Φ ′ is a true QBF. Aiming for contradiction, suppose that Φ ′ is false. Then there exists a QU - Res refutation π of Φ ′ , by completeness of that calculus. In π , no universal is ∀ -reduced from a clause containing an existential variable (as the support sets S i ′ are maximal), and so π is also a legal DQBF - QU - Res refutation of Φ . However, no such refutation exists, by definition of I . 
+ It remains to construct a dependency scheme D , for which QU ( D ) - Res is sound, satisfying D ( Φ ′ ) = Φ . That is achieved simply by putting D ( Ψ ) = Ψ for all other QBFs Ψ ≠ Φ ′ . □ 
+ Given the tight connection to DQBF incompleteness, the characterisation of soundness in QU ( D ) - Res remains an interesting open problem. However, with Proposition  3 we argue that schemes that are not fully exhibited are largely unimportant from a proof complexity point of view. The use of a sound scheme that is not fully exhibited can always be p -simulated by the use of a fully exhibited one. 4 Proposition 3 
+ Let D be a dependency scheme for which QU ( D ) - Res is sound. There exists a fully exhibited dependency scheme D ′ , with D at least as general as D ′ , for which QU ( D ) - Res ≡ p QU ( D ′ ) - Res . Proof 
+ We let D ′ be the dependency scheme defined as follows: 
+ D ′ ( Φ ) = D ( Φ ) if Φ is false , Φ if Φ is true . 
+ It is clear that D is at least as general as D ′ . D ′ is the identity transformation on true QBFs, and is therefore trivially fully exhibited. Since D and D ′ agree on all false QBFs, every QU ( D ) - Res refutation is a QU ( D ′ ) - Res refutation, and vice versa. Hence QU ( D ) - Res and QU ( D ′ ) - Res are p -equivalent. □ Dependencies in Expansion-Based Calculi 
+ In this section, we apply our DQBF interpretation of dependency schemes to expansion-based proof systems. In Sect.  5.1 , we lift the existing QBF calculi ∀ Exp + Res and IR - calc to DQBF. Exploiting a natural translation to the EPR fragment of first-order logic, we prove that the resulting systems DQBF - ∀ Exp + Res and DQBF - IR - calc remain sound and complete. Further, in Sect.  5.2 we introduce ∀ Exp ( D ) + Res and IR ( D ) - calc , the corresponding QBF systems parametrised by dependency scheme, and prove that full exhibition provides a complete characterisation for soundness in both systems. 
+ Two Sound and Complete Systems for DQBF 
+ Let us first explain the concept of expansion with a simple example. Consider the DQBF 
+ ∀ u ∀ v ∃ x ( u ) ∃ y ( v ) · ϕ ( u , v , x , y ) , 
+ and note that it is semantically equivalent to the DQBF 
+ ∀ v ∃ x 0 ( ) ∃ x 1 ( ) ∃ y ( v ) · ϕ ( 0 , v , x 0 , y ) ∧ ϕ ( 1 , v , x 1 , y ) 
+ in which we have ‘expanded’ the variable u . Since x depends on u , we introduce two distinct variables  x 0 and x 1 in the expanded formula, one for each possible assignment to u , and give to each the support set of x with u removed (in this case yielding the empty support set). In contrast, the variable y does not include u in its support set, and therefore remains unchanged. A subsequent expansion of the remaining universal v yields the fully existentially quantified formula 
+ ∃ x 0 ∃ x 1 ∃ y 0 ∃ y 1 · ϕ ( 0 , 0 , x 0 , y 0 ) ∧ ϕ ( 0 , 1 , x 0 , y 1 ) ∧ ϕ ( 1 , 0 , x 1 , y 0 ) ∧ ϕ ( 1 , 1 , x 1 , y 1 ) 
+ that is also semantically equivalent to the original DQBF. 
+ It is convenient to annotate duplicate variables with the reason for their creation. For example, we will use x ¬ u instead of x 0 (where ¬ u corresponds to the assignment u ↦ 0 ), and likewise x u instead of x 1 . Since expansion duplicates each dependent existential, the complete expansion of an arbitrary DQBF introduces 2 | S | copies of the variable with support set S , each of which is annotated with a complete assignment to S . 
+ Description of the Systems Our base expansion calculus DQBF - ∀ Exp + Res works simply by applying propositional resolution to clauses in the complete expansion of a DQBF Φ . Accordingly, one may take any clause from the matrix and do the following: select a total assignment to universal variables that falsifies all the universal literals in the clause, and remove all universal literals while annotating the remaining existentials with the assignment. The resulting clause appears in the complete expansion of Φ , and may therefore be introduced as an axiom in a DQBF - ∀ Exp + Res derivation from Φ . The rules of DQBF - ∀ Exp + Res are given formally in Fig.  4 . 
+ Fig. 4. 
+ 
+ Open in a new tab 
+ The rules of DQBF - ∀ Exp + Res , where Φ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ is the input DQBF Our second calculus DQBF - IR - calc is a more sophisticated system that works with annotations representing partial assignments. In addition to resolution, the system is equipped with an instantiation rule with which partial annotations are ‘grown’ over the course of the derivation. For that reason, the instantiation rule uses a binary operator ∘ that dictates how annotations are combined, defined as follows: for any two partial assignments τ and σ to a set of universal variables, τ ∘ σ : = τ ∪ { l ∈ σ ∣ ¬ l ∉ τ } . The rules of DQBF - IR - calc are given in Fig.  5 . 
+ Fig. 5. 
+ 
+ Open in a new tab 
+ The rules of DQBF - IR - calc , where Φ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ is the input DQBF Since annotations are written as superscripts, we choose to write partial assignments not as sets, but as literal strings, e.g. u 1 ¬ u 3 ¬ u 6 u 7 . We explain the DQBF - IR - calc rules and illustrate them with the DQBF Ψ from Example  1 . 
+ Axiom clauses are introduced into the proof, or downloaded , by selecting a clause C from the matrix and applying the download assignment to the existential literals. By design, the download assignment τ for C is the smallest partial assignment that falsifies every universal literal in C ; that is, τ = { ¬ l ∣ l ∈ C ∀ } . When applying the download assignment, existentials are annotated only with universals in their support set. For example, downloading the the clauses { x 1 , x 2 , u 1 } and { x 1 , ¬ x 2 , ¬ u 1 , u 2 } gives rise to axioms { x 1 ¬ u 1 , x 2 } and { x 1 u 1 , ¬ x 2 ¬ u 2 } . 
+ Instantiation allows partial assignments to be combined during the course of the proof. A single partial assignment τ is applied to all the literals in the clause. As in the axiom rule, any universal variable absent from the support set is omitted from the annotation. For example, instantiating our axiom clause { x 1 ¬ u 1 , x 2 } with τ = u 1 u 2 , we derive { x 1 ¬ u 1 , x 2 u 2 } . Note that u 1 does not appear in the annotation to literal x 2 , since u 1 is not in the support set of variable x 2 . Also note that literal u 1 does not appear in the annotation to x 1 , which is already annotated with the negated literal ¬ u 1 before the instantiation takes place (see the earlier definition of the ∘ operator). 
+ Resolution in IR - calc is identical to propositional resolution. We emphasise that annotations are labelling distinct variables, so that a resolution step is valid only if the annotations of the pivot literals match exactly. 
+ A complete IR - calc refutation of Ψ is shown in Fig.  6 . We emphasise that the annotation to variable x never features a universal variable not in the support set of x . Hence, whenever x τ is written, it is considered implicit that each variable in τ is in the support set of x . 
+ Fig. 6. 
+ 
+ Open in a new tab 
+ A DQBF - IR - calc refutation of the DQBF Φ from Example  1 Translation to First-Order Logic Before analysing DQBF - IR - calc further we present the translation of DQBF into EPR . EPR stands for Effectively Propositional Logic, also referred to as the Bernays–Schönfinkel fragment of first-order logic [ 25 ], characterised as the clausal language allowing only constants as function symbols (i.e. function symbols of arity larger than zero are not allowed). 
+ We use an adaptation of the translation described for QBF [ 33 ], which becomes straightforward in the light of the DQBF semantics based on Skolem functions. The key observation is that for the intended two-valued Boolean domain the Skolem functions can in first-order logic be represented by predicates. 
+ To translate a DQBF Φ : = Q · ϕ with Q : = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) , we introduce on the first-order side (1) a predicate symbol p of arity one and two constant symbols 0 and 1 to describe the Boolean domain, (2) for every existential variable x i we introduce a predicate symbol x i of arity  | S i | , and (3) for every universal variable u a first-order variable u . 
+ Now we can define a translation mapping t Q . It translates each occurrence of an existential variable x i with support set S i = { u ρ ( 1 ) , … , u ρ ( k ) } (for some injection ρ : [ k ] → [ m ] ) to the atom t Q ( x ) : = x ( u ρ ( 1 ) , … , u ρ ( k ) ) (here ρ represents an arbitrary but fixed order on the dependencies which dictates their placement as arguments) and each occurrence of a universal variable u i to the atom t Q ( u i ) : = p ( u i ) . The mapping is then homomorphically extended to formulas: t Q ( ¬ ϕ ) : = ¬ t Q ( ϕ ) , t Q ( ϕ 1 ∨ ϕ 2 ) : = t Q ( ϕ 1 ) ∨ t Q ( ϕ 2 ) , and t Q ( ϕ 1 ∧ ϕ 2 ) : = t Q ( ϕ 1 ) ∧ t Q ( ϕ 2 ) . This means a CNF matrix ϕ is mapped to a corresponding first-order CNF t Q ( ϕ ) . As customary, the first-order variables of t Q ( ϕ ) are assumed to be implicitly universally quantified at the top level. 
+ Lemma 1 
+ ([ 33 ]) A DQBF Q · ϕ is true if and only if the first-order formula t Q ( ϕ ) ∧ p ( 1 ) ∧ ¬ p ( 0 ) is satisfiable. Proof 
+ When the DQBF ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ is true, this is witnessed by the existence of Skolem functions F = { f i ∣ i ∈ [ n ] } . On the other hand, if t Q ( ϕ ) ∧ p ( 1 ) ∧ ¬ p ( 0 ) is satisfiable then we can, by Herbrand’s theorem, assume it has a Herbrand model H over the base { 0 , 1 } . We can naturally translate between one and the other by setting f i ( v ) = 1 iff x i ( v ) ∈ H for every i ∈ [ n ] and v ∈ { 0 , 1 } | S i | . The lemma then follows by structural induction over ϕ . □ 
+ For the purpose of analysing DQBF - IR - calc , the mapping t Q is further extended to annotated literals: t Q ( x τ ) = t Q ( x ) τ for an existential variable x . Here we slightly abuse notation and treat τ , an annotation in the propositional context, as a first-order substitution over the corresponding translated variables in the first-order context (recall point (3) above). For example if S 1 = { u 1 , u 2 , u 3 } then t Q ( x 1 ¬ u 1 , u 2 ) = x 1 ( u 1 , u 2 , u 3 ) { u 1 ↦ 0 , u 2 ↦ 1 } = x 1 ( 0 , 1 , u 3 ) . 
+ Soundness and Completeness We aim to show soundness and completeness of DQBF - IR - calc by relating it via the above translation to a first-order resolution calculus FO-Res. This calculus consists of (1) an instantiation rule: given a clause C and a substitution σ derive the instance C σ , and (2) the resolution rule: given two clauses C ∪ { l } and D ∪ { ¬ l } , where l is a first-order literal, derive C ∪ D . Note that similarly to propositional clauses, we understand first-order clauses as sets of literals. Thus we do not need any explicit factoring rule. Also note that we require the resolved pivots of the two premises of the resolution rule to be equal (up to the polarity). Standard first-order resolution, which involves unification of the resolved literals, can be simulated in FO-Res by combining the instantiation and the resolution rule. 
+ It is well known that FO-Res is sound and complete for first-order logic. For the proof of Theorem  5 below, we will work with a more specific calculus known as ordered resolution [ 2 ]. Ordered resolution FO-Res < is parametrised by an ordering < on symbols, which is extended to literals in a natural way and only maximal literals in each clause are eligible as pivots. Also ordered resolution is complete [ 2 ]. Theorem 4 
+ DQBF - IR - calc is sound. Proof 
+ Given π = C 1 , ⋯ , C n , a DQBF - IR - calc derivation of the empty clause C n = ⊥ from the DQBF  Q · ϕ , we show by induction that t Q ( C i ) is derivable from Φ = t Q ( ϕ ) ∧ p ( 1 ) ∧ ¬ p ( 0 ) by FO-Res for every i ≤ n . Because t Q ( ⊥ ) = ⊥ is unsatisfiable, so must be Φ , by the soundness of FO-Res, and therefore Q · ϕ is false by Lemma  1 . We consider the three cases by which a clause C i , i ≤ n , can be derived by DQBF - IR - calc . 
+ First, let us assume that C i follows by instantiation, i.e., C i = inst ( C j , τ ) for some j < i and an annotation  τ . By the inductive hypothesis, we know that t Q ( C j ) is derivable from Φ by FO-Res. The case follows by observing that t Q ( inst ( C j , τ ) ) = t Q ( C j ) τ and thus t Q ( C i ) can be derived from t Q ( C i ) by first-order instantiation with τ understood as a substitution. 
+ Second, it is easy to see that if C i follows from C j and  C k by the DQBF - IR - calc resolution rule, t Q ( C i ) can be derived from t Q ( C j ) and t Q ( C k ) by FO-Res. 
+ Third, let us assume that C i is derived using the Axiom rule of DQBF - IR - calc . This means that 
+ C i = { a τ ( a ) ∣ a ∈ C ∃ } , 
+ where C ∈ ϕ and τ ( a ) = { ¬ l ∣ l ∈ C ∀ , var ( l ) ∈ S i } for var ( a ) = x i . To derive t Q ( C i ) from Φ by FO-Res, we first instantiate t Q ( C ) by τ = { ¬ l ∣ l ∈ C ∀ } obtaining D = t Q ( C ) τ . Next we observe that for any a ∈ C ∃ we have t Q ( a ) τ = t Q ( a τ ( a ) ) and for any l ∈ C ∀ we have t Q ( l ) τ ∈ { p ( 0 ) , ¬ p ( 1 ) } by the definition of τ . Thus t Q ( C i ) ⊆ D ⊆ t Q ( C i ) ∪ { p ( 0 ) , ¬ p ( 1 ) } . We derive t Q ( C i ) from D in FO-Res by resolving D with the available units p (1) and ¬ p ( 0 ) if needed. □ Example 3 
+ To demonstrate the third case of the above proof, let us take a DQBF with a prefix Q = ∀ u ∀ v ∀ w ∃ x ( u , v ) ∃ y ( v , w ) . Below, the Axiom rule is applied to a clause C = { x , y , ¬ u , v } on the left and a corresponding first-order step to its translation t Q ( C ) on the right. Theorem 5 
+ DQBF - IR - calc is complete. Proof 
+ Let Q · ϕ be a false DQBF and let us consider G ( t Q ( ϕ ) ) , the set of all ground instances of clauses in t Q ( ϕ ) . Here, by a ground instance of a clause C we mean the clause C τ for some substitution τ : var ( C ) → { 0 , 1 } . By the combination of Lemma  1 and Herbrand’s theorem, G ( t Q ( ϕ ) ) ∧ p ( 1 ) ∧ ¬ p ( 0 ) is unsatisfiable and thus it has a FO-Res < refutation for any eligible symbol ordering <. We can chose the ordering such that literals containing predicate p become maximal in their respective clauses. This choice then has the following consequences for the refutation: (1) the refutation does not contain clauses subsumed by p (1) or ¬ p ( 0 ) , and (2) any clause containing the predicate p is resolved on a literal containing p . From this it is easy to see that any leaf in the refutation gives rise (in zero, one or two resolution steps with p (1) or ¬ p ( 0 ) ) to a clause D = t Q ( C ) where C can be obtained by DQBF - IR - calc axiom from a C ′ ∈ ϕ , possibly followed by instantiation. The rest of the refutation consists of FO-Res < resolution steps which can be simulated by DQBF - IR - calc in a one-to-one fashion (unlike FO-Res < , DQBF - IR - calc does not have any ordering restrictions). □ 
+ Although one can lift the above argument with ordered resolution to show that the set 
+ { t Q ( C ) ∣ C can be derived by axiom ( ϕ ) } 
+ is unsatisfiable for any false DQBF Q · ϕ , we have only shown how to simulate ground FO-Res < steps by DQBF - IR - calc . That is because a lifted FO-Res < derivation may contain instantiation steps which rename variables apart for which a subsequent resolvent cannot be represented in DQBF - IR - calc . An example is the resolvent { y ( v ) , z ( v ′ ) } of clauses { x ( u ) , y ( v ) } and { ¬ x ( u ) , z ( v ′ ) } which is obviously stronger than the clause { y ( v ) , z ( v ) } . However, only the latter has a counterpart in DQBF - IR - calc . 
+ We also remark that in a similar way we can also lift to DQBF the QBF calculus ∀ Exp + Res from [ 23 ]. It is easily verified that the simulation of ∀ Exp + Res by IR - calc shown in [ 7 ] directly transfers from QBF to DQBF. Hence Theorem  5 immediately implies the soundness of ∀ Exp + Res lifted to DQBF. Moreover, because all ground instances are also available in ∀ Exp + Res lifted to DQBF, this system is also complete as can be shown by repeating the argument of Theorem  5 . Corollary 1 
+ DQBF - ∀ Exp + Res is sound and complete. Dependency Schemes in Expansion-Based QBF Systems 
+ As we noted in Sect.  4.2 , our DQBF interpretation allows a QBF calculus, when augmented with a dependency scheme, to be equated with a fragment of a suitable DQBF system using the notion of projection (Definition  5 ). This idea remains appropriate in the current context, in which we propose IR ( D ) - calc , the natural parameterisation of IR - calc by a dependency scheme, whereupon Theorem  4 has direct consequences for soundness. As it turns out, in contrast to QU ( D ) - Res , full exhibition characterises precisely the schemes for which IR ( D ) - calc is sound. 
+ Similarly as for QU - Res , the natural generalisation of IR - calc by dependency scheme has exactly the same logical rules as the (hypothetical) system in which one first maps the instance to its image under D , and then uses the rules of DQBF - IR - calc . For that reason, the IR ( D ) - calc derivations from Φ are exactly the DQBF - IR - calc derivations from D ( Φ ) . Thus, we define IR ( D ) - calc as the appropriate projection of DQBF - IR - calc . 
+ Definition 7 
+ For each dependency scheme D , the QBF calculus IR ( D ) - calc is the projection of DQBF - IR - calc according to D . 
+ Our DQBF interpretation now becomes rather fruitful, interfacing directly with the connections to first-order logic exploited in the previous subsection. The following characterisation of soundness in IR ( D ) - calc is almost immediate from the soundness and incompleteness of DQBF - IR - calc . Theorem 6 
+ IR ( D ) - calc is sound if and only if D is fully exhibited. Proof 
+ If D is fully exhibited, it maps every true QBF Φ to a true DQBF D ( Φ ) . By Theorem  4 , DQBF - IR - calc is sound, and cannot refute D ( Φ ) . Hence IR ( D ) - calc cannot refute Φ . 
+ On the other hand, if D is not fully exhibited, it maps some true QBF Φ ′ to a false DQBF D ( Φ ′ ) . By Theorem  5 , DQBF - IR - calc is complete, and can therefore refute D ( Φ ′ ) . It follows that IR ( D ) - calc , which can refute the true QBF Φ ′ , is not sound. □ 
+ Naturally, the situation for the base expansion system ∀ Exp + Res is very similar to IR - calc . Repeating our method, ∀ Exp ( D ) + Res can be defined as a projection of DQBF - ∀ Exp + Res , and the characterisation of soundness in terms of full exhibition can be proved similarly to Theorem  6 . Definition 8 
+ For each dependency scheme D , the QBF calculus ∀ Exp ( D ) + Res is the projection of DQBF - IR - calc according to D . Theorem 7 
+ ∀ Exp ( D ) + Res is sound if and only if D is fully exhibited. Demonstrating Full Exhibition 
+ In this section, we demonstrate that the reflexive resolution path dependency scheme D rrs [ 37 ] is fully exhibited, thereby proving the conjecture of Slivovsky [ 35 , p. 37]. We begin by recalling D rrs in Sect.  6.1 , and proceed to prove the result in Sect.  6.2 . 
+ Definition of the Dependency Scheme D rrs 
+ 
+ The reflexive resolution path dependency scheme D rrs is arguably the most important in the literature, being the most general scheme D for which it is known that Q ( D ) - Res is sound. Given that we consider only the (in)dependence of existentials on universals (see the discussion in Sect.  3.1 ), we obtain a presentation of D rrs that is significantly simpler than the original definition in [ 37 ]. 
+ The scheme works by appeal to the syntactic form of an instance, and identifies dependent variables by means of connections via matrix clauses. These connections, known as resolution paths [ 40 ], associate pairs of clauses in which some connecting existential variable appears in opposite polarities. For our purposes in the present work, we capture a refined notion of resolution path with the binary relation C . 
+ Definition 9 
+ (Adapted from [ 40 ]) Let Φ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ be a QBF, let i ∈ [ m ] and j ∈ [ i ] , and let l and l ′ be literals with var ( l ) = u i and var ( l ′ ) = x j . A sequence of clauses C 1 , ⋯ , C p ∈ ϕ with l ∈ C 1 and l ′ ∈ C p is a resolution path in Φ from l to l ′ iff (a) u i ∈ S j , and (b) there is a sequence of existential literals l 1 , ⋯ , l p - 1 for which the following three conditions hold: 
+ 
+ 
+ (i) u i is in the support set of var ( l k ) , for each k ∈ [ p - 1 ] , 
+ 
+ 
+ (ii) l k ∈ C k and ¬ l k ∈ C k + 1 , for each k ∈ [ p - 1 ] , 
+ 
+ 
+ (iii) var ( l k ) ≠ var ( l k + 1 ) for each k ∈ [ p - 2 ] . 
+ 
+ 
+ We say that ( l , l ′ ) ∈ C Φ if and only if there exists a resolution path in Φ from l to l ′ . 
+ We emphasise that, in a resolution path from a (universal) literal l to an (existential) literal l ′ (with var ( l ) in the support set of var ( l ′ ) ), var ( l ) should appear in the support set of each ‘connecting’ existential variable var ( l 1 ) , ⋯ , var ( l p - 1 ) . Now, given an existential x and a universal u in the support set of x , D rrs determines that x depends on  u by finding a suitable pair of resolution paths; namely, one resolution path from a literal in u to a literal in x , and a second path between the complementary literals. Definition 10 
+ ( D rrs [ 37 ]) Let Φ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ be a QBF. The reflexive resolution path dependency scheme D rrs is defined by 
+ D rrs ( Φ ) = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ′ ) ⋯ ∃ x n ( S n ′ ) · ϕ 
+ in which u i ∈ S j ′ if and only if (a) u i ∈ S j , and (b) there exist literals l and l ′ with var ( l ) = u i and var ( l ′ ) = x j for which ( l , l ′ ) ∈ C Φ and ( ¬ l , ¬ l ′ ) ∈ C Φ . Proof of the Full Exhibition of D rrs 
+ 
+ In order to prove that D rrs is fully exhibited, we must show that the image under D rrs of an arbitrary true QBF Φ is a true DQBF D rrs ( Φ ) . Our method involves taking an arbitrary model for Φ and transforming it, step by step, into a model for D rrs ( Φ ) . 
+ To do so, we need a framework and notation for manipulating DQBF models. We choose to work with assignment trees [ 32 ]. An assignment tree can be naturally interpreted as a set of paths (not to be confused with resolution paths), where each path from the root of the tree to a leaf spells out a total assignment to the variables of the formula. In this context, a path for a DQBF Φ is a set containing exactly one literal for each variable in Φ (and nothing more). We will be frequently inspecting the literals appearing in paths, so we adopt the following notation: For a variable z and path P , we write P [ z ] for the unique literal l in P with var ( l ) = z ; that is, if ¬ z ∈ P , then P [ z ] = ¬ z , otherwise P [ z ] = z . 
+ In order for a set of paths to properly represent an assignment tree for a DQBF, it must contain exactly one path for each total assignment to the universal variables, and must also respect the variable dependencies given by the prefix support sets. Additionally, for an assignment tree to represent a model, every path must satisfy every clause of the matrix. We give a formal definition below. 
+ Definition 11 
+ (Assignment tree) Let Φ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ be a DQBF. A set T of paths for Φ is an assignment tree for Φ if and only if the following two conditions hold: 
+ 
+ For each total assignment U to { u 1 , ⋯ , u m } , there is a unique path in T that contains U . 
+ For each i ∈ [ m ] , for each j ∈ [ n ] with u i ∉ S j , and for each path P ∈ T , P [ x j ] = comp ( P , T , u i ) [ x j ] , 
+ 
+ where the path complementary to P in T with respect to u i , written comp ( P , T , u i ) , is the unique path in T that agrees with P on all universal variables except u i . Additionally, T represents a model for Φ if and only if every path in T satisfies every clause in ϕ . 
+ The second item in the above definition is of particular prominence in the following proofs. Therefore, for the sake of readability, if condition (b) holds for an assignment tree T , we say that ‘ T exhibits the independence of x j on u i ’. We will often write ‘ T models Φ ’ rather than ‘ T represents a model for Φ ’. 
+ We may now reformulate DQBF semantics in terms of assignment trees. Where an assignment tree represents a model we will prefer to use the symbol M as opposed to T . Proposition 4 
+ A DQBF Φ is true if and only if there is an assignment tree M that models Φ . 
+ Our proof method may be described as follows. We take an arbitrary model M for Φ . Given that D rrs ( Φ ) is stronger than Φ , there are extra independencies that need to be exhibited if M is to be transformed into a model for D rrs ( Φ ) . We achieve this by working independently with each universal variable in turn. That is, we first transform M into a model M 1 that exhibits all the required existential independencies on u 1 , then into a model M 2 that exhibits all those on u 2 , and so on through to the final universal u m , whereupon M m models D rrs ( Φ ) . 
+ We transform models by working with the individual paths, for which we introduce the following notion of reformed path . A path P is reformed with respect to universal variable u by copying particular existential assignments from its corresponding complementary path. Specifically, for any existential x whose support set contains variable u , a path P ∈ M takes the x -literal from the complementary path comp ( P , M , u ) if and only if there is no resolution path from the literal ¬ P [ u ] to the negation of that x -literal. Reforming a path does not affect the universal literals. Definition 12 
+ (Reformed path) Let M be a model for a DQBF Φ , let P be a path in M , let u be a universal variable in Φ and put l = P [ u ] . The reformed path ref ( P , M , u ) of P in M with respect to u is given by 
+ ref ( P , M , u ) [ z ] = comp ( P , M , u ) [ z ] if z is existential and ( ¬ l , ¬ l ′ ) ∉ C Φ , P [ z ] otherwise , 
+ where z is an arbitrary variable appearing in Φ and l ′ = comp ( P , M , u ) [ z ] . 
+ In what follows, it is crucial that reforming any path in a model for a DQBF does not cause that path to falsify any clauses in the matrix. That is the subject of the following lemma. Lemma 2 
+ Let M be a model for a DQBF Φ , let P be a path in M and let u be a universal variable appearing in Φ . Then ref ( P , M , u ) satisfies every clause in the matrix of Φ . Proof 
+ Let Φ = Q · ϕ . Aiming for contradiction, we suppose that ref ( P , M , u ) falsifies some clause C ∈ ϕ . We show that comp ( P , M , u ) falsifies C , contradicting the fact that M is a model. 
+ Noting that P and ref ( P , M , u ) agree on universal variables, we assume w.l.o.g. that P [ u ] = ref ( P , M , u ) [ u ] = ¬ u and comp ( P , M , u ) [ u ] = u . Also, since P satisfies C , there exists an existential variable x appearing in C on which P and ref ( P , M , u ) disagree. Hence, assuming w.l.o.g. that x appears positively in C , we have P [ x ] = x and ref ( P , M , u ) [ x ] = ¬ x . It follows then, from the definition of reformed path, that comp ( P , M , u ) [ x ] = ¬ x and that 
+ 
+ ( u , x ) ∉ C Φ . 
+ 1 
+ 
+ Now we show that comp ( P , M , u ) falsifies C , or, equivalently, that the intersection comp ( P , M , u ) ∩ C is empty. 
+ We first show that comp ( P , M , u ) contains none of the universal literals in C . Note that, since x ∈ C , we cannot have u ∈ C , for that would imply ( u , x ) ∈ C Φ by definition of D rrs , contradicting statement ( 1 ). Also, ref ( P , M , u ) does not contain any of the universal literals in C , and comp ( P , M , u ) agrees with ref ( P , M , u ) on all universal variables other than u . Hence comp ( P , M , u ) ∩ C ∀ = ∅ . 
+ Finally, we show that comp ( P , M , u ) contains none of the existential literals in C . Let l be any existential literal in C with var ( l ) ≠ x . If ( u , ¬ l ) ∈ C Φ , then there exists a sequence of clauses C 1 , ⋯ , C k ∈ ϕ and a sequence of existential literals l 1 , ⋯ , l k - 1 satisfying the four conditions of Definition  9 . Then, it is readily verifiable that the sequences C 1 , ⋯ , C k , C ∈ ϕ and l 1 , ⋯ , l k - 1 , l also satisfy Definition  9 , showing that ( u , x ) ∈ C Φ and contradicting statement ( 1 ). It follows that ( u , ¬ l ) ∉ C Φ , and that 
+ 
+ comp ( P , M , u ) [ var ( l ) ] = l implies ref ( P , M , u ) [ var ( l ) ] = l , 
+ 2 
+ 
+ by the definition of reformed path. However, ref ( P , M , u ) [ var ( l ) ] = ¬ l , since the reformed path falsifies C by supposition, and hence comp ( P , M , u ) [ var ( l ) ] = ¬ l , by the contrapositive of ( 2 ). Since we noted earlier that comp ( P , M , u ) [ x ] = ¬ x , it follows that comp ( P , M , u ) ∩ C ∃ = ∅ . □ 
+ The main idea behind the model transformation is that every path P ∈ M will be reformed with respect to u , essentially by comparison with its complementary path comp ( P , M , u ) , and that the result will exhibit the necessary existential independencies on u . It is quite natural to perform this procedure in two stages. First, all paths containing literal ¬ u are reformed, and we call the result the left reform 5 of M with respect u . We then reform the remaining paths, i.e. we take the right reform of the resulting model. The two-stage process reflects the way that D rrs works with polarity, and requires the existence of a pair of resolution paths to determine the dependency relation. Definition 13 
+ (Reformed model) Let M be a model for a DQBF Φ , let u be a universal variable in Φ , and let L = { P ∈ M ∣ P [ u ] = ¬ u } (respectively R = { P ∈ M ∣ P [ u ] = u } ). The left-reform (respectively right-reform ) of M with respect to u is given by the set of paths ( M \ L ) ∪ { ref ( P , M , u ) ∣ P ∈ L } (respectively ( M \ R ) ∪ { ref ( P , M , u ) ∣ P ∈ R } ). The reformed model ref ( M , u ) of M with respect to u is the right reform of M ′ with respect to u , where M ′ is the left reform of M with respect to u . 
+ From the definition of a reformed model, it follows that left-reform of a model with respect to u preserves all paths that contain the positive literal u ; similarly, right-reform preserves all paths containing the negative literal ¬ u . We use this property fairly frequently in the forthcoming proofs of lemmas  4 and  5 . 
+ In order to prove our main result, we need to prove three properties of the reformed model. First, it is of course necessary that the reformed model is indeed a model, as stated in the following lemma. Lemma 3 
+ Let Φ be a QBF, and let u be a universal variable appearing in Φ . If M models Φ , then ref ( M , u ) also models Φ . Proof 
+ Let Φ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ , and let M ′ be the left-reform of M with respect to u . We show that M ′ is an assignment tree for Φ . It is clear that M ′ is a set of paths for Φ , so we verify that M ′ satisfies conditions (a) and (b) of Definition  11 . 
+ Since M is an assignment tree for Φ , for each total assignment U to the universal variables { u 1 , ⋯ , u m } , there is a unique path in M that contains U , by condition (a). By definition, reforming a path does not affect the universal literals, so M ′ also satisfies condition (a). 
+ To see that M ′ satisfies condition (b), let i ∈ [ m ] and j ∈ [ n ] such that u i ∉ S j . Further, let  P ′ and Q ′ be paths in M ′ such that Q ′ = comp ( P ′ , M ′ , u i ) , and assume w.l.o.g. that P ′ [ u i ] = ¬ u i and Q ′ [ u i ] = u i . We only need to show that P ′ [ x j ] = Q ′ [ x j ] . To that end, let P and Q be the unique paths in  M that agree with P ′ and Q ′ respectively on all universal variables. We observe that Q = comp ( P , M , u i ) , and since M models Φ we have P [ x j ] = Q [ x j ] . We consider two cases. 
+ 
+ Suppose that u = u i . Then P ′ = ref ( P , M , u i ) (since P [ u i ] = ¬ u i ) and Q ′ = Q (since Q [ u i ] = u i ). By definition of reformed path, P ′ [ x j ] is equal to either P [ x j ] or Q [ x j ] , and in either case P ′ [ x j ] = Q ′ [ x j ] . 
+ Suppose instead that u ≠ u i . We consider two subcases. 
+ Suppose that P [ u ] = Q [ u ] = ¬ u . By definition of left reform, we must have P ′ = ref ( P , M , u ) and Q ′ = ref ( Q , M , u ) , so it suffices to show that ref ( P , M , u ) [ x j ] = ref ( Q , M , u ) [ x j ] . Note that the paths comp ( P , M , u ) and comp ( Q , M , u ) are complementary in M with respect to u i , and since M models Φ and u i ∉ S j we have comp ( P , M , u ) [ x j ] = comp ( Q , M , u ) [ x j ] . Now, if ( u , x j ) ∉ C Φ , then we have ref ( P , M , u ) [ x j ] = comp ( P , M , u ) [ x j ] and ref ( Q , M , u ) [ x j ] = comp ( Q , M , u ) [ x j ] . Otherwise, if ( u , x j ) ∈ C Φ , then ref ( P , M , u ) [ x j ] = P [ x j ] and ref ( Q , M , u ) [ x j ] = Q [ x j ] . In either case, we have ref ( P , M , u ) [ x j ] = ref ( Q , M , u ) [ x j ] . 
+ Suppose on the other hand that P [ u ] = Q [ u ] = u . Then P ′ = P and Q ′ = Q by definition of left reform, and it follows immediately that P ′ [ x j ] = Q ′ [ x j ] . 
+ 
+ 
+ 
+ By Lemma  2 , every path in M ′ satisfies every clause in ϕ , therefore M ′ models Φ . A similar argument shows that the reformed model of M with respect to u , which is the right-reform of M ′ with respect to u , also models Φ . □ 
+ Secondly, we need to prove that the reformed model (with respect to u ) does in fact exhibit the existential independencies on u identified by D rrs . That is, we must show that the reformed model does indeed exhibit the independence of x on u whenever u is absent from the support set of x in the DQBF D rrs ( Φ ) . We state this formally in the following lemma. The fact that this lemma holds is exactly the motivation behind the construction of the reformed path. Lemma 4 
+ Let M be a model for a QBF Φ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ , let D rrs ( Φ ) = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ′ ) ⋯ ∃ x n ( S n ′ ) · ϕ , and let i ∈ [ m ] . For each j ∈ [ n ] with u i ∉ S j ′ , ref ( M , u i ) exhibits the independence of x j on u i . Proof 
+ Let M ′ be the left reform of M with respect to u i , and let M ″ = ref ( M , u i ) be the right reform of M ′ with respect to u i . Further, let U be an arbitrary (total) assignment to the universals { u 1 , ⋯ , u m } , and denote by P , P ′ and P ″ the unique paths in M , M ′ and M ″ (respectively) that contain U . Also, let Q , Q ′ and Q ″ be the paths complementary to P , P ′ and P ″ in M , M ′ and M ″ (respectively) with respect to u i . 
+ Now let j ∈ [ n ] such that u i ∉ S j ′ . Since U is an arbitrary total assignment to the universals that defines a unique path in a model for Φ , showing that ref ( M , u i ) exhibits the independence of x j on u i is equivalent to showing P ″ [ x j ] = Q ″ [ x j ] . Hence we may assume w.l.o.g. that ¬ u i ∈ U , so P [ u i ] = P ′ [ u i ] = P ″ [ u i ] = ¬ u i and Q [ u i ] = Q ′ [ u i ] = Q ″ [ u i ] = u i . We consider two cases. 
+ 
+ Suppose that P [ x j ] = Q [ x j ] . Since M ′ is the left reform of M with respect to u i , and left reform with respect to u i preserves any path containing u i , we have Q ′ = Q . Since P and Q agree on  x j , the reformed path ref ( P , M , u i ) must also agree with both P and Q on x j , by definition of reformed path. Hence P ′ [ x j ] = Q ′ [ x j ] , which implies P ″ [ x j ] = Q ″ [ x j ] unconditionally (i.e., it does not rely on P [ x j ] = Q [ x j ] ). To see this, note that Q ″ = ref ( Q ′ , M ′ , u i ) , and hence Q ″ [ x j ] = P ′ [ x j ] by definition of reformed path. Moreover, P ″ = P ′ because P ′ [ u i ] = ¬ u i , and right reform with respect to u i preserves any path containing ¬ u i . 
+ On the other hand, suppose that P [ x j ] ≠ Q [ x j ] . Further, assume w.l.o.g. that P [ x j ] = x j and Q [ x j ] = ¬ x j . Now, since u i ∉ S j ′ , we have either ( u i , x j ) ∉ C Φ or ( ¬ u i , ¬ x j ) ∉ C Φ , by definition of D rrs , so we consider two sub-cases. 
+ Suppose that ( u i , x j ) ∉ C Φ . Since M ′ is the left reform of M with respect to u i , we have P ′ = ref ( P , M , u i ) (because P [ u i ] = ¬ u i ) and Q ′ = Q (because Q [ u i ] = u i ). Therefore P ′ [ x j ] = Q [ x j ] = Q ′ [ x j ] by definition of reformed path. The fact that P ″ [ x j ] = Q ″ [ x j ] may then be deduced exactly as in case (1) above. 
+ Suppose on the other hand that ( u i , x j ) ∈ C Φ . Then P ′ [ x j ] = P [ x j ] by definition of reformed path. Since M ″ is the right reform of M ′ with respect to u i , we have P ″ = P ′ (because P ′ [ u i ] = ¬ u i ) and Q ″ = ref ( Q ′ , M ′ , u i ) (because Q ′ [ u i ] = u i ). Moreover, we must have ( ¬ u i , ¬ x j ) ∉ C Φ , for otherwise u i ∈ S j ′ by definition of D rrs . Since P ′ [ x j ] = x j , we have Q ″ [ x j ] = P ′ [ x j ] by definition of reformed path. Therefore P ″ [ x j ] = P ′ [ x j ] = Q ″ [ x j ] . □ 
+ 
+ 
+ 
+ 
+ Now, we intend to successively reform the model M to exhibit independences on the universal variables, one by one. It is therefore crucial that future reforms do not undo the work of previous ones; that is, reforming a model must preserve the existing exhibition of independencies. This is indeed the case, as stated in our third and final lemma. Lemma 5 
+ Let M be a model for a QBF Φ . Further, let u and v be universal variables and let x be an existential variable, all of which appear in Φ . If M exhibits the independence of x on v , then so does ref ( M , u ) . Proof 
+ Let M ′ be the left reform of M with respect to u , and let M ″ = ref ( M , u ) be the right reform of M ′ with respect to u . Let U be an arbitrary (total) assignment to the universal variables of Φ , and assume w.l.o.g. that { ¬ u , ¬ v } ⊆ U . 
+ We define twelve paths that we work with in this proof. Let P ¬ v , P ¬ v ′ and P ¬ v ″ be the unique paths in M , M ′ and M ″ (respectively) that contain U , and let Q ¬ v , Q ¬ v ′ and Q ¬ v ″ be paths complementary to P ¬ v , P ¬ v ′ and P ¬ v ″ in M , M ′ and M ″ (respectively) with respect to u . Further, let P v and Q v be the paths complementary to P ¬ v and Q ¬ v (respectively) in M with respect to v , and note that P v and Q v are paths complementary in M with respect to u . We define P v ′ , Q v ′ , P v ″ and Q v ″ similarly, and note that they are also paths complementary with respect to u in M ′ and M ″ . We emphasise that all ‘ P ’ paths contain literal ¬ u , whereas all ‘ Q ’ paths contain literal u . 
+ In order to show that ref ( M , u ) exhibits the independence of x on v , we need to prove that P ¬ v ″ [ x ] = P v ″ [ x ] and Q ¬ v ″ [ x ] = Q v ″ [ x ] . (In contrast to the proof of Lemma  4 , we cannot say that ¬ u ∈ P is without loss of generality here. This is because we need to show that the reformed model exhibits the independence of x on v , not on the ‘reform variable’ u . Since the right reform M ″ depends upon the state of the left reform M ′ , the outcome for a pair of paths complementary with respect to v may in principle depend upon their polarity at u . Hence, we must show explicitly that the exhibited independence of x on v is preserved for paths containing ¬ u and for those containing u .) Observe that Q ¬ v and Q ¬ v ′ are identical paths by definition of left reform since u ∈ Q , and that P ¬ v ″ and P ¬ v ′ are identical paths by definition of right reform since ¬ u ∈ P ′ ; hence Q ¬ v ′ [ x ] = Q ¬ v [ x ] and P ¬ v ″ [ x ] = P ¬ v ′ [ x ] . Further, assume w.l.o.g. that P ¬ v [ x ] = x . We consider four cases. 
+ 
+ Suppose that P ¬ v [ x ] = Q ¬ v [ x ] . Observe that this implies P ¬ v ′ [ x ] = P ¬ v [ x ] by definition of left reform and reformed path (independently of C Φ ), and hence P ¬ v ′ [ x ] = Q ¬ v ′ [ x ] . A symmetrical argument then shows that P ¬ v ″ [ x ] = P ¬ v ′ [ x ] and Q ¬ v ″ [ x ] = Q ¬ v ′ [ x ] . It follows that P ¬ v ″ [ x ] = P ¬ v [ x ] and Q ¬ v ″ [ x ] = Q ¬ v [ x ] . 
+ Suppose that P ¬ v [ x ] ≠ Q ¬ v [ x ] and ( u , x ) ∉ C Φ . Observe that P ¬ v ′ [ x ] = Q ¬ v [ x ] by definition of left reform and reformed path, since P ¬ v [ u ] = ¬ u , Q ¬ v [ x ] = ¬ x , and ( u , x ) ∉ C Φ . Hence, P ¬ v ′ [ x ] = Q ¬ v ′ [ x ] , and we deduce that P ¬ v ″ [ x ] = P ¬ v ′ [ x ] and Q ¬ v ″ [ x ] = Q ¬ v ′ [ x ] , using the same argument as for case (1). We conclude that P ¬ v ″ [ x ] = Q ¬ v ″ [ x ] = Q ¬ v [ x ] . 
+ Suppose that P ¬ v [ x ] ≠ Q ¬ v [ x ] , ( u , x ) ∈ C Φ and ( ¬ u , ¬ x ) ∉ C Φ . First, observe that P ¬ v ′ [ x ] = P ¬ v [ x ] by definition of left reform and reformed path, since P ¬ v [ u ] = ¬ u , Q ¬ v [ x ] = ¬ x , and ( u , x ) ∈ C Φ . Second, observe that Q ¬ v ″ [ x ] = P ¬ v ′ [ x ] by definition of right reform and reformed path, since Q ¬ v ′ [ u ] = u , P ¬ v ′ [ x ] = x , and ( ¬ u , ¬ x ) ∉ C Φ . We conclude that P ¬ v ″ [ x ] = Q ¬ v ″ [ x ] = P ¬ v [ x ] . 
+ Suppose that P ¬ v [ x ] ≠ Q ¬ v [ x ] , ( u , x ) ∈ C Φ and ( ¬ u , ¬ x ) ∈ C Φ . Similarly as for case (3), observe that P ¬ v ′ [ x ] = P ¬ v [ x ] . This implies that P ¬ v ′ [ x ] ≠ Q ¬ v ′ [ x ] . From here, a symmetrical argument (utilising the assumption ( u , x ) ∈ C Φ ) shows that Q ¬ v ″ [ x ] = Q ¬ v ′ [ x ] . We conclude that P ¬ v ″ [ x ] = P ¬ v [ x ] and Q ¬ v ″ [ x ] = Q ¬ v [ x ] . 
+ 
+ In all four cases, the argument is completely symmetrical with respect to the polarity of v ; that is, the argument goes through if each ¬ v subscript is replaced by v . In combination with the two facts P ¬ v [ x ] = P v [ x ] and Q ¬ v [ x ] = Q v [ x ] , which follow from the lemma statement ( M exhibits the indepedence of x on v ), we hence deduce that P ¬ v ″ [ x ] = P v ″ [ x ] and Q ¬ v ″ [ x ] = Q v ″ [ x ] in all four cases. The four cases are clearly exhaustive. □ 
+ With these latter three lemmata, we may now give a short inductive proof of full exhibition. Theorem 8 
+ D rrs is fully exhibited. Proof 
+ Let Φ = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ) ⋯ ∃ x n ( S n ) · ϕ be a true QBF, and let 
+ D rrs ( Φ ) = ∀ u 1 ⋯ ∀ u m ∃ x 1 ( S 1 ′ ) ⋯ ∃ x n ( S n ′ ) · ϕ . 
+ Further, let M 0 be a model for Φ and, for each i ∈ [ m ] , let M i = ref ( M i - 1 , u i ) . 
+ By induction on i ∈ [ m ] , we prove that M i is a model for Φ that, for each 1 ≤ k ≤ i and for each j ∈ [ n ] for which u k ∉ S j ′ , exhibits the independence of x j on u k . Hence at step i = m we prove that M m is a model for D rrs ( Φ ) . It follows that D rrs ( Φ ) is a true DQBF, and that D rrs is fully exhibited. 
+ For the base case i = 1 , observe that M 1 = ref ( M , u 1 ) is model for Φ by Lemma  3 , and that M 1 exhibits the independence of u 1 on x j for each j ∈ [ n ] with u 1 ∉ S j ′ , by Lemma  4 . For the inductive step, let i ∈ [ m ] and, suppose that M i - 1 is a model for Φ that, for each 1 ≤ k ≤ i - 1 and for each j ∈ [ n ] for which u k ∉ S j ′ , exhibits the independence of x j on u k . Then M i = ref ( M i - 1 , u i ) is a model for Φ that exhibits the independence of u i on x j , for each j ∈ [ n ] with u i ∉ S j ′ , by Lemmas  3 and  4 . Also, by Lemma  5 , the independences exhibited by M i - 1 are also exhibited by M i . It follows that M i is a model for Φ that, for each 1 ≤ k ≤ i and for each j ∈ [ n ] for which u k ∉ S j ′ , exhibits the independence of  x j on u k . This completes the inductive step, and the proof. □ 
+ We conclude this section by stating the following corollary. It is the immediate consequence of the fact that full exhibition is sufficient for soundness in all four dependency scheme systems (Theorems  2 and  7 ), combined with the full exhibition of D rrs (Theorem  8 ). Note that the soundness results carry over to the weaker scheme D std , since P ( D rrs ) always simulates P ( D std ) . Corollary 2 
+ Both P ( D rrs ) and P ( D std ) are sound, where P is any of the calculi ∀ Exp + Res , IR - calc , Q - Res and QU - Res . Conclusions and Open Problems 
+ We proposed an approach which strengthens the relationship between DQBF and QBF dependency schemes, furnishing fruitful connections between the two fields. By placing full exhibition at the centre of investigation, we have developed a method that gives rise to soundness results across calculi, a significant improvement over some existing ad hoc (and complex) proofs of soundness in the literature (cf. [ 37 ]). Theorems  4 and  5 highlight the importance of expansion-based proof systems for DQBF. Theorem  7 demonstrates that fully exhibited dependency schemes can be incorporated into expansion-based solving, as suggested in [ 22 ]. Theorem  8 proves Slivovsky’s conjecture that D rrs is fully exhibited [ 35 ]; therefore either of D rrs and D std may be implemented in expansion solving (Corollary  2 ). 
+ The relative proof complexities of Q - Res and Q ( D ) - Res were recently investigated, showing an exponential separation when D is D rrs [ 11 ]. The proof complexities of expansion-based systems parametrised by dependency schemes remains open, but we conjecture the same exponential separation between IR - calc and IR ( D rrs ) - calc . We showed that the extent of incompleteness in QU - Res can be rephrased in terms of the non-fully-exhibited schemes D for which Q ( D ) - Res is sound. The exact extent remains open; that is, it is an open problem to characterise exactly the false DQBFs for which there is no DQBF - Q - Res refutation. Acknowledgements 
+ This research was supported by Grant No. 60842 from the John Templeton Foundation, EPSRC grant EP/L024233/1, and a Doctoral Prize Fellowship from the EPSRC (Leroy Chew). Martin Suda was supported by the Austrian Science Fund (FWF) project S11409-N23 and the ERC Starting Grant 2014 SYMCAR 639270. Footnotes 
+ 
+ 
+ 1 The concept originates from [ 35 ]; the term ‘full exhibition’ was coined in [ 6 ]. 
+ 
+ 
+ 2 It is more conventional to write a QBF with a linearly ordered prefix, but it is convenient in this work to maintain the same notation for QBFs and DQBFs. 
+ 
+ 
+ 3 We note that the definition from [ 31 ] includes additional conditions, but we choose to omit them here, as they do not feature in this work. 
+ 
+ 
+ 4 Note that the fully exhibited scheme is not necessary polynomial-time computable. 
+ 
+ 
+ 5 Negative universal literals appear in the left-hand nodes in the conventional depiction of an assignment tree. 
+ 
+ References 
+ 
+ 
+ 1. Azhar S, Peterson G, Reif J. Lower bounds for multiplayer non-cooperative games of incomplete information. J. Comput. Math. Appl. 2001;41:957–992. doi: 10.1016/S0898-1221(00)00333-3. [ DOI ] [ Google Scholar ] 
+ 
+ 2. Bachmair, L., Ganzinger, H.: Resolution theorem proving. In: Robinson, J.A., Voronkov, A. (eds.) Handbook of Automated Reasoning, 2 volumes, pp. 19–99. Elsevier and MIT Press (2001) 
+ 
+ 
+ 3. Balabanov V, Chiang HK, Jiang JR. Henkin quantifiers and Boolean formulae: a certification perspective of DQBF. Theor. Comput. Sci. 2014;523:86–100. doi: 10.1016/j.tcs.2013.12.020. [ DOI ] [ Google Scholar ] 
+ 
+ 4. Balabanov, V., Widl, M., Jiang, J.R.: QBF resolution systems and their proof complexities. In: Sinz, C., Egly, U. (eds.) International Conference on Theory and Applications of Satisfiability Testing (SAT). Lecture Notes in Computer Science, vol. 8561, pp. 154–169. Springer (2014) 
+ 
+ 
+ 5. Bayardo Jr., R.J., Schrag, R.: Using CSP look-back techniques to solve real-world SAT instances. In: Kuipers, B., Webber, B.L. (eds.) National Conference on Artificial Intelligence (AAAI), pp. 203–208. AAAI Press / The MIT Press (1997) 
+ 
+ 
+ 6. Beyersdorff, O., Blinkhorn, J.: Dependency schemes in QBF calculi: semantics and soundness. In: Rueher, M. (ed.) Principles and Practice of Constraint Programming (CP). Lecture Notes in Computer Science, vol. 9892, pp. 96–112. Springer (2016) 
+ 
+ 
+ 7. Beyersdorff, O., Chew, L., Janota, M.: On unification of QBF resolution-based calculi. In: Csuhaj-Varjú, E., Dietzfelbinger, M., Ésik, Z. (eds.) International Symposium on Mathematical Foundations of Computer Science (MFCS). Lecture Notes in Computer Science, vol. 8635, pp. 81–93. Springer (2014) 
+ 
+ 
+ 8. Beyersdorff, O., Chew, L., Janota, M.: Proof complexity of resolution-based QBF calculi. In: Mayr, E.W., Ollinger, N. (eds.) International Symposium on Theoretical Aspects of Computer Science (STACS). Leibniz International Proceedings in Informatics (LIPIcs), vol. 30, pp. 76–89. Schloss Dagstuhl–Leibniz-Zentrum fuer Informatik (2015) 
+ 
+ 
+ 9. Beyersdorff, O., Chew, L., Schmidt, R.A., Suda, M.: Lifting QBF resolution calculi to DQBF. In: Creignou and Berre [16], pp. 490–499 
+ 
+ 
+ 10. Biere, A., Heule, M., van Maaren, H., Walsh, T. (eds.): Handbook of Satisfiability, Frontiers in Artificial Intelligence and Applications, vol. 185. IOS Press (2009) 
+ 
+ 
+ 11. Blinkhorn, J., Beyersdorff, O.: Shortening QBF proofs with dependency schemes. In: Gaspers and Walsh [18], pp. 263–280 
+ 
+ 
+ 12. Bloem, R., Könighofer, R., Seidl, M.: SAT-based synthesis methods for safety specs. In: McMillan, K.L., Rival, X. (eds.) International Conference on Verification, Model Checking, and Abstract Interpretation (VMCAI). Lecture Notes in Computer Science, vol. 8318, pp. 1–20. Springer (2014) 
+ 
+ 
+ 13. Bubeck, U., Kleine Büning, H.: Dependency quantified horn formulas: models and complexity. In: Biere, A., Gomes, C.P. (eds.) International Conference on Theory and Practice of Satisfiability Testing (SAT). Lecture Notes in Computer Science, vol. 4121, pp. 198–211. Springer (2006) 
+ 
+ 
+ 14. Cook, S.A.: The complexity of theorem-proving procedures. In: Harrison, M.A., Banerji, R.B., Ullman, J.D. (eds.) ACM Symposium on Theory of Computing (STOC), pp. 151–158. ACM (1971) 
+ 
+ 
+ 15. Cook SA, Reckhow RA. The relative efficiency of propositional proof systems. J. Symb. Log. 1979;44(1):36–50. doi: 10.2307/2273702. [ DOI ] [ Google Scholar ] 
+ 
+ 16. Creignou, N., Berre, D.L. (eds.): International Conference on Theory and Practice of Satisfiability Testing (SAT). Lecture Notes in Computer Science, vol. 9710. Springer (2016) 
+ 
+ 
+ 17. Fröhlich, A., Kovásznai, G., Biere, A., Veith, H.: iDQ: instantiation-based DQBF solving. In: Berre, D.L. (ed.) Workshop on Pragmatics of SAT (POS), EPiC Series in Computing, vol. 27, pp. 103–116. EasyChair, (2014) 
+ 
+ 
+ 18. Gaspers, S., Walsh, T. (eds.): International Conference on Theory and Practice of Satisfiability Testing (SAT). Lecture Notes in Computer Science, vol. 10491. Springer (2017) 
+ 
+ 
+ 19. Gelder, A.V.: Contributions to the theory of practical quantified Boolean formula solving. In: Milano, M. (ed.) International Conference on Principles and Practice of Constraint Programming (CP). Lecture Notes in Computer Science, vol. 7514, pp. 647–663. Springer (2012) 
+ 
+ 
+ 20. Gitina, K., Wimmer, R., Reimer, S., Sauer, M., Scholl, C., Becker, B.: Solving DQBF through quantifier elimination. In: Nebel, W., Atienza, D. (eds.) Design, Automation & Test in Europe Conference & Exhibition (DATE), pp. 1617–1622. ACM (2015) 
+ 
+ 
+ 21. Henkin, L.: Some remarks on infinitely long formulas. In Infinistic Methods, pp 167–183. Pergamon Press, Oxford (1961) 
+ 
+ 
+ 22. Janota M, Klieber W, Marques-Silva J, Clarke EM. Solving QBF with counterexample guided refinement. Artif. Intell. 2016;234:1–25. doi: 10.1016/j.artint.2016.01.004. [ DOI ] [ Google Scholar ] 
+ 
+ 23. Janota M, Marques-Silva J. Expansion-based QBF solving versus Q-resolution. Theor. Comput. Sci. 2015;577:25–42. doi: 10.1016/j.tcs.2015.01.048. [ DOI ] [ Google Scholar ] 
+ 
+ 24. Kleine Büning H, Karpinski M, Flögel A. Resolution for quantified Boolean formulas. Inf. Comput. 1995;117(1):12–18. doi: 10.1006/inco.1995.1025. [ DOI ] [ Google Scholar ] 
+ 
+ 25. Lewis HR. Complexity results for classes of quantificational formulas. J. Comput. Syst. Sci. 1980;21(3):317–353. doi: 10.1016/0022-0000(80)90027-6. [ DOI ] [ Google Scholar ] 
+ 
+ 26. Lonsing, F.: Dependency schemes and search-based qbf solving: Theory and practice. Ph.D. thesis, Johannes Kepler University (2012) 
+ 
+ 
+ 27. Lonsing F, Biere A. DepQBF: a dependency-aware QBF solver. J. Satisf. Boolean Model. Comput. 2010;7(2–3):71–76. [ Google Scholar ] 
+ 
+ 28. Meel, K.S., Vardi, M.Y., Chakraborty, S., Fremont, D.J., Seshia, S.A., Fried, D., Ivrii, A., Malik, S.: Constrained sampling and counting: Universal hashing meets SAT solving. In: Darwiche, A. (ed.) Beyond NP, AAAI Workshops , vol. WS-16-05. AAAI Press (2016) 
+ 
+ 
+ 29. Rabe, M.N.: A resolution-style proof system for DQBF. In: Gaspers and Walsh [18], pp. 314–325 
+ 
+ 
+ 30. Samer, M.: Variable dependencies of quantified CSPs. In: Cervesato, I., Veith, H., Voronkov, A. (eds.) International Conference on Logic for Programming, Artificial Intelligence and Reasoning (LPAR). Lecture Notes in Computer Science, vol. 5330, pp. 512–527. Springer (2008) 
+ 
+ 
+ 31. Samer M, Szeider S. Backdoor sets of quantified Boolean formulas. J. Autom. Reason. 2009;42(1):77–97. doi: 10.1007/s10817-008-9114-5. [ DOI ] [ Google Scholar ] 
+ 
+ 32. Samulowitz, H., Bacchus, F.: Using SAT in QBF. In: van Beek, P. (ed.) International Conference on Principles and Practice of Constraint Programming (CP). Lecture Notes in Computer Science, vol. 3709, pp. 578–592. Springer (2005) 
+ 
+ 
+ 33. Seidl, M., Lonsing, F., Biere, A.: qbf2epr: A tool for generating EPR formulas from QBF. In: Fontaine, P., Schmidt, R.A., Schulz, S. (eds.) Workshop on Practical Aspects of Automated Reasoning PAAR, EPiC Series in Computing, vol. 21, pp. 139–148. EasyChair (2012) 
+ 
+ 
+ 34. Silva, J.P.M., Sakallah, K.A.: GRASP-a new search algorithm for satisfiability. In: Rutenbar, R.A., Otten, R.H.J.M. (eds.) International Conference on Computer-Aided Design (ICCAD), pp. 220–227. IEEE Computer Society/ACM (1996) 
+ 
+ 
+ 35. Slivovsky, F.: Structure in # SAT and QBF. Ph.D. thesis, Vienna University of Technology (2015) 
+ 
+ 
+ 36. Slivovsky, F., Szeider, S.: Computing resolution-path dependencies in linear time. In: Cimatti, A., Sebastiani, R. (eds.) International Conference on Theory and Applications of Satisfiability Testing (SAT). Lecture Notes in Computer Science, vol. 7317, pp. 58–71. Springer (2012) 
+ 
+ 
+ 37. Slivovsky F, Szeider S. Soundness of Q-resolution with dependency schemes. Theor. Comput. Sci. 2016;612:83–101. doi: 10.1016/j.tcs.2015.10.020. [ DOI ] [ Google Scholar ] 
+ 
+ 38. Stockmeyer, L.J., Meyer, A.R.: Word problems requiring exponential time: preliminary report. In: Aho, A.V., Borodin, A., Constable, R.L., Floyd, R.W., Harrison, M.A., Karp, R.M., Strong, H.R. (eds.) ACM Symposium on Theory of Computing (STOC), pp. 1–9. ACM (1973) 
+ 
+ 
+ 39. Tentrup, L.: On expansion and resolution in CEGAR based QBF solving. In: Majumdar, R., Kuncak, V. (eds.) International Conference on Computer Aided Verification (CAV). Lecture Notes in Computer Science, vol. 10427, pp. 475–494. Springer (2017) 
+ 
+ 
+ 40. Van Gelder, A.: Variable independence and resolution paths for quantified Boolean formulas. In: Lee, J.H. (ed.) International Conference on Principles and Practice of Constraint Programming (CP). Lecture Notes in Computer Science, vol. 6876, pp. 789–803. Springer (2011) 
+ 
+ 
+ 41. Vardi MY. Boolean satisfiability: theory and engineering. ACM. 2014;57(3):5. doi: 10.1145/2578043. [ DOI ] [ Google Scholar ] 
+ 
+ 42. Wimmer, R., Scholl, C., Wimmer, K., Becker, B.: Dependency schemes for DQBF. In: Creignou and Berre [16], pp. 473–489 
+ 
+ 
+ Articles from Journal of Automated Reasoning are provided here courtesy of Springer 
+
+ 
+
+ 
+ 
+ 
+ 
+
+ 
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ ACTIONS 
+ 
+ 
+ 
+ 
+ 
+ View on publisher site 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ PDF (795.8 KB) 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ Cite 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ Collections 
+ 
+ 
+ 
+ 
+ 
+ Permalink 
+ 
+ 
+
+ 
+ 
+ PERMALINK 
+ 
+ 
+ 
+ 
+ Copy 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ RESOURCES 
+ 
+ 
+ 
+ 
+ Similar articles
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ Cited by other articles
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ Links to NCBI Databases
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+ 
+ 
+ 
+
+ 
+
+ 
+ 
+ 
+ Cite 
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ Copy 
+ 
+ 
+ 
+ 
+ 
+ Download .nbib 
+ .nbib 
+ 
+ 
+ 
+ 
+
+ 
+ Format: 
+ 
+ 
+ 
+ AMA
+ 
+ 
+ 
+ APA
+ 
+ 
+ 
+ MLA
+ 
+ 
+ 
+ NLM
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ Add to Collections 
+ 
+ 
+ 
+
+
+ 
+
+ 
+
+ 
+ 
+ 
+ Create a new collection 
+ 
+ 
+ 
+ Add to an existing collection 
+ 
+ 
+
+ 
+ 
+ 
+ Name your collection
+ * 
+ 
+ 
+ 
+ 
+ 
+ Choose a collection
+ 
+ 
+ 
+ 
+ Unable to load your collection due to an error 
+ Please try again 
+ 
+ 
+ 
+
+ 
+ 
+ Add
+ 
+ 
+ Cancel
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+ 
+ 
+
+
+
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ Follow NCBI
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ NCBI on X (formerly known as Twitter) 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ NCBI on Facebook 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ NCBI on LinkedIn 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ NCBI on GitHub 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ NCBI RSS feed 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ Connect with NLM
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ NLM on X (formerly known as Twitter) 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ NLM on Facebook 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ NLM on YouTube 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ National Library of Medicine
+ 8600 Rockville Pike Bethesda, MD 20894 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ Web Policies
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ FOIA
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ HHS Vulnerability Disclosure
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ Help
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ Accessibility
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ Careers
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ NLM
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ NIH
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ HHS
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+ 
+ 
+
+ 
+ USA.gov
+ 
+
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+
+
+ 
+ 
+ 
+ 
+
+
+ 
+ 
+
+ 
+ Back to Top 
+ 
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
