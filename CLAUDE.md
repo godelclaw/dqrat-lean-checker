@@ -34,7 +34,7 @@ Use the **lean-lsp MCP server** for all Lean interactions:
 | `DqratLean/DeletionPaths.lean` | `DeletePurePath`, `getReachable` BFS spec, `NoDeleteCrossPaths` |
 | `DqratLean/DeletionExhibition.lean` | The single open frontier theorem (leaf) |
 | `DqratLean/Semantics.lean` | Formal DQBF semantics via Skolem functions: `DQBFTrue`, `DQBFFalse`, `ValidSkolem` |
-| `DqratLean/Soundness.lean` | Formal soundness proofs (partially proved — see status below) |
+| `DqratLean/Soundness.lean` | Formal soundness proofs (complete — see status below) |
 | `DqratLean/Basic.lean` | Re-exports all submodules |
 | `Main.lean` | CLI entry: reads files, calls `parseDQDIMACS` then `processProof` |
 | `MonadTutor.lean` | Tutorial on `Std.Do` Hoare triples for verifying stateful (`EStateM`) programs. Read it whenever you need to reason about monadic programs in Lean. |
@@ -146,7 +146,7 @@ Binary: `.lake/build/bin/dqrat-lean <formula.dqdimacs> <proof.dqrat>`
 
 ## Next Proof Goals (Priority Order)
 
-1. Prove `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet` in `DeletionExhibition.lean` (see `sound_todo.md`)
+1. (none — the soundness development is complete; see `sound_todo.md` for follow-ups like linting and upstreaming)
 3. Formalize DQRATE soundness: show each RAT blocker contributes a contradiction
 4. Formalize DQRATU soundness: incorporate UR condition and path connectivity
 5. Assemble `processProof_sound` via induction on proof steps

@@ -51,7 +51,7 @@ Top-level files:
 - `Main.lean`: CLI entrypoint for `dqrat-lean`
 - `DqratLean.lean`: library root
 - `MonadTutor.lean`: notes/manual for the `mvcgen` proof style used in parts of the development
-- `sound_todo.md`: current proof roadmap / notes
+- `sound_todo.md`: proof status (complete) and history
 - `CLAUDE.md`: local workflow notes from prior work on this mirror
 
 Core Lean modules:

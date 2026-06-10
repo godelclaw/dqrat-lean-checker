@@ -2,7 +2,7 @@ import DqratLean.DeletionSemantics
 import DqratLean.DeletionPaths
 
 /-!
-# Deletion Exhibition (open frontier)
+# Deletion Exhibition (fully proved)
 
 Full exhibition of the reflexive resolution-path dependency scheme,
 transcribed from:
@@ -36,7 +36,8 @@ appropriate `on_`-literal — stated as a `Prop` and decided classically, so
 only the (already proved) *completeness* direction of the `getReachable`
 BFS specification is ever needed, never its soundness direction.
 
-Iterate here: `lake build DqratLean.DeletionExhibition` (sub-second).
+All lemmas in this module are proved; the development is sorry-free.
+(`lake build DqratLean.DeletionExhibition` rebuilds only this leaf.)
 -/
 
 open Std.Do

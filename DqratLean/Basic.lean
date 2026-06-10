@@ -11,4 +11,6 @@ import DqratLean.DeletionSemantics
 import DqratLean.DeletionPaths
 import DqratLean.DeletionExhibition
 import DqratLean.Soundness
-import DqratLean.Counterexamples
+-- DqratLean.Counterexamples (diagnostic witnesses using `native_decide`) is
+-- intentionally NOT imported here: it stays outside the certified path and
+-- is built explicitly by scripts/build_and_test.sh.

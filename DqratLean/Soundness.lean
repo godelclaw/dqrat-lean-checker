@@ -20,8 +20,12 @@ A DQRAT refutation demonstrates that a formula Ψ is false by:
 - Section 3: addClause monotonicity (fully proved)
 - Section 4: UR independence lemmas (fully proved)
 - Section 5: UR soundness (fully proved)
-- Section 6: DQRATE / DQRATU layer (DQRATU restoration proved; DQRATE semantic theorem pending)
-- Section 7: Overall checker soundness wrappers (partially pending)
+- Section 6: DQRATE / DQRATU layer (fully proved)
+- Section 7: Overall checker soundness wrappers (fully proved:
+  `checkAction_sound`, `processProof_sound'`, `parseDQDIMACS_none_sound`)
+
+The development is sorry-free; the dependency-deletion semantic theorem
+lives in `DqratLean/DeletionExhibition.lean`.
 -/
 
 -- ─── Section 2: DEL Rule Soundness ──────────────────────────────────────────
@@ -527,7 +531,7 @@ theorem DQBFTrue.addClause_of_located_perm
       clauseValue_of_matrixValue f cs σ sk cref c (hsk σ) hget
     simpa [clauseValue_perm f σ sk hperm] using hclause_c
 
--- ─── Section 6: RUP, DQRATE and DQRATU Soundness Stubs ──────────────────────
+-- ─── Section 6: RUP, DQRATE and DQRATU Soundness ─────────────────────────────
 
 /-- A clause is a *semantic consequence* of `(f, cs)`: it is true under every
     satisfying Skolem assignment and universal assignment. -/
@@ -9475,9 +9479,7 @@ private theorem checkDeleteClause_full_step_full_spec (dqbf : DQBF) (cs : Clause
               hfull₁.liveOccurrencesComplete cref
           }
 
--- ─── Section 7: Overall Checker Soundness Stub (full checker, all rules) ────
-
--- ─── Section 7: Overall Checker Soundness Stub ───────────────────────────────
+-- ─── Section 7: Overall Checker Soundness (full checker, all rules) ──────────
 
 /-- Result-dependent postcondition for matrix parsing.
     A `true` result means parse-time contradiction; `false` means a clean
