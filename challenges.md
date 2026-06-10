@@ -5,12 +5,18 @@ remaining proof gap, and help finish it honestly.
 
 ## What Is Left
 
-As of the current green state, `DqratLean/Soundness.lean` has exactly one
-theorem-body `sorry`:
+As of the current green state, the library has exactly one theorem-body
+`sorry`:
 
-1. `checkAction_sound`
+1. `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet`
+   (`DqratLean/DeletionExhibition.lean`)
 
-That remaining branch is the known negative-`e` / dependency-deletion blocker.
+This is the negative-`e` / dependency-deletion blocker in its honest final
+form: full exhibition of the reflexive resolution-path dependency scheme,
+a published theorem (Wimmer et al. SAT 2016; Beyersdorff & Blinkhorn
+JAR 2019). The wrapper chain up to `processProof_sound'` is green modulo
+this one theorem. Fast iteration: `lake build DqratLean.DeletionExhibition`
+rebuilds only the leaf module.
 
 ## Build And Test
 

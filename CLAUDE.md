@@ -29,6 +29,10 @@ Use the **lean-lsp MCP server** for all Lean interactions:
 | `DqratLean/CheckState.lean` | `CheckState`, `CheckM` monad, trail, propagation, independence cache |
 | `DqratLean/Checker.lean` | Core algorithms: `negateAndPropagate`, `checkDQRATE`, `checkDQRATU`, `checkPathC` |
 | `DqratLean/Parser.lean` | DQDIMACS parsing + two-phase proof parsing; `ProofResult` |
+| `DqratLean/SoundnessCore.lean` | Invariant definitions: `CheckState.Sound`/`Correct`/`FullCorrect` |
+| `DqratLean/DeletionSemantics.lean` | Deletion semantic layer: `forceDelDeps`, independence bridges, `flipUniv` |
+| `DqratLean/DeletionPaths.lean` | `DeletePurePath`, `getReachable` BFS spec, `NoDeleteCrossPaths` |
+| `DqratLean/DeletionExhibition.lean` | The single open frontier theorem (leaf) |
 | `DqratLean/Semantics.lean` | Formal DQBF semantics via Skolem functions: `DQBFTrue`, `DQBFFalse`, `ValidSkolem` |
 | `DqratLean/Soundness.lean` | Formal soundness proofs (partially proved — see status below) |
 | `DqratLean/Basic.lean` | Re-exports all submodules |
@@ -59,23 +63,23 @@ def DQBFFalse (f : DQBF) (cs : ClauseStore) : Prop  -- ¬ DQBFTrue
 
 ## Soundness Proof Status
 
-### Fully Proved ✅
-- **DEL rule** (`Soundness.lean` §2): Clause deletion preserves truth
-- **AddClause monotonicity** (`Soundness.lean` §3): Adding a clause to a true formula → original true
-- **UR rule** (`Soundness.lean` §5): Universal Reduction soundness (complete case analysis)
-- **ClauseStore operations** (`ClauseStore.lean`): Correctness of add/delete/lookup
+### Fully Proved
+- Parser correctness (`parseDQDIMACS_correct`) and executable regressions
+- DEL rule, addClause monotonicity, UR rule, RUP soundness
+- DQRATE soundness (`checkDQRATE_sound_spec` on the executable-aligned
+  `FullCorrect` surface, with the occurrence-completeness invariant)
+- Add-only existential modification (`checkModifyExistentialAddOnly_sound`)
+- Full wrapper chain: `checkAction_sound`, `processProof_sound'`
+- ClauseStore operations
 
-### Partially Proved / `sorry`'d ⚠️
-- **RUP soundness** (`Soundness.lean` §6): Top-level structure proved; substeps `sorry`'d:
-  - `unit_lit_model_true` — propagation behavior under consistent states
-  - `enqueue_preserves_consistent` — enqueue of model-true literal preserves consistency
-  - `propagate_no_conflict` — no conflicts arise from consistent state
-  - `negateAndPropagate_false_of_consistent` — key lemma linking RUP to semantics
-
-### Not Yet Proved ❌
-- **DQRATE soundness**: condition structure defined but proof body `sorry`'d
-- **DQRATU soundness**: similarly `sorry`'d
-- **`processProof_sound`**: main end-to-end soundness theorem (`sorry`'d)
+### The single open theorem
+- `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet`
+  (`DqratLean/DeletionExhibition.lean`) — full exhibition of the reflexive
+  resolution-path dependency scheme (known true: Wimmer et al. SAT 2016;
+  Beyersdorff & Blinkhorn JAR 2019). Everything else compiles sorry-free;
+  this is the only `sorry` in the library. See `sound_todo.md` for the
+  merged-witness proof plan. Iterate with
+  `lake build DqratLean.DeletionExhibition` (sub-second).
 
 ## Verification Approach
 
@@ -144,8 +148,7 @@ Binary: `.lake/build/bin/dqrat-lean <formula.dqdimacs> <proof.dqrat>`
 
 ## Next Proof Goals (Priority Order)
 
-1. Prove the sorry'd RUP substeps — start with `enqueue_preserves_consistent`, then `propagate_no_conflict`, then `negateAndPropagate_false_of_consistent`
-2. Use those to complete `RUP_soundness`
+1. Prove `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet` in `DeletionExhibition.lean` (see `sound_todo.md`)
 3. Formalize DQRATE soundness: show each RAT blocker contributes a contradiction
 4. Formalize DQRATU soundness: incorporate UR condition and path connectivity
 5. Assemble `processProof_sound` via induction on proof steps

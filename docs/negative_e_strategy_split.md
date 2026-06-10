@@ -62,3 +62,21 @@ Use `dqrat-lean-checker-work` as the merge target unless the static
 reach-closure theorem is shown false. Treat the watched branch as a source of
 lemmas, diagnostics, and counterexample packaging rather than as an
 independent proof frontier.
+
+## Resolution (2026-06-10)
+
+The split is resolved in favor of `-work`, with a stronger conclusion than
+the original audit:
+
+- The fiber-counting descent layer in `-work` was removed (checkpoint
+  `64c375e`, removal `f6c72b7`): its restart obligation over abstract
+  progress candidates admits adversarial instances and is as hard as the
+  full deletion theorem.
+- The frontier is now stated once, in bridge form:
+  `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet`
+  (`DqratLean/DeletionExhibition.lean`) — full exhibition of the reflexive
+  resolution-path dependency scheme, with literature citations in the
+  doc-comment.
+- `dqrat-lean-checker-watched` (`codex/watched-literals-port`) is archived:
+  its dynamic pool-continuation route is subsumed; mine it for lemmas and
+  counterexample packaging only. Do not continue frontier work there.

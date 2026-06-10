@@ -21,11 +21,12 @@ What is already done on this branch:
   - `processProofBasic_sound`
 
 What is not finished yet:
-- Full single-action wrapper soundness for the complete checker:
-  - `checkAction_sound`
+- One semantic theorem for the dependency-deletion (negative-`e`) rule:
+  - `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet`
+    (`DqratLean/DeletionExhibition.lean`)
 
-The real proof blocker underneath that remaining theorem is:
-- the negative-`e` / dependency-deletion proof path
+Everything downstream of it — `checkAction_sound`, `processProof_sound'` —
+is already written and green modulo that single theorem.
 
 The DQRATE seam was substantive, not just inconvenient:
 `DqratLean/Counterexamples.lean` contains an occurrence-hole witness showing that
@@ -34,9 +35,12 @@ accept an unsound addition. The branch now carries the stronger
 live-occurrence invariant where the RAT proof actually needs it, and
 `checkDQRATE_sound_spec` is proved on that executable-aligned route.
 
-As of the current green branch state, the only remaining explicit theorem-body
-`sorry` in `DqratLean/Soundness.lean` is `checkAction_sound`, specifically its
-negative-`e` `ModifyExistential` branch.
+As of the current green branch state, the only theorem-body `sorry` in the
+whole library is `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet` in
+`DqratLean/DeletionExhibition.lean`: full exhibition of the reflexive
+resolution-path dependency scheme, a published theorem (Wimmer et al.,
+SAT 2016; Beyersdorff & Blinkhorn, JAR 2019). See `sound_todo.md` for the
+transcription plan.
 
 The current negative-`e` frontier is subtler than "prove `notDependsOn`
 eliminates both-bad patterns for one fixed old witness." The repo now contains
@@ -63,6 +67,10 @@ Core Lean modules:
 - `DqratLean/Checker.lean`: executable checker implementation
 - `DqratLean/Parser.lean`: DQDIMACS / proof parsing
 - `DqratLean/Semantics.lean`: DQBF semantics via Skolem functions
+- `DqratLean/SoundnessCore.lean`: checker-state invariant definitions (`Sound`/`Correct`/`FullCorrect`)
+- `DqratLean/DeletionSemantics.lean`: dependency-deletion semantic layer (forceDelDeps, independence bridges, flipUniv)
+- `DqratLean/DeletionPaths.lean`: resolution paths, `getReachable` BFS spec/completeness, `NoDeleteCrossPaths`
+- `DqratLean/DeletionExhibition.lean`: the single open frontier theorem (leaf module for fast iteration)
 - `DqratLean/Soundness.lean`: main proof development
 - `DqratLean/Counterexamples.lean`: counterexample / bug-exploration material
 - `DqratLean/Basic.lean`: re-export module
@@ -137,10 +145,11 @@ Useful milestones inside `DqratLean/Soundness.lean`:
 - `processProofBasic_sound`
 
 Current full-checker frontier:
-- `checkAction_sound`
+- `deleteIndependenceSetBridge_of_noDeleteCrossPathsSet`
+  (`DqratLean/DeletionExhibition.lean`)
 
 ## Notes For Reviewers
 
 - This GitHub mirror is not the canonical upstream repository.
 - The file `DqratLean/Soundness.lean` is large because most of the proof work still lives in one place.
-- Some comments in `Soundness.lean` mentioning older `sorry` status are stale; the authoritative check is the actual theorem bodies and a fresh `lake build DqratLean.Soundness`.
+- The authoritative proof-status check is `grep -rn sorry DqratLean/` plus a fresh `lake build`; docs and comments are kept in sync as of 2026-06-10.
