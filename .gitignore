@@ -4,3 +4,4 @@ build/
 *.ilean
 *.c
 *.o
+__pycache__/
