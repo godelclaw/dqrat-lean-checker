@@ -16301,6 +16301,120 @@ theorem parseDQDIMACS_full_correct (content : String) (st : CheckState)
       simp [hstruct] at h
       exact parseDQDIMACSTokens_full_correct (tokenize (stripCommentLines content)) st h
 
+/-- **Parse-time contradiction soundness (inner form).** If the tokenized
+    parse after the header reports `none` (formula refuted by unit
+    propagation during reading), the parser's own run reached a state whose
+    formula is semantically false. Covers the first `s VERIFIED` branch of
+    `Main.lean`. -/
+theorem parseDQDIMACSTokensAfterHeader_none_sound
+    (declaredMaxVar : Nat) (allToks : Array String)
+    (h : parseDQDIMACSTokensAfterHeader declaredMaxVar allToks = .ok none) :
+    ∃ st : CheckState,
+      (parseDQDIMACSInner declaredMaxVar allToks).run CheckState.empty =
+        .ok true st ∧
+      DQBFFalse st.formula st.clauses := by
+  unfold parseDQDIMACSTokensAfterHeader at h
+  cases hinner : (parseDQDIMACSInner declaredMaxVar allToks).run CheckState.empty with
+  | error e s0 =>
+      simp [hinner] at h
+  | ok result s0 =>
+      cases hpost : result with
+      | false =>
+          subst hpost
+          simp [hinner] at h
+      | true =>
+          subst hpost
+          have hinner' :
+              parseDQDIMACSInner declaredMaxVar allToks CheckState.empty =
+                .ok true s0 := by
+            simpa [EStateM.run] using hinner
+          have hpost :=
+            parseDQDIMACSInner_sound declaredMaxVar allToks true s0 hinner'
+          refine ⟨s0, rfl, ?_⟩
+          simpa [ReadMatrixPost] using hpost
+
+/-- Parse-time contradiction soundness at the token level: the witness state
+    is pinned to the run of `parseDQDIMACSInner` on these very tokens with
+    the declared header `maxVar`. -/
+theorem parseDQDIMACSTokens_none_sound
+    (allToks : Array String)
+    (h : parseDQDIMACSTokens allToks = .ok none) :
+    ∃ declaredMaxVar st,
+      (allToks.getD 2 "").toNat? = some declaredMaxVar ∧
+      (parseDQDIMACSInner declaredMaxVar allToks).run CheckState.empty =
+        .ok true st ∧
+      DQBFFalse st.formula st.clauses := by
+  unfold parseDQDIMACSTokens at h
+  by_cases hp : allToks.getD 0 "" = "p"
+  · by_cases hcnf : allToks.getD 1 "" = "cnf"
+    · simp [hp, hcnf, Bind.bind] at h
+      cases hmax : (allToks.getD 2 "").toNat? with
+      | none =>
+          have hmax' : (allToks[2]?.getD "").toNat? = none := by
+            simpa using hmax
+          simp [hmax', Bind.bind] at h
+          have h' := h
+          simp at h'
+          cases h'
+      | some declaredMaxVar =>
+          have hmax' : (allToks[2]?.getD "").toNat? = some declaredMaxVar := by
+            simpa using hmax
+          simp [hmax', Bind.bind] at h
+          cases hclauses : (allToks.getD 3 "").toNat? with
+          | none =>
+              have hclauses' : (allToks[3]?.getD "").toNat? = none := by
+                simpa using hclauses
+              simp [hclauses', Bind.bind] at h
+              have h' := h
+              simp at h'
+              cases h'
+          | some declaredNumClauses =>
+              have hclauses' :
+                  (allToks[3]?.getD "").toNat? = some declaredNumClauses := by
+                simpa using hclauses
+              simp [hclauses', Bind.bind] at h
+              obtain ⟨st, hrun, hfalse⟩ :=
+                parseDQDIMACSTokensAfterHeader_none_sound declaredMaxVar
+                  allToks h
+              exact ⟨declaredMaxVar, st, rfl, hrun, hfalse⟩
+    · have hcnf' : ¬allToks[1]?.getD "" = "cnf" := by
+        simpa using hcnf
+      simp [hp, hcnf', Bind.bind] at h
+      have : False := by
+        simpa [Except.bind] using h
+      exact False.elim this
+  · have hp' : ¬allToks[0]?.getD "" = "p" := by
+      simpa using hp
+    simp [hp', Bind.bind] at h
+    have : False := by
+      simpa [Except.bind] using h
+    exact False.elim this
+
+/-- **Parse-time contradiction soundness (top level).** If `parseDQDIMACS`
+    returns `.ok none` — the case where `Main.lean` prints `s VERIFIED`
+    without running any proof — then running the parser on this very
+    content's tokens, with the content's own declared header `maxVar`,
+    reached a parse-time conflict state whose formula is semantically
+    false. Together with `processProof_sound'`, this covers both
+    `s VERIFIED` print sites of the executable. -/
+theorem parseDQDIMACS_none_sound (content : String)
+    (h : parseDQDIMACS content = .ok none) :
+    ∃ declaredMaxVar st,
+      ((tokenize (stripCommentLines content)).getD 2 "").toNat? =
+        some declaredMaxVar ∧
+      (parseDQDIMACSInner declaredMaxVar
+        (tokenize (stripCommentLines content))).run CheckState.empty =
+        .ok true st ∧
+      DQBFFalse st.formula st.clauses := by
+  unfold parseDQDIMACS at h
+  cases hstruct : validateDQDIMACSStructure content with
+  | error e =>
+      simp [hstruct] at h
+      cases h
+  | ok header =>
+      simp [hstruct] at h
+      exact parseDQDIMACSTokens_none_sound (tokenize (stripCommentLines content)) h
+
 /-- Postcondition for a single basic checker step.
 
     Continuing (`none`) or failing leaves the checker in a boundary state.

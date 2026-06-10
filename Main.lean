@@ -9,12 +9,16 @@ def main : List String → IO UInt32
         IO.eprintln s!"c parse error: {e}"
         return 1
       | .ok none =>
-        -- Formula UNSAT by UP during parsing
+        -- Formula UNSAT by UP during parsing.
+        -- Soundness of this `s VERIFIED` print: `parseDQDIMACS_none_sound`
+        -- (DqratLean/Soundness.lean).
         IO.println "c formula found unsat during reading in"
         IO.println "s VERIFIED"
         return 0
       | .ok (some st) =>
         IO.println s!"c formula read successfully"
+        -- Soundness of a `.Verified` result here (printed as `s VERIFIED` by
+        -- `formatResult`): `processProof_sound'` (DqratLean/Soundness.lean).
         let result := processProof st proofContent
         match result with
         | .Verified line =>
