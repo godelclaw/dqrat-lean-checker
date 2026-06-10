@@ -187,6 +187,37 @@ where
 
 -- ─── BFS reachability for D^∀-pure dep scheme ─────────────────────────────
 
+def getReachableLitStep
+    (st : CheckState) (lvar : Var) (explored : Array Bool) (cur : Literal)
+    (state : Array Literal × Array Bool) (lit : Literal) :
+    Array Literal × Array Bool :=
+  let (wl, rch) := state
+  if lit = cur then (wl, rch)
+  else if explored.getD lit.negate.x false then (wl, rch)
+  else
+    let litvar := lit.var
+    let litIsExi := st.formula.isVarExistential litvar
+    let depset := st.formula.depset.getD litvar #[]
+    let dependsOnL := depset.contains lvar
+    let wl' := if litIsExi && dependsOnL then wl.push lit.negate else wl
+    let rch' := if litIsExi && dependsOnL then
+      rch.setIfInBounds lit.x true else rch
+    (wl', rch')
+
+def getReachableCRefStep
+    (st : CheckState) (lvar : Var) (negL : Literal)
+    (explored : Array Bool) (cur : Literal)
+    (state : Array Literal × Array Bool) (cref : CRef) :
+    Array Literal × Array Bool :=
+  let (wl, rch) := state
+  match st.clauses.getClauseRaw cref with
+  | none => (wl, rch)
+  | some clause =>
+    if clause.deleted then (wl, rch)
+    else if clause.lits.contains negL then (wl, rch)
+    else clause.lits.foldl
+      (getReachableLitStep st lvar explored cur) (wl, rch)
+
 -- Compute reachable literals starting from literal l (for universal l).
 -- reachable[lit.x] = true if lit can be reached via u-pure paths in clauses.
 def getReachable (st : CheckState) (l : Literal) : Array Bool :=
@@ -214,27 +245,8 @@ def getReachable (st : CheckState) (l : Literal) : Array Bool :=
           -- newly explored: mark and process
           let expl' := expl.set idx true h
           let occs := st.clauses.getOcc cur
-          let (wl'', reach') := occs.foldl (fun (wl, rch) cref =>
-            match st.clauses.getClauseRaw cref with
-            | none => (wl, rch)
-            | some clause =>
-              if clause.deleted then (wl, rch)
-              else if clause.lits.contains negL then (wl, rch)
-              else
-                clause.lits.foldl (fun (wl2, rch2) lit =>
-                  if lit = cur then (wl2, rch2)
-                  else if expl'.getD lit.negate.x false then (wl2, rch2)
-                  else
-                    let litvar   := lit.var
-                    let litIsExi := st.formula.isVarExistential litvar
-                    let depset   := st.formula.depset.getD litvar #[]
-                    let dependsOnL := depset.contains lvar
-                    let wl3 := if litIsExi && dependsOnL then wl2.push lit.negate else wl2
-                    let rch3 := if litIsExi && dependsOnL then
-                      rch2.setIfInBounds lit.x true else rch2
-                    (wl3, rch3)
-                ) (wl, rch)
-          ) (wl', reach)
+          let (wl'', reach') := occs.foldl
+            (getReachableCRefStep st lvar negL expl' cur) (wl', reach)
           go wl'' reach' expl'
         else
           -- idx ≥ expl.size: out-of-bounds literal, skip (setIfInBounds is no-op)

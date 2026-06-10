@@ -161,6 +161,19 @@ private theorem mkLit_var_early (v : Var) (pos : Bool) :
     simp
   · simp [hpos]
 
+private theorem literal_eq_mkLit_var_isPos (l : Literal) :
+    l = mkLit l.var l.isPos := by
+  cases l with
+  | mk x =>
+      unfold mkLit Literal.var Literal.isPos
+      have hdecomp : x / 2 * 2 + x % 2 = x := by
+        simpa [Nat.mul_comm] using Nat.div_add_mod x 2
+      rcases Nat.mod_two_eq_zero_or_one x with hmod | hmod
+      · simp [hmod]
+        omega
+      · simp [hmod]
+        omega
+
 private theorem litValue_negate_early
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal) :
     f.litValue σ sk l.negate = !(f.litValue σ sk l) := by
@@ -187,6 +200,25 @@ private theorem litValue_negate_early
   rw [hvar, hpos]
   cases h : (l.x % 2 == 1) <;> simp
 
+theorem clauseValue_true_of_mem_lit_and_negate
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
+    {lits : Array Literal} {l : Literal}
+    (hlit : l ∈ lits.toList)
+    (hneg : l.negate ∈ lits.toList) :
+    f.clauseValue σ sk lits = true := by
+  cases hval : f.litValue σ sk l
+  · have hneg_true : f.litValue σ sk l.negate = true := by
+      rw [litValue_negate_early, hval]
+      rfl
+    have hmem : l.negate ∈ lits := Array.mem_toList_iff.mp hneg
+    rcases Array.mem_iff_getElem.mp hmem with ⟨i, hi, hget⟩
+    simp only [DQBF.clauseValue, Array.any_eq_true]
+    exact ⟨i, hi, by simpa [hget] using hneg_true⟩
+  · have hmem : l ∈ lits := Array.mem_toList_iff.mp hlit
+    rcases Array.mem_iff_getElem.mp hmem with ⟨i, hi, hget⟩
+    simp only [DQBF.clauseValue, Array.any_eq_true]
+    exact ⟨i, hi, by simpa [hget] using hval⟩
+
 theorem clauseValue_perm
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
     {lits₁ lits₂ : Array Literal}
@@ -212,6 +244,32 @@ theorem clauseValue_perm
       exact ⟨j, hj, heq ▸ hval⟩
   cases h₁ : f.clauseValue σ sk lits₁ <;> cases h₂ : f.clauseValue σ sk lits₂ <;>
     simp [h₁, h₂] at hiff ⊢
+
+theorem clauseValue_true_false_implies_exists_true_false_lit
+    (f : DQBF) (σ : UnivAssignment)
+    (skTrue skFalse : SkolemAssignment)
+    (lits : Array Literal)
+    (htrue : f.clauseValue σ skTrue lits = true)
+    (hfalse : f.clauseValue σ skFalse lits = false) :
+    ∃ l ∈ lits.toList,
+      f.litValue σ skTrue l = true ∧
+      f.litValue σ skFalse l = false := by
+  have hfalse_lits :
+      ∀ l ∈ lits.toList, f.litValue σ skFalse l = false :=
+    clauseValue_false_implies_all_lits_false_early f σ skFalse lits hfalse
+  simp only [DQBF.clauseValue, Array.any_eq_true] at htrue
+  rcases htrue with ⟨i, hi, hli_true⟩
+  refine ⟨lits[i], Array.mem_toList_iff.mpr (Array.getElem_mem hi), hli_true, ?_⟩
+  exact hfalse_lits _ (Array.mem_toList_iff.mpr (Array.getElem_mem hi))
+
+private theorem clauseValue_true_implies_exists_true_lit
+    (f : DQBF) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (lits : Array Literal)
+    (htrue : f.clauseValue σ sk lits = true) :
+    ∃ l ∈ lits.toList, f.litValue σ sk l = true := by
+  simp only [DQBF.clauseValue, Array.any_eq_true] at htrue
+  rcases htrue with ⟨i, hi, hli_true⟩
+  exact ⟨lits[i], Array.mem_toList_iff.mpr (Array.getElem_mem hi), hli_true⟩
 
 -- Helper: matrixValue after addClause when both old and new clauses are satisfied
 theorem matrixValue_addClause_of_both
@@ -283,6 +341,18 @@ theorem literal_eq_or_negate_of_same_var (l pivot : Literal)
   by_cases heq : l.x = pivot.x
   · left; cases l; cases pivot; simp_all [Literal.var]
   · right; exact lit_ne_pivot_of_same_var l pivot h (by cases l; cases pivot; simp_all)
+
+private theorem noCompl_other_lit_var_ne
+    {lits : Array Literal} {target l : Literal}
+    (htarget : target ∈ lits.toList)
+    (hl : l ∈ lits.toList)
+    (hne : l ≠ target)
+    (hnoCompl : ∀ k ∈ lits.toList, k.negate ∉ lits.toList) :
+    l.var ≠ target.var := by
+  intro hvar
+  rcases literal_eq_or_negate_of_same_var l target hvar with hEq | hNeg
+  · exact hne hEq
+  · exact hnoCompl target htarget (by simpa [hNeg] using hl)
 
 -- litValue is unchanged when flipping σ at u, provided l.var ≠ u
 -- (for existentials, pivot.var must not be in the dep-set)
@@ -1038,6 +1108,16 @@ private def DeleteIndependenceSetBridge
       (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
       ExhibitsDeleteIndependenceSet st.formula vars on_ sk
 
+private theorem DeleteIndependenceSetBridge.of_no_members
+    {st : CheckState} {vars : Array Var} {on_ : Var}
+    (hvars : ∀ of_, of_ ∉ vars.toList) :
+    DeleteIndependenceSetBridge st vars on_ := by
+  intro htrue
+  rcases htrue with ⟨sk, hall⟩
+  refine ⟨sk, hall, ?_⟩
+  intro of_ hof
+  exact False.elim (hvars of_ hof)
+
 private theorem DeleteIndependenceBridge.of_sameFC
     {s₀ s : CheckState} {of_ on_ : Var}
     (hbridge : DeleteIndependenceBridge s₀ of_ on_)
@@ -1081,6 +1161,25 @@ private theorem DeleteIndependenceBridge.of_setBridge
   rcases hbridge htrue with ⟨sk, hall, hexhibit⟩
   exact ⟨sk, hall, hexhibit of_ hmem⟩
 
+private theorem ExhibitsDeleteIndependenceSet.of_subset
+    {f : DQBF} {small big : Array Var} {on_ : Var}
+    {sk : SkolemAssignment}
+    (hsubset : ∀ of_, of_ ∈ small.toList → of_ ∈ big.toList)
+    (hexhibit : ExhibitsDeleteIndependenceSet f big on_ sk) :
+    ExhibitsDeleteIndependenceSet f small on_ sk := by
+  intro of_ hof
+  exact hexhibit of_ (hsubset of_ hof)
+
+private theorem DeleteIndependenceSetBridge.of_subset
+    {st : CheckState} {small big : Array Var} {on_ : Var}
+    (hsubset : ∀ of_, of_ ∈ small.toList → of_ ∈ big.toList)
+    (hbridge : DeleteIndependenceSetBridge st big on_) :
+    DeleteIndependenceSetBridge st small on_ := by
+  intro htrue
+  rcases hbridge htrue with ⟨sk, hall, hexhibit⟩
+  exact ⟨sk, hall,
+    ExhibitsDeleteIndependenceSet.of_subset hsubset hexhibit⟩
+
 private theorem deleteDepArgs_eq_of_dep_agree
     (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
     (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂) :
@@ -1117,6 +1216,471 @@ private theorem agreeOnDeleteDeps_of_deleteDepArgs_eq
 private def fullDepArgs
     (f : DQBF) (of_ : Var) (σ : UnivAssignment) : Array Bool :=
   (f.depset.getD of_ #[]).map σ
+
+private def flipUniv (u : Var) (σ : UnivAssignment) : UnivAssignment :=
+  fun w => if w == u then !σ w else σ w
+
+private theorem flipUniv_involutive
+    (on_ : Var) (σ : UnivAssignment) :
+    flipUniv on_ (flipUniv on_ σ) = σ := by
+  funext u
+  unfold flipUniv
+  by_cases hu : u == on_
+  · simp [hu]
+  · simp [hu]
+
+private theorem deleteDepArgs_flipUniv
+    (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) :
+    deleteDepArgs f of_ on_ (flipUniv on_ σ) = deleteDepArgs f of_ on_ σ := by
+  unfold deleteDepArgs flipUniv
+  apply Array.ext (by simp [Array.size_map])
+  intro i hi₁ _
+  simp only [Array.getElem_map]
+  have hi :
+      i < ((f.depset.getD of_ #[]).filter (· ≠ on_)).size := by
+    simpa [Array.size_map] using hi₁
+  have hmem :
+      (((f.depset.getD of_ #[]).filter (· ≠ on_))[i]) ∈
+        (f.depset.getD of_ #[]).filter (· ≠ on_) :=
+    Array.getElem_mem hi
+  have hne : ((f.depset.getD of_ #[]).filter (· ≠ on_))[i] ≠ on_ := by
+    simpa using (Array.mem_filter.mp hmem).2
+  let w := ((f.depset.getD of_ #[]).filter (· ≠ on_))[i]
+  have hw : w = ((f.depset.getD of_ #[]).filter (· ≠ on_))[i] := rfl
+  have hne' : w ≠ on_ := by simpa [hw] using hne
+  have hbeq : (w == on_) = false := by
+    simp [hne']
+  change (if w == on_ then !σ w else σ w) = σ w
+  simp [hbeq]
+
+private theorem agreeOnDeleteDeps_flipUniv
+    (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) :
+    AgreeOnDeleteDeps f of_ on_ σ (flipUniv on_ σ) := by
+  intro u hu
+  have hne : u ≠ on_ := by
+    simpa using (Array.mem_filter.mp hu).2
+  simp [flipUniv, hne]
+
+theorem varValue_eq_of_fullDepArgs_eq
+    (f : DQBF) (of_ : Var) (σ₁ σ₂ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hargs : fullDepArgs f of_ σ₁ = fullDepArgs f of_ σ₂) :
+    f.varValue σ₁ sk of_ = f.varValue σ₂ sk of_ := by
+  simpa [DQBF.varValue, hexi, DQBF.exiValue, fullDepArgs] using
+    congrArg (sk of_) hargs
+
+private theorem fullDepArgs_flipUniv_eq_of_fullDepArgs_eq
+    (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
+    (hargs : fullDepArgs f of_ σ₁ = fullDepArgs f of_ σ₂) :
+    fullDepArgs f of_ (flipUniv on_ σ₁) =
+      fullDepArgs f of_ (flipUniv on_ σ₂) := by
+  unfold fullDepArgs
+  apply Array.ext (by simp [Array.size_map])
+  intro i hi₁ _
+  simp only [Array.getElem_map]
+  have hi : i < (f.depset.getD of_ #[]).size := by
+    simpa [Array.size_map] using hi₁
+  have hget :
+      (fullDepArgs f of_ σ₁).getD i false =
+        (fullDepArgs f of_ σ₂).getD i false :=
+    congrArg (fun a => a.getD i false) hargs
+  have hi_left : i < (fullDepArgs f of_ σ₁).size := by
+    simpa [fullDepArgs] using hi
+  have hi_right : i < (fullDepArgs f of_ σ₂).size := by
+    simpa [fullDepArgs] using hi
+  rw [← Array.getElem_eq_getD (h := hi_left),
+    ← Array.getElem_eq_getD (h := hi_right)] at hget
+  simp only [fullDepArgs, Array.getElem_map, hi] at hget
+  by_cases hdep : (f.depset.getD of_ #[])[i] = on_
+  · unfold flipUniv
+    have hbeq : ((f.depset.getD of_ #[])[i] == on_) = true := by
+      exact beq_iff_eq.mpr hdep
+    rw [if_pos hbeq, if_pos hbeq]
+    simpa using congrArg (!·) hget
+  · unfold flipUniv
+    have hbeq : ¬ ((f.depset.getD of_ #[])[i] == on_) = true := by
+      intro hbeq
+      exact hdep (beq_iff_eq.mp hbeq)
+    rw [if_neg hbeq, if_neg hbeq]
+    simpa using hget
+
+private theorem fullDepArgs_eq_of_agreeOnDeleteDeps_same_on
+    (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂)
+    (hon : σ₁ on_ = σ₂ on_) :
+    fullDepArgs f of_ σ₁ = fullDepArgs f of_ σ₂ := by
+  unfold fullDepArgs
+  apply Array.ext (by simp [Array.size_map])
+  intro i hi₁ _
+  simp only [Array.getElem_map]
+  have hi : i < (f.depset.getD of_ #[]).size := by
+    simpa [Array.size_map] using hi₁
+  have hu_mem : (f.depset.getD of_ #[])[i] ∈ f.depset.getD of_ #[] := by
+    exact Array.getElem_mem hi
+  by_cases hu : (f.depset.getD of_ #[])[i] = on_
+  · calc
+      σ₁ ((f.depset.getD of_ #[])[i]) = σ₁ on_ := by
+        simpa using congrArg σ₁ hu
+      _ = σ₂ on_ := hon
+      _ = σ₂ ((f.depset.getD of_ #[])[i]) := by
+        simpa using congrArg σ₂ hu.symm
+  · have hu_filter :
+        (f.depset.getD of_ #[])[i] ∈ (f.depset.getD of_ #[]).filter (· ≠ on_) := by
+      exact Array.mem_filter.mpr ⟨hu_mem, by simpa using hu⟩
+    exact hagree _ hu_filter
+
+private theorem fullDepArgs_flipUniv_eq_of_agreeOnDeleteDeps
+    (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂)
+    (hneq : σ₁ on_ ≠ σ₂ on_) :
+    fullDepArgs f of_ (flipUniv on_ σ₁) = fullDepArgs f of_ σ₂ := by
+  unfold fullDepArgs
+  apply Array.ext (by simp [Array.size_map])
+  intro i hi₁ _
+  simp only [Array.getElem_map]
+  have hi : i < (f.depset.getD of_ #[]).size := by
+    simpa [Array.size_map] using hi₁
+  have hu_mem : (f.depset.getD of_ #[])[i] ∈ f.depset.getD of_ #[] := by
+    exact Array.getElem_mem hi
+  by_cases hu : (f.depset.getD of_ #[])[i] = on_
+  · have hon' : σ₂ on_ = !σ₁ on_ := by
+      cases h₁ : σ₁ on_ <;> cases h₂ : σ₂ on_
+      · exfalso
+        exact hneq (by simp [h₁, h₂])
+      · simp [h₁, h₂]
+      · simp [h₁, h₂]
+      · exfalso
+        exact hneq (by simp [h₁, h₂])
+    calc
+      (flipUniv on_ σ₁) ((f.depset.getD of_ #[])[i]) = (flipUniv on_ σ₁) on_ := by
+        simpa using congrArg (flipUniv on_ σ₁) hu
+      _ = !σ₁ on_ := by
+          unfold flipUniv
+          have hone : (on_ == on_) = true := by simp
+          rw [if_pos hone]
+      _ = σ₂ on_ := hon'.symm
+      _ = σ₂ ((f.depset.getD of_ #[])[i]) := by
+        simpa using congrArg σ₂ hu.symm
+  · have hu_filter :
+        (f.depset.getD of_ #[])[i] ∈ (f.depset.getD of_ #[]).filter (· ≠ on_) := by
+      exact Array.mem_filter.mpr ⟨hu_mem, by simpa using hu⟩
+    calc
+      (flipUniv on_ σ₁) ((f.depset.getD of_ #[])[i]) =
+          σ₁ ((f.depset.getD of_ #[])[i]) := by
+            unfold flipUniv
+            have hbeq : ¬ ((f.depset.getD of_ #[])[i] == on_) = true := by
+              simpa using hu
+            rw [if_neg hbeq]
+      _ = σ₂ ((f.depset.getD of_ #[])[i]) := hagree _ hu_filter
+
+private theorem fullDepArgs_flipUniv_ne_of_contains
+    (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true) :
+    fullDepArgs f of_ (flipUniv on_ σ) ≠ fullDepArgs f of_ σ := by
+  intro heq
+  have hmem : on_ ∈ (f.depset.getD of_ #[]) := by
+    exact Array.contains_iff_mem.mp hcontains
+  rcases Array.mem_iff_getElem.mp hmem with ⟨i, hi, hget⟩
+  have hi₁ : i < (fullDepArgs f of_ (flipUniv on_ σ)).size := by
+    simpa [fullDepArgs] using hi
+  have hval :
+      (fullDepArgs f of_ (flipUniv on_ σ))[i] =
+        (fullDepArgs f of_ σ)[i]'(heq ▸ hi₁) := by
+    exact getElem_congr heq rfl hi₁
+  simp only [fullDepArgs, Array.getElem_map, hi, flipUniv] at hval
+  rw [hget] at hval
+  cases hσ : σ on_ <;> simp [hσ] at hval
+
+private theorem fullDepArgs_eq_flipUniv_of_not_contains
+    (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = false) :
+    fullDepArgs f of_ (flipUniv on_ σ) = fullDepArgs f of_ σ := by
+  unfold fullDepArgs flipUniv
+  apply Array.ext (by simp [Array.size_map])
+  intro i hi₁ _
+  simp only [Array.getElem_map]
+  have hi : i < (f.depset.getD of_ #[]).size := by
+    simpa [Array.size_map] using hi₁
+  have hne : (f.depset.getD of_ #[])[i] ≠ on_ := by
+    intro heq
+    have hmem_on : on_ ∈ (f.depset.getD of_ #[]) := by
+      exact Array.mem_iff_getElem.mpr ⟨i, hi, heq⟩
+    have hcontains' : (f.depset.getD of_ #[]).contains on_ = true := by
+      exact Array.contains_iff_mem.mpr hmem_on
+    rw [hcontains'] at hcontains
+    cases hcontains
+  let w := (f.depset.getD of_ #[])[i]
+  have hw : w = (f.depset.getD of_ #[])[i] := rfl
+  have hne' : w ≠ on_ := by simpa [hw] using hne
+  have hbeq : (w == on_) = false := by
+    simp [hne']
+  change (if w == on_ then !σ w else σ w) = σ w
+  simp [hbeq]
+
+private theorem varValue_flipUniv_eq_of_contains_false
+    (f : DQBF) (v on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential v = true)
+    (hcontains : (f.depset.getD v #[]).contains on_ = false) :
+    f.varValue (flipUniv on_ σ) sk v = f.varValue σ sk v := by
+  rw [DQBF.varValue, hexi, DQBF.varValue, hexi, DQBF.exiValue, DQBF.exiValue]
+  exact congrArg (sk v) (fullDepArgs_eq_flipUniv_of_not_contains f v on_ σ hcontains)
+
+private theorem varValue_flipUniv_eq_of_universal_ne
+    (f : DQBF) (v on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (huniv : f.isVarExistential v = false)
+    (hneq : v ≠ on_) :
+    f.varValue (flipUniv on_ σ) sk v = f.varValue σ sk v := by
+  rw [DQBF.varValue, huniv, DQBF.varValue, huniv]
+  simp [flipUniv, hneq]
+
+private theorem litValue_flipUniv_eq_of_universal_ne
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (huniv : f.isVarExistential l.var = false)
+    (hne : l.var ≠ on_) :
+    f.litValue (flipUniv on_ σ) sk l = f.litValue σ sk l := by
+  simp [DQBF.litValue,
+    varValue_flipUniv_eq_of_universal_ne f l.var on_ σ sk huniv hne]
+
+private theorem litValue_flipUniv_eq_of_existential_not_contains
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hexi : f.isVarExistential l.var = true)
+    (hcontains : (f.depset.getD l.var #[]).contains on_ = false) :
+    f.litValue (flipUniv on_ σ) sk l = f.litValue σ sk l := by
+  simp [DQBF.litValue,
+    varValue_flipUniv_eq_of_contains_false f l.var on_ σ sk hexi hcontains]
+
+private theorem litValue_flipUniv_eq_of_off_cone
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal)
+    (hneq : l.var ≠ on_)
+    (hfree : f.isVarExistential l.var = true → (f.depset.getD l.var #[]).contains on_ = false) :
+    f.litValue (flipUniv on_ σ) sk l = f.litValue σ sk l := by
+  by_cases hexi : f.isVarExistential l.var = true
+  · simp [DQBF.litValue,
+      varValue_flipUniv_eq_of_contains_false f l.var on_ σ sk hexi (hfree hexi)]
+  · have huniv : f.isVarExistential l.var = false := by
+      cases h : f.isVarExistential l.var <;> simp_all
+    simp [DQBF.litValue,
+      varValue_flipUniv_eq_of_universal_ne f l.var on_ σ sk huniv hneq]
+
+private theorem exhibitsDeleteIndependence_iff_flipUniv
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true) :
+    ExhibitsDeleteIndependence f of_ on_ sk ↔
+      ∀ σ, f.varValue σ sk of_ = f.varValue (flipUniv on_ σ) sk of_ := by
+  constructor
+  · intro hexhibit σ
+    exact hexhibit σ (flipUniv on_ σ) (agreeOnDeleteDeps_flipUniv f of_ on_ σ)
+  · intro hflip σ₁ σ₂ hagree
+    by_cases hon : σ₁ on_ = σ₂ on_
+    · exact varValue_eq_of_fullDepArgs_eq
+        f of_ σ₁ σ₂ sk hexi
+        (fullDepArgs_eq_of_agreeOnDeleteDeps_same_on f of_ on_ σ₁ σ₂ hagree hon)
+    · calc
+        f.varValue σ₁ sk of_ = f.varValue (flipUniv on_ σ₁) sk of_ := hflip σ₁
+        _ = f.varValue σ₂ sk of_ := by
+            exact varValue_eq_of_fullDepArgs_eq
+              f of_ (flipUniv on_ σ₁) σ₂ sk hexi
+              (fullDepArgs_flipUniv_eq_of_agreeOnDeleteDeps f of_ on_ σ₁ σ₂ hagree hon)
+
+/-- A full-assignment witness that `of_` still depends on `on_` under `sk`. -/
+private def DeleteDepWitness
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (σ : UnivAssignment) : Prop :=
+  f.varValue σ sk of_ ≠ f.varValue (flipUniv on_ σ) sk of_
+
+private theorem litValue_mkLit_true
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (v : Var) :
+    f.litValue σ sk (mkLit v true) = f.varValue σ sk v := by
+  unfold DQBF.litValue
+  rw [mkLit_var_early]
+  simp [Literal.isPos, mkLit]
+
+private theorem litValue_mkLit_false
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (v : Var) :
+    f.litValue σ sk (mkLit v false) = !(f.varValue σ sk v) := by
+  unfold DQBF.litValue
+  rw [mkLit_var_early]
+  simp [Literal.isPos, mkLit]
+
+private theorem deleteDepWitness_mkLit_values
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (σ : UnivAssignment)
+    (hwit : DeleteDepWitness f of_ on_ sk σ) :
+    (f.litValue σ sk (mkLit of_ true) = true ∧
+        f.litValue (flipUniv on_ σ) sk (mkLit of_ false) = true) ∨
+      (f.litValue σ sk (mkLit of_ false) = true ∧
+        f.litValue (flipUniv on_ σ) sk (mkLit of_ true) = true) := by
+  unfold DeleteDepWitness at hwit
+  cases hσ : f.varValue σ sk of_ <;>
+    cases hflip : f.varValue (flipUniv on_ σ) sk of_
+  · exfalso
+    exact hwit (by rw [hσ, hflip])
+  · right
+    constructor
+    · rw [litValue_mkLit_false, hσ]
+      rfl
+    · rw [litValue_mkLit_true, hflip]
+  · left
+    constructor
+    · rw [litValue_mkLit_true, hσ]
+    · rw [litValue_mkLit_false, hflip]
+      rfl
+  · exfalso
+    exact hwit (by rw [hσ, hflip])
+
+private theorem deleteDepWitness_flipUniv_iff
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (σ : UnivAssignment) :
+    DeleteDepWitness f of_ on_ sk (flipUniv on_ σ) ↔
+      DeleteDepWitness f of_ on_ sk σ := by
+  unfold DeleteDepWitness
+  rw [flipUniv_involutive]
+  constructor <;> intro hneq
+  · exact Ne.symm hneq
+  · exact Ne.symm hneq
+
+private theorem deleteDepWitness_of_litValue_ne_flip
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hne :
+      f.litValue σ sk l ≠
+        f.litValue (flipUniv on_ σ) sk l) :
+    DeleteDepWitness f l.var on_ sk σ := by
+  unfold DeleteDepWitness
+  unfold DQBF.litValue at hne
+  cases hpos : l.isPos <;> simp [hpos] at hne ⊢ <;> exact hne
+
+private theorem deleteDepWitness_of_litValue_false_true_flip
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hσ : f.litValue σ sk l = false)
+    (hflip : f.litValue (flipUniv on_ σ) sk l = true) :
+    DeleteDepWitness f l.var on_ sk σ := by
+  exact deleteDepWitness_of_litValue_ne_flip f on_ σ sk l (by simp [hσ, hflip])
+
+theorem litValue_false_true_flip_universal_eq_on
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (huniv : f.isVarExistential l.var = false)
+    (hfalse : f.litValue σ sk l = false)
+    (htrue : f.litValue (flipUniv on_ σ) sk l = true) :
+    l.var = on_ := by
+  by_cases hEq : l.var = on_
+  · exact hEq
+  · have hsame :=
+      litValue_flipUniv_eq_of_universal_ne f on_ σ sk l huniv hEq
+    rw [hsame, hfalse] at htrue
+    cases htrue
+
+theorem litValue_false_true_flip_existential_contains
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hexi : f.isVarExistential l.var = true)
+    (hfalse : f.litValue σ sk l = false)
+    (htrue : f.litValue (flipUniv on_ σ) sk l = true) :
+    (f.depset.getD l.var #[]).contains on_ = true := by
+  cases hcontains : (f.depset.getD l.var #[]).contains on_ with
+  | false =>
+      have hsame :=
+        litValue_flipUniv_eq_of_existential_not_contains
+          f on_ σ sk l hexi hcontains
+      rw [hsame, hfalse] at htrue
+      cases htrue
+  | true =>
+      rfl
+
+private theorem exhibitsDeleteIndependence_iff_noDeleteDepWitness
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true) :
+    ExhibitsDeleteIndependence f of_ on_ sk ↔
+      ∀ σ, ¬ DeleteDepWitness f of_ on_ sk σ := by
+  constructor
+  · intro hexhibit σ hwit
+    have hflip :=
+      (exhibitsDeleteIndependence_iff_flipUniv f of_ on_ sk hexi).1 hexhibit σ
+    exact hwit hflip
+  · intro hnowit
+    refine (exhibitsDeleteIndependence_iff_flipUniv f of_ on_ sk hexi).2 ?_
+    intro σ
+    by_cases hval : f.varValue σ sk of_ = f.varValue (flipUniv on_ σ) sk of_
+    · exact hval
+    · exact False.elim (hnowit σ hval)
+
+private theorem exhibitsDeleteIndependenceSet_iff_noDeleteDepWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment)
+    (hexi : ∀ of_ ∈ vars.toList, f.isVarExistential of_ = true) :
+    ExhibitsDeleteIndependenceSet f vars on_ sk ↔
+      ∀ of_ ∈ vars.toList, ∀ σ, ¬ DeleteDepWitness f of_ on_ sk σ := by
+  constructor
+  · intro hexhibit of_ hof
+    exact (exhibitsDeleteIndependence_iff_noDeleteDepWitness
+      f of_ on_ sk (hexi of_ hof)).1 (hexhibit of_ hof)
+  · intro hnowit of_ hof
+    exact (exhibitsDeleteIndependence_iff_noDeleteDepWitness
+      f of_ on_ sk (hexi of_ hof)).2 (hnowit of_ hof)
+
+private theorem exhibitsDeleteIndependence_of_not_contains
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hnot : (f.depset.getD of_ #[]).contains on_ = false) :
+    ExhibitsDeleteIndependence f of_ on_ sk := by
+  intro σ₁ σ₂ hagree
+  simp [DQBF.varValue, DQBF.exiValue, hexi]
+  apply congrArg (sk of_)
+  apply Array.ext (by simp [Array.size_map])
+  intro i hi₁ _
+  simp only [Array.getElem_map]
+  have hi : i < (f.depset.getD of_ #[]).size := by
+    simpa [Array.size_map] using hi₁
+  let u := (f.depset.getD of_ #[])[i]
+  have hu_mem : u ∈ f.depset.getD of_ #[] := by
+    exact Array.getElem_mem hi
+  have hu_ne : u ≠ on_ := by
+    intro hu_eq
+    have hcontains : on_ ∈ f.depset.getD of_ #[] := hu_eq ▸ hu_mem
+    have hcontainsTrue : (f.depset.getD of_ #[]).contains on_ = true := by
+      exact Array.contains_iff_mem.mpr hcontains
+    rw [hnot] at hcontainsTrue
+    cases hcontainsTrue
+  have hu_filter : u ∈ (f.depset.getD of_ #[]).filter (· ≠ on_) := by
+    exact Array.mem_filter.mpr ⟨hu_mem, by simp [hu_ne]⟩
+  simpa [u] using hagree u hu_filter
+
+private theorem exhibitsDeleteIndependenceSet_of_filter_contains
+    (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment)
+    (hexi : ∀ of_ ∈ vars.toList, f.isVarExistential of_ = true)
+    (hexhibit :
+      ExhibitsDeleteIndependenceSet f
+        (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_) on_ sk) :
+    ExhibitsDeleteIndependenceSet f vars on_ sk := by
+  intro of_ hof
+  cases hcontains : (f.depset.getD of_ #[]).contains on_ with
+  | false =>
+      exact exhibitsDeleteIndependence_of_not_contains
+        f of_ on_ sk (hexi of_ hof) hcontains
+  | true =>
+      have hof' :
+          of_ ∈
+            (vars.filter fun of_ => (f.depset.getD of_ #[]).contains on_).toList := by
+        exact Array.mem_toList_iff.mpr <|
+          Array.mem_filter.mpr ⟨Array.mem_toList_iff.mp hof, hcontains⟩
+      exact hexhibit of_ hof'
+
+private theorem DeleteIndependenceSetBridge.of_filter_contains
+    {st : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ of_ ∈ vars.toList, st.formula.isVarExistential of_ = true)
+    (hbridge :
+      DeleteIndependenceSetBridge st
+        (vars.filter fun of_ => (st.formula.depset.getD of_ #[]).contains on_) on_) :
+    DeleteIndependenceSetBridge st vars on_ := by
+  intro htrue
+  rcases hbridge htrue with ⟨sk, hall, hexhibit⟩
+  refine ⟨sk, hall, ?_⟩
+  exact exhibitsDeleteIndependenceSet_of_filter_contains
+    st.formula vars on_ sk hexi hexhibit
 
 /-- Paper-style local repair: flip only the response of `of_` on one full
     dependency pattern, leave every other Skolem table entry unchanged. -/
@@ -1175,6 +1739,26 @@ private theorem varValue_patchDeleteWitnessAt_flip_active
   simp [DQBF.exiValue]
   simpa [fullDepArgs] using patchDeleteWitnessAt_apply_of_active f of_ σ₀ sk
 
+private theorem varValue_patchDeleteWitnessAt_eq_flipUniv_of_witness
+    (f : DQBF) (of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hwit :
+      f.varValue σ₀ sk of_ ≠
+        f.varValue (flipUniv on_ σ₀) sk of_) :
+    f.varValue σ₀ (patchDeleteWitnessAt f of_ σ₀ sk) of_ =
+      f.varValue (flipUniv on_ σ₀) sk of_ := by
+  have hflip : f.varValue σ₀ (patchDeleteWitnessAt f of_ σ₀ sk) of_ =
+      !(f.varValue σ₀ sk of_) :=
+    varValue_patchDeleteWitnessAt_flip_active f of_ σ₀ sk hexi
+  cases hval : f.varValue σ₀ sk of_
+  · cases hval' : f.varValue (flipUniv on_ σ₀) sk of_
+    · simp [hval, hval'] at hwit
+    · simpa [hval, hval'] using hflip
+  · cases hval' : f.varValue (flipUniv on_ σ₀) sk of_
+    · simpa [hval, hval'] using hflip
+    · simp [hval, hval'] at hwit
+
 private theorem varValue_patchDeleteWitnessAt_eq_of_inactive
     (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
     (sk : SkolemAssignment)
@@ -1185,6 +1769,303 @@ private theorem varValue_patchDeleteWitnessAt_eq_of_inactive
   rw [DQBF.varValue, hexi, DQBF.varValue, hexi]
   simp [DQBF.exiValue]
   simpa [fullDepArgs] using patchDeleteWitnessAt_apply_of_inactive f of_ σ₀ sk hargs
+
+private theorem litValue_patchDeleteWitnessAt_eq_of_inactive
+    (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hexi : f.isVarExistential of_ = true)
+    (hargs : fullDepArgs f of_ σ ≠ fullDepArgs f of_ σ₀) :
+    f.litValue σ (patchDeleteWitnessAt f of_ σ₀ sk) l =
+      f.litValue σ sk l := by
+  unfold DQBF.litValue
+  by_cases hov : l.var = of_
+  · have hvar :
+        f.varValue σ (patchDeleteWitnessAt f of_ σ₀ sk) l.var =
+          f.varValue σ sk l.var := by
+        simpa [hov] using
+          varValue_patchDeleteWitnessAt_eq_of_inactive f of_ σ₀ σ sk hexi hargs
+    simpa [hvar]
+  · have hvar :
+        f.varValue σ (patchDeleteWitnessAt f of_ σ₀ sk) l.var =
+          f.varValue σ sk l.var := by
+        exact varValue_patchDeleteWitnessAt_eq_of_ne f of_ σ₀ σ sk hov
+    simpa [hvar]
+
+private theorem clauseValue_patchDeleteWitnessAt_eq_of_inactive
+    (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment) (lits : Array Literal)
+    (hexi : f.isVarExistential of_ = true)
+    (hargs : fullDepArgs f of_ σ ≠ fullDepArgs f of_ σ₀) :
+    f.clauseValue σ (patchDeleteWitnessAt f of_ σ₀ sk) lits =
+      f.clauseValue σ sk lits := by
+  unfold DQBF.clauseValue
+  simpa using
+    (Array.any_congr
+      (w := rfl)
+      (h := fun l =>
+        litValue_patchDeleteWitnessAt_eq_of_inactive f of_ σ₀ σ sk l hexi hargs)
+      (wstart := rfl) (wstop := rfl))
+
+private theorem matrixValue_patchDeleteWitnessAt_eq_of_inactive
+    (f : DQBF) (cs : ClauseStore) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hargs : fullDepArgs f of_ σ ≠ fullDepArgs f of_ σ₀) :
+    cs.matrixValue f σ (patchDeleteWitnessAt f of_ σ₀ sk) =
+      cs.matrixValue f σ sk := by
+  unfold ClauseStore.matrixValue
+  apply List.all_congr rfl
+  intro i
+  cases hclause : cs.getClause (i + 1) with
+  | none =>
+      simp [hclause]
+  | some c =>
+      simp [hclause, clauseValue_patchDeleteWitnessAt_eq_of_inactive
+        f of_ σ₀ σ sk c.lits hexi hargs]
+
+private theorem matrixValue_patchDeleteWitnessAt_true_of_inactive
+    (f : DQBF) (cs : ClauseStore) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hargs : fullDepArgs f of_ σ ≠ fullDepArgs f of_ σ₀)
+    (hmat : cs.matrixValue f σ sk = true) :
+    cs.matrixValue f σ (patchDeleteWitnessAt f of_ σ₀ sk) = true := by
+  rw [matrixValue_patchDeleteWitnessAt_eq_of_inactive f cs of_ σ₀ σ sk hexi hargs]
+  exact hmat
+
+private theorem matrixValue_patchDeleteWitnessAt_true_of_flipUniv
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hmat : cs.matrixValue f (flipUniv on_ σ₀) sk = true) :
+    cs.matrixValue f (flipUniv on_ σ₀) (patchDeleteWitnessAt f of_ σ₀ sk) = true := by
+  apply matrixValue_patchDeleteWitnessAt_true_of_inactive f cs of_ σ₀ (flipUniv on_ σ₀) sk hexi
+  · exact fullDepArgs_flipUniv_ne_of_contains f of_ on_ σ₀ hcontains
+  · exact hmat
+
+private theorem patchDeleteWitnessAt_initial_repair
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit :
+      f.varValue σ₀ sk of_ ≠
+        f.varValue (flipUniv on_ σ₀) sk of_)
+    (hall : ∀ σ, cs.matrixValue f σ sk = true) :
+    f.varValue σ₀ (patchDeleteWitnessAt f of_ σ₀ sk) of_ =
+      f.varValue (flipUniv on_ σ₀) sk of_ ∧
+    cs.matrixValue f (flipUniv on_ σ₀) (patchDeleteWitnessAt f of_ σ₀ sk) = true := by
+  refine ⟨?_, ?_⟩
+  · exact varValue_patchDeleteWitnessAt_eq_flipUniv_of_witness f of_ on_ σ₀ sk hexi hwit
+  · exact matrixValue_patchDeleteWitnessAt_true_of_flipUniv
+      f cs of_ on_ σ₀ sk hexi hcontains (hall _)
+
+private theorem litValue_patchDeleteWitnessAt_eq_of_ne_var
+    (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hneq : l.var ≠ of_) :
+    f.litValue σ (patchDeleteWitnessAt f of_ σ₀ sk) l =
+      f.litValue σ sk l := by
+  simp [DQBF.litValue,
+    varValue_patchDeleteWitnessAt_eq_of_ne f of_ σ₀ σ sk hneq]
+
+private theorem varValue_patchDeleteWitnessAt_changed_implies_fullDepArgs_eq
+    (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hchanged :
+      f.varValue σ (patchDeleteWitnessAt f of_ σ₀ sk) of_ ≠
+        f.varValue σ sk of_) :
+    fullDepArgs f of_ σ = fullDepArgs f of_ σ₀ := by
+  by_cases hargs : fullDepArgs f of_ σ = fullDepArgs f of_ σ₀
+  · exact hargs
+  · have hsame :=
+      varValue_patchDeleteWitnessAt_eq_of_inactive
+        f of_ σ₀ σ sk hexi hargs
+    exact False.elim (hchanged hsame)
+
+private theorem litValue_patchDeleteWitnessAt_changed_implies_fullDepArgs_eq
+    (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hexi : f.isVarExistential of_ = true)
+    (hvar : l.var = of_)
+    (hold : f.litValue σ sk l = true)
+    (hpatched :
+      f.litValue σ (patchDeleteWitnessAt f of_ σ₀ sk) l = false) :
+    fullDepArgs f of_ σ = fullDepArgs f of_ σ₀ := by
+  have hchanged :
+      f.varValue σ (patchDeleteWitnessAt f of_ σ₀ sk) of_ ≠
+        f.varValue σ sk of_ := by
+    intro hsame
+    have hl_same :
+        f.litValue σ (patchDeleteWitnessAt f of_ σ₀ sk) l =
+          f.litValue σ sk l := by
+      simp [DQBF.litValue, hvar, hsame]
+    rw [hl_same, hold] at hpatched
+    cases hpatched
+  exact varValue_patchDeleteWitnessAt_changed_implies_fullDepArgs_eq
+    f of_ σ₀ σ sk hexi hchanged
+
+theorem fullDepArgs_eq_implies_on_eq_of_contains
+    (f : DQBF) (of_ on_ : Var) (σ σ₀ : UnivAssignment)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hfull : fullDepArgs f of_ σ = fullDepArgs f of_ σ₀) :
+    σ on_ = σ₀ on_ := by
+  rcases Array.mem_iff_getElem.mp (Array.contains_iff_mem.mp hcontains) with
+    ⟨i, hi, hi_on⟩
+  have hi₁ : i < (fullDepArgs f of_ σ).size := by
+    simpa [fullDepArgs] using hi
+  have hi₂ : i < (fullDepArgs f of_ σ₀).size := by
+    simpa [fullDepArgs] using hi
+  have hget :
+      (fullDepArgs f of_ σ).getD i false =
+        (fullDepArgs f of_ σ₀).getD i false :=
+    congrArg (fun a => a.getD i false) hfull
+  rw [← Array.getElem_eq_getD (h := hi₁),
+      ← Array.getElem_eq_getD (h := hi₂)] at hget
+  simp only [fullDepArgs, Array.getElem_map, hi] at hget
+  calc
+    σ on_ = σ ((f.depset.getD of_ #[])[i]) := by rw [hi_on]
+    _ = σ₀ ((f.depset.getD of_ #[])[i]) := hget
+    _ = σ₀ on_ := by rw [hi_on]
+
+theorem lit_eq_mkLit_varValue_of_var_and_true
+    (f : DQBF) (of_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hvar : l.var = of_)
+    (htrue : f.litValue σ sk l = true) :
+    l = mkLit of_ (f.varValue σ sk of_) := by
+  cases hval : f.varValue σ sk of_
+  · have hsame_var : l.var = (mkLit of_ false).var := by
+      simpa [mkLit_var_early] using hvar
+    rcases literal_eq_or_negate_of_same_var l (mkLit of_ false) hsame_var with hEq | hNeg
+    · simpa [hval] using hEq
+    · rw [hNeg, litValue_negate_early, litValue_mkLit_false, hval] at htrue
+      cases htrue
+  · have hsame_var : l.var = (mkLit of_ true).var := by
+      simpa [mkLit_var_early] using hvar
+    rcases literal_eq_or_negate_of_same_var l (mkLit of_ true) hsame_var with hEq | hNeg
+    · simpa [hval] using hEq
+    · rw [hNeg, litValue_negate_early, litValue_mkLit_true, hval] at htrue
+      cases htrue
+
+private theorem litValue_patchDeleteWitnessAt_changed_implies_lit_eq_seed
+    (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal)
+    (hexi : f.isVarExistential of_ = true)
+    (hvar : l.var = of_)
+    (hold : f.litValue σ sk l = true)
+    (hpatched :
+      f.litValue σ (patchDeleteWitnessAt f of_ σ₀ sk) l = false) :
+    l = mkLit of_ (f.varValue σ₀ sk of_) := by
+  have hfull :
+      fullDepArgs f of_ σ = fullDepArgs f of_ σ₀ :=
+    litValue_patchDeleteWitnessAt_changed_implies_fullDepArgs_eq
+      f of_ σ₀ σ sk l hexi hvar hold hpatched
+  have hvarValue :
+      f.varValue σ sk of_ = f.varValue σ₀ sk of_ :=
+    varValue_eq_of_fullDepArgs_eq f of_ σ σ₀ sk hexi hfull
+  calc
+    l = mkLit of_ (f.varValue σ sk of_) :=
+        lit_eq_mkLit_varValue_of_var_and_true f of_ σ sk l hvar hold
+    _ = mkLit of_ (f.varValue σ₀ sk of_) := by rw [hvarValue]
+
+private theorem deleteDepWitness_mkLit_value_pair
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (σ : UnivAssignment)
+    (hwit : DeleteDepWitness f of_ on_ sk σ) :
+    f.litValue σ sk (mkLit of_ (f.varValue σ sk of_)) = true ∧
+      f.litValue (flipUniv on_ σ) sk
+        (mkLit of_ (!(f.varValue σ sk of_))) = true := by
+  unfold DeleteDepWitness at hwit
+  cases hσ : f.varValue σ sk of_ <;>
+    cases hflip : f.varValue (flipUniv on_ σ) sk of_
+  · exfalso
+    exact hwit (by rw [hσ, hflip])
+  · constructor
+    · simp [hσ, litValue_mkLit_false]
+    · simp [hσ, hflip, litValue_mkLit_true]
+  · constructor
+    · simp [hσ, litValue_mkLit_true]
+    · simp [hσ, hflip, litValue_mkLit_false]
+  · exfalso
+    exact hwit (by rw [hσ, hflip])
+
+private theorem clauseValue_true_false_implies_exists_changed_lit_in_patch
+    (f : DQBF) (of_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment) (lits : Array Literal)
+    (htrue : f.clauseValue σ sk lits = true)
+    (hfalse :
+      f.clauseValue σ (patchDeleteWitnessAt f of_ σ₀ sk) lits = false) :
+    ∃ l ∈ lits.toList,
+      l.var = of_ ∧
+      f.litValue σ sk l = true ∧
+      f.litValue σ (patchDeleteWitnessAt f of_ σ₀ sk) l = false := by
+  rcases clauseValue_true_false_implies_exists_true_false_lit
+      f σ sk (patchDeleteWitnessAt f of_ σ₀ sk) lits htrue hfalse with
+    ⟨l, hlmem, hltrue, hlfalse⟩
+  have hvar : l.var = of_ := by
+    by_cases hEq : l.var = of_
+    · exact hEq
+    · have hsame :=
+        litValue_patchDeleteWitnessAt_eq_of_ne_var
+          f of_ σ₀ σ sk l hEq
+      rw [hsame, hltrue] at hlfalse
+      cases hlfalse
+  exact ⟨l, hlmem, hvar, hltrue, hlfalse⟩
+
+theorem matrixValue_false_implies_exists_false_clause
+    (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hfalse : cs.matrixValue f σ sk = false) :
+    ∃ cref c, cs.getClause cref = some c ∧
+      f.clauseValue σ sk c.lits = false := by
+  simp only [ClauseStore.matrixValue, List.all_eq_false, List.mem_range] at hfalse
+  rcases hfalse with ⟨i, hi, hnot⟩
+  cases hget : cs.getClause (i + 1) with
+  | none =>
+      simp [hget] at hnot
+  | some c =>
+      have hclause : f.clauseValue σ sk c.lits = false := by
+        cases hval : f.clauseValue σ sk c.lits <;> simp [hget, hval] at hnot ⊢
+      exact ⟨i + 1, c, hget, hclause⟩
+
+theorem matrixValue_false_of_false_clause
+    (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment)
+    (sk : SkolemAssignment) {cref : CRef} {c : Clause}
+    (hget : cs.getClause cref = some c)
+    (hfalse : f.clauseValue σ sk c.lits = false) :
+    cs.matrixValue f σ sk = false := by
+  cases hmat : cs.matrixValue f σ sk with
+  | false => rfl
+  | true =>
+      have htrue : f.clauseValue σ sk c.lits = true :=
+        clauseValue_of_matrixValue f cs σ sk cref c hmat hget
+      rw [hfalse] at htrue
+      cases htrue
+
+private theorem matrixValue_patchDeleteWitnessAt_false_implies_changed_lit
+    (f : DQBF) (cs : ClauseStore) (of_ : Var)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment)
+    (hall : ∀ τ, cs.matrixValue f τ sk = true)
+    (hfalse :
+      cs.matrixValue f σ (patchDeleteWitnessAt f of_ σ₀ sk) = false) :
+    ∃ cref c l,
+      cs.getClause cref = some c ∧
+      l ∈ c.lits.toList ∧
+      l.var = of_ ∧
+      f.litValue σ sk l = true ∧
+      f.litValue σ (patchDeleteWitnessAt f of_ σ₀ sk) l = false := by
+  rcases matrixValue_false_implies_exists_false_clause
+      f cs σ (patchDeleteWitnessAt f of_ σ₀ sk) hfalse with
+    ⟨cref, c, hget, hclause_false⟩
+  have hclause_true : f.clauseValue σ sk c.lits = true :=
+    clauseValue_of_matrixValue f cs σ sk cref c (hall σ) hget
+  rcases clauseValue_true_false_implies_exists_changed_lit_in_patch
+      f of_ σ₀ σ sk c.lits hclause_true hclause_false with
+    ⟨l, hlmem, hvar, hltrue, hlfalse⟩
+  exact ⟨cref, c, l, hget, hlmem, hvar, hltrue, hlfalse⟩
 
 /-- Project the old dependency-argument vector by dropping the slot for `on_`. -/
 private def projectDeleteArgs
@@ -1204,6 +2085,242 @@ private theorem projectDeleteArgs_of_map
       by_cases hu : u = on_
       · simp [hu, ih]
       · simp [hu, ih]
+
+theorem deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+    (f : DQBF) (patched of_ on_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hneq : of_ ≠ patched) :
+    DeleteDepWitness f of_ on_ (patchDeleteWitnessAt f patched σ₀ sk) σ ↔
+      DeleteDepWitness f of_ on_ sk σ := by
+  unfold DeleteDepWitness
+  rw [varValue_patchDeleteWitnessAt_eq_of_ne f patched σ₀ σ sk hneq,
+    varValue_patchDeleteWitnessAt_eq_of_ne f patched σ₀ (flipUniv on_ σ) sk hneq]
+
+private theorem deleteDepWitness_seed_removed_by_patch
+    (f : DQBF) (of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀) :
+    ¬ DeleteDepWitness f of_ on_ (patchDeleteWitnessAt f of_ σ₀ sk) σ₀ := by
+  intro hpatched
+  unfold DeleteDepWitness at hwit hpatched
+  have hactive :
+      f.varValue σ₀ (patchDeleteWitnessAt f of_ σ₀ sk) of_ =
+        !(f.varValue σ₀ sk of_) :=
+    varValue_patchDeleteWitnessAt_flip_active f of_ σ₀ sk hexi
+  have hinactive :
+      f.varValue (flipUniv on_ σ₀) (patchDeleteWitnessAt f of_ σ₀ sk) of_ =
+        f.varValue (flipUniv on_ σ₀) sk of_ :=
+    varValue_patchDeleteWitnessAt_eq_of_inactive
+      f of_ σ₀ (flipUniv on_ σ₀) sk hexi
+      (fullDepArgs_flipUniv_ne_of_contains f of_ on_ σ₀ hcontains)
+  rw [hactive, hinactive] at hpatched
+  cases hσ : f.varValue σ₀ sk of_
+  · cases hflipσ : f.varValue (flipUniv on_ σ₀) sk of_
+    · exfalso
+      exact hwit (by rw [hσ, hflipσ])
+    · simp [hσ, hflipσ] at hpatched
+  · cases hflipσ : f.varValue (flipUniv on_ σ₀) sk of_
+    · simp [hσ, hflipσ] at hpatched
+    · exfalso
+      exact hwit (by rw [hσ, hflipσ])
+
+private theorem deleteDepWitness_flip_seed_removed_by_patch
+    (f : DQBF) (of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀) :
+    ¬ DeleteDepWitness f of_ on_ (patchDeleteWitnessAt f of_ σ₀ sk)
+        (flipUniv on_ σ₀) := by
+  rw [deleteDepWitness_flipUniv_iff]
+  exact deleteDepWitness_seed_removed_by_patch
+    f of_ on_ σ₀ sk hexi hcontains hwit
+
+private theorem fullDepArgs_ne_of_deleteDepArgs_ne
+    (f : DQBF) (of_ on_ : Var) (σ₀ σ : UnivAssignment)
+    (hargs :
+      deleteDepArgs f of_ on_ σ ≠ deleteDepArgs f of_ on_ σ₀) :
+    fullDepArgs f of_ σ ≠ fullDepArgs f of_ σ₀ := by
+  intro hfull
+  apply hargs
+  have hproj :=
+    congrArg (projectDeleteArgs (f.depset.getD of_ #[]) on_) hfull
+  simpa [fullDepArgs, deleteDepArgs, projectDeleteArgs_of_map] using hproj
+
+private theorem deleteDepArgs_eq_of_fullDepArgs_eq
+    (f : DQBF) (of_ on_ : Var) (σ σ₀ : UnivAssignment)
+    (hfull : fullDepArgs f of_ σ = fullDepArgs f of_ σ₀) :
+    deleteDepArgs f of_ on_ σ = deleteDepArgs f of_ on_ σ₀ := by
+  have hproj :=
+    congrArg (projectDeleteArgs (f.depset.getD of_ #[]) on_) hfull
+  simpa [fullDepArgs, deleteDepArgs, projectDeleteArgs_of_map] using hproj
+
+private theorem fullDepArgs_flipUniv_ne_of_deleteDepArgs_ne
+    (f : DQBF) (of_ on_ : Var) (σ₀ σ : UnivAssignment)
+    (hargs :
+      deleteDepArgs f of_ on_ σ ≠ deleteDepArgs f of_ on_ σ₀) :
+    fullDepArgs f of_ (flipUniv on_ σ) ≠ fullDepArgs f of_ σ₀ := by
+  intro hfull
+  apply hargs
+  calc
+    deleteDepArgs f of_ on_ σ = deleteDepArgs f of_ on_ (flipUniv on_ σ) := by
+      symm
+      exact deleteDepArgs_flipUniv f of_ on_ σ
+    _ = deleteDepArgs f of_ on_ σ₀ := by
+      have hproj :=
+        congrArg (projectDeleteArgs (f.depset.getD of_ #[]) on_) hfull
+      simpa [fullDepArgs, deleteDepArgs, projectDeleteArgs_of_map] using hproj
+
+private theorem deleteDepWitness_patchDeleteWitnessAt_iff_of_deleteDepArgs_ne
+    (f : DQBF) (of_ on_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hargs :
+      deleteDepArgs f of_ on_ σ ≠ deleteDepArgs f of_ on_ σ₀) :
+    DeleteDepWitness f of_ on_ (patchDeleteWitnessAt f of_ σ₀ sk) σ ↔
+      DeleteDepWitness f of_ on_ sk σ := by
+  unfold DeleteDepWitness
+  rw [varValue_patchDeleteWitnessAt_eq_of_inactive
+      f of_ σ₀ σ sk hexi
+      (fullDepArgs_ne_of_deleteDepArgs_ne f of_ on_ σ₀ σ hargs),
+    varValue_patchDeleteWitnessAt_eq_of_inactive
+      f of_ σ₀ (flipUniv on_ σ) sk hexi
+      (fullDepArgs_flipUniv_ne_of_deleteDepArgs_ne f of_ on_ σ₀ σ hargs)]
+
+private theorem deleteDepWitness_sameFiber_removed_by_patch
+    (f : DQBF) (of_ on_ : Var) (σ₀ σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀)
+    (hargs :
+      deleteDepArgs f of_ on_ σ = deleteDepArgs f of_ on_ σ₀) :
+    ¬ DeleteDepWitness f of_ on_ (patchDeleteWitnessAt f of_ σ₀ sk) σ := by
+  by_cases hon : σ on_ = σ₀ on_
+  · have hagree :
+        AgreeOnDeleteDeps f of_ on_ σ σ₀ :=
+      agreeOnDeleteDeps_of_deleteDepArgs_eq f of_ on_ σ σ₀ hargs
+    have hfull :
+        fullDepArgs f of_ σ = fullDepArgs f of_ σ₀ :=
+      fullDepArgs_eq_of_agreeOnDeleteDeps_same_on f of_ on_ σ σ₀ hagree hon
+    have hargs_flip :
+        deleteDepArgs f of_ on_ (flipUniv on_ σ) =
+          deleteDepArgs f of_ on_ (flipUniv on_ σ₀) := by
+      rw [deleteDepArgs_flipUniv, deleteDepArgs_flipUniv, hargs]
+    have hagree_flip :
+        AgreeOnDeleteDeps f of_ on_ (flipUniv on_ σ) (flipUniv on_ σ₀) :=
+      agreeOnDeleteDeps_of_deleteDepArgs_eq f of_ on_ (flipUniv on_ σ) (flipUniv on_ σ₀)
+        hargs_flip
+    have hon_flip : (flipUniv on_ σ) on_ = (flipUniv on_ σ₀) on_ := by
+      simp [flipUniv, hon]
+    have hfull_flip :
+        fullDepArgs f of_ (flipUniv on_ σ) =
+          fullDepArgs f of_ (flipUniv on_ σ₀) :=
+      fullDepArgs_eq_of_agreeOnDeleteDeps_same_on
+        f of_ on_ (flipUniv on_ σ) (flipUniv on_ σ₀) hagree_flip hon_flip
+    intro hpatched
+    have hseed : DeleteDepWitness f of_ on_ (patchDeleteWitnessAt f of_ σ₀ sk) σ₀ := by
+      unfold DeleteDepWitness
+      rw [← varValue_eq_of_fullDepArgs_eq
+          f of_ σ (σ₀) (patchDeleteWitnessAt f of_ σ₀ sk) hexi hfull,
+        ← varValue_eq_of_fullDepArgs_eq
+          f of_ (flipUniv on_ σ) (flipUniv on_ σ₀)
+            (patchDeleteWitnessAt f of_ σ₀ sk) hexi hfull_flip]
+      exact hpatched
+    exact deleteDepWitness_seed_removed_by_patch
+      f of_ on_ σ₀ sk hexi hcontains hwit hseed
+  · have hagree₀ :
+        AgreeOnDeleteDeps f of_ on_ σ₀ σ :=
+      agreeOnDeleteDeps_of_deleteDepArgs_eq f of_ on_ σ₀ σ hargs.symm
+    have hagree₁ :
+        AgreeOnDeleteDeps f of_ on_ σ σ₀ :=
+      agreeOnDeleteDeps_of_deleteDepArgs_eq f of_ on_ σ σ₀ hargs
+    have hfull :
+        fullDepArgs f of_ σ =
+          fullDepArgs f of_ (flipUniv on_ σ₀) := by
+      symm
+      exact fullDepArgs_flipUniv_eq_of_agreeOnDeleteDeps
+        f of_ on_ σ₀ σ hagree₀ (by simpa [eq_comm] using hon)
+    have hfull_flip :
+        fullDepArgs f of_ (flipUniv on_ σ) = fullDepArgs f of_ σ₀ :=
+      fullDepArgs_flipUniv_eq_of_agreeOnDeleteDeps
+        f of_ on_ σ σ₀ hagree₁ hon
+    intro hpatched
+    have hseedFlip :
+        DeleteDepWitness f of_ on_
+          (patchDeleteWitnessAt f of_ σ₀ sk) (flipUniv on_ σ₀) := by
+      unfold DeleteDepWitness
+      rw [flipUniv_involutive]
+      rw [← varValue_eq_of_fullDepArgs_eq
+          f of_ σ (flipUniv on_ σ₀)
+            (patchDeleteWitnessAt f of_ σ₀ sk) hexi hfull,
+        ← varValue_eq_of_fullDepArgs_eq
+          f of_ (flipUniv on_ σ) σ₀
+            (patchDeleteWitnessAt f of_ σ₀ sk) hexi hfull_flip]
+      exact hpatched
+    exact deleteDepWitness_flip_seed_removed_by_patch
+      f of_ on_ σ₀ sk hexi hcontains hwit hseedFlip
+
+private theorem deleteDepWitness_of_fullDepArgs_eq
+    (f : DQBF) (of_ on_ : Var) (σ σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hfull : fullDepArgs f of_ σ = fullDepArgs f of_ σ₀)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀) :
+    DeleteDepWitness f of_ on_ sk σ := by
+  unfold DeleteDepWitness at hwit ⊢
+  have hval :
+      f.varValue σ sk of_ = f.varValue σ₀ sk of_ :=
+    varValue_eq_of_fullDepArgs_eq f of_ σ σ₀ sk hexi hfull
+  have hfullFlip :
+      fullDepArgs f of_ (flipUniv on_ σ) =
+        fullDepArgs f of_ (flipUniv on_ σ₀) :=
+    fullDepArgs_flipUniv_eq_of_fullDepArgs_eq
+      f of_ on_ σ σ₀ hfull
+  have hflip :
+      f.varValue (flipUniv on_ σ) sk of_ =
+        f.varValue (flipUniv on_ σ₀) sk of_ :=
+    varValue_eq_of_fullDepArgs_eq
+      f of_ (flipUniv on_ σ) (flipUniv on_ σ₀) sk hexi hfullFlip
+  intro heq
+  exact hwit
+    (by
+      calc
+        f.varValue σ₀ sk of_ = f.varValue σ sk of_ := hval.symm
+        _ = f.varValue (flipUniv on_ σ) sk of_ := heq
+        _ = f.varValue (flipUniv on_ σ₀) sk of_ := hflip)
+
+private theorem deleteDepWitness_of_deleteDepArgs_eq
+    (f : DQBF) (of_ on_ : Var) (σ σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hargs : deleteDepArgs f of_ on_ σ = deleteDepArgs f of_ on_ σ₀)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀) :
+    DeleteDepWitness f of_ on_ sk σ := by
+  by_cases hon : σ on_ = σ₀ on_
+  · have hagree : AgreeOnDeleteDeps f of_ on_ σ σ₀ :=
+      agreeOnDeleteDeps_of_deleteDepArgs_eq f of_ on_ σ σ₀ hargs
+    exact deleteDepWitness_of_fullDepArgs_eq f of_ on_ σ σ₀ sk hexi
+      (fullDepArgs_eq_of_agreeOnDeleteDeps_same_on
+        f of_ on_ σ σ₀ hagree hon)
+      hwit
+  · have hagree : AgreeOnDeleteDeps f of_ on_ σ₀ σ :=
+      agreeOnDeleteDeps_of_deleteDepArgs_eq f of_ on_ σ₀ σ hargs.symm
+    have hon' : σ₀ on_ ≠ σ on_ := by
+      intro h
+      exact hon h.symm
+    have hfullFlip :
+        fullDepArgs f of_ (flipUniv on_ σ₀) = fullDepArgs f of_ σ :=
+      fullDepArgs_flipUniv_eq_of_agreeOnDeleteDeps
+        f of_ on_ σ₀ σ hagree hon'
+    have hwitFlip :
+        DeleteDepWitness f of_ on_ sk (flipUniv on_ σ₀) :=
+      (deleteDepWitness_flipUniv_iff f of_ on_ sk σ₀).2 hwit
+    exact deleteDepWitness_of_fullDepArgs_eq
+      f of_ on_ σ (flipUniv on_ σ₀) sk hexi hfullFlip.symm
+      hwitFlip
 
 /-- Lift a witness for the deleted formula back to the original formula by
     ignoring the deleted dependency argument of `of_`. -/
@@ -1570,6 +2687,163 @@ private theorem DeleteIndependenceBridge.of_forceDelDepsTrue
     DeleteIndependenceBridge st of_ on_ :=
   deleteIndependenceBridge_of_forceDelDepsTrue
     st.formula st.clauses vars of_ on_ hmem hexi htrueDel
+
+/-- Reinsert a canonical `false` value for the deleted dependency `on_`. -/
+private def insertDeleteArgsList : List Var → Var → List Bool → List Bool
+  | [], _, _ => []
+  | u :: us, on_, args =>
+      if u = on_ then
+        false :: insertDeleteArgsList us on_ args
+      else
+        match args with
+        | [] => false :: insertDeleteArgsList us on_ []
+        | b :: bs => b :: insertDeleteArgsList us on_ bs
+
+private def insertDeleteArgs
+    (deps : Array Var) (on_ : Var) (args : Array Bool) : Array Bool :=
+  (insertDeleteArgsList deps.toList on_ args.toList).toArray
+
+private theorem insertDeleteArgsList_of_filter_map
+    (deps : List Var) (on_ : Var) (σ : UnivAssignment) :
+    insertDeleteArgsList deps on_ ((deps.filter fun x => !decide (x = on_)).map σ) =
+      deps.map (fun u => (!decide (u = on_)) && σ u) := by
+  induction deps with
+  | nil =>
+      simp [insertDeleteArgsList]
+  | cons u us ih =>
+      by_cases hu : u = on_
+      · simp [insertDeleteArgsList, hu, ih]
+      · simp [insertDeleteArgsList, hu, ih]
+
+private theorem insertDeleteArgs_of_filter_map
+    (deps : Array Var) (on_ : Var) (σ : UnivAssignment) :
+    insertDeleteArgs deps on_ ((deps.filter (· ≠ on_)).map σ) =
+      deps.map (fun u => (!decide (u = on_)) && σ u) := by
+  apply Array.ext'
+  simpa [insertDeleteArgs, Array.toList_map] using
+    insertDeleteArgsList_of_filter_map deps.toList on_ σ
+
+/-- Project a witness for the original formula down to the formula where `on_`
+    has been deleted from every existential in `vars`, using `false` as a
+    canonical value for the removed dependency slot. -/
+private def projectForceDelDepsWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment) :
+    SkolemAssignment :=
+  fun v args =>
+    if v ∈ vars.toList then
+      sk v (insertDeleteArgs (f.depset.getD v #[]) on_ args)
+    else
+      sk v args
+
+private theorem projectForceDelDepsWitness_apply_of_not_mem
+    (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment)
+    {v : Var} {args : Array Bool}
+    (hnot : v ∉ vars.toList) :
+    projectForceDelDepsWitness f vars on_ sk v args = sk v args := by
+  unfold projectForceDelDepsWitness
+  simp [hnot]
+
+private theorem varValue_projectForceDelDepsWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexhibit : ExhibitsDeleteIndependenceSet f vars on_ sk)
+    (v : Var) :
+    (forceDelDeps f vars on_).varValue σ
+      (projectForceDelDepsWitness f vars on_ sk) v =
+      f.varValue σ sk v := by
+  by_cases hex : f.isVarExistential v = true
+  · have hex' : (forceDelDeps f vars on_).isVarExistential v = true := by
+      simpa [hex] using forceDelDeps_isVarExistential f vars on_ v
+    rw [DQBF.varValue, DQBF.varValue, hex', hex]
+    by_cases hmem : v ∈ vars.toList
+    · have hdeps :
+          (forceDelDeps f vars on_).depset.getD v #[] =
+            (f.depset.getD v #[]).filter (· ≠ on_) := by
+        simpa [hmem] using forceDelDeps_depset_getD f vars on_ v
+      rw [DQBF.exiValue, DQBF.exiValue, hdeps]
+      have hargs :
+          insertDeleteArgs (f.depset.getD v #[]) on_
+              (((f.depset.getD v #[]).filter (· ≠ on_)).map σ) =
+            (f.depset.getD v #[]).map (fun u => (!decide (u = on_)) && σ u) := by
+        simpa using insertDeleteArgs_of_filter_map (f.depset.getD v #[]) on_ σ
+      have hagree :
+          AgreeOnDeleteDeps f v on_
+            (fun u => (!decide (u = on_)) && σ u) σ := by
+        intro u hu
+        have hu_ne : u ≠ on_ := by
+          simpa using (Array.mem_filter.mp hu).2
+        simp [hu_ne]
+      have hindep :=
+        hexhibit v hmem (fun u => (!decide (u = on_)) && σ u) σ hagree
+      have happ :
+          projectForceDelDepsWitness f vars on_ sk v
+              (((f.depset.getD v #[]).filter (· ≠ on_)).map σ) =
+            sk v ((f.depset.getD v #[]).map (fun u => (!decide (u = on_)) && σ u)) := by
+        unfold projectForceDelDepsWitness
+        rw [if_pos hmem]
+        simpa using congrArg (sk v) hargs
+      rw [happ]
+      simpa [DQBF.varValue, hex, DQBF.exiValue] using hindep
+    · have hdeps :
+          (forceDelDeps f vars on_).depset.getD v #[] = f.depset.getD v #[] := by
+        simpa [hmem] using forceDelDeps_depset_getD f vars on_ v
+      rw [DQBF.exiValue, DQBF.exiValue, hdeps]
+      simp [projectForceDelDepsWitness, hmem]
+  · have hex' : (forceDelDeps f vars on_).isVarExistential v = false := by
+      simpa [hex] using forceDelDeps_isVarExistential f vars on_ v
+    simp [DQBF.varValue, hex', hex]
+
+private theorem litValue_projectForceDelDepsWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexhibit : ExhibitsDeleteIndependenceSet f vars on_ sk)
+    (l : Literal) :
+    (forceDelDeps f vars on_).litValue σ
+      (projectForceDelDepsWitness f vars on_ sk) l =
+      f.litValue σ sk l := by
+  simp [DQBF.litValue, varValue_projectForceDelDepsWitness f vars on_ σ sk hexhibit l.var]
+
+private theorem clauseValue_projectForceDelDepsWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexhibit : ExhibitsDeleteIndependenceSet f vars on_ sk)
+    (lits : Array Literal) :
+    (forceDelDeps f vars on_).clauseValue σ
+      (projectForceDelDepsWitness f vars on_ sk) lits =
+      f.clauseValue σ sk lits := by
+  unfold DQBF.clauseValue
+  simpa using
+    (Array.any_congr
+      (w := rfl)
+      (h := fun l => litValue_projectForceDelDepsWitness f vars on_ σ sk hexhibit l)
+      (wstart := rfl) (wstop := rfl))
+
+private theorem matrixValue_projectForceDelDepsWitness
+    (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hexhibit : ExhibitsDeleteIndependenceSet f vars on_ sk) :
+    cs.matrixValue (forceDelDeps f vars on_) σ
+      (projectForceDelDepsWitness f vars on_ sk) =
+      cs.matrixValue f σ sk := by
+  unfold ClauseStore.matrixValue
+  apply List.all_congr rfl
+  intro i
+  cases hclause : cs.getClause (i + 1) with
+  | none =>
+      simp [hclause]
+  | some c =>
+      simp [hclause, clauseValue_projectForceDelDepsWitness f vars on_ σ sk hexhibit c.lits]
+
+private theorem DQBFTrue_forceDelDeps_of_setBridge
+    {st : CheckState} {vars : Array Var} {on_ : Var}
+    (hbridge : DeleteIndependenceSetBridge st vars on_)
+    (htrue : DQBFTrue st.formula st.clauses) :
+    DQBFTrue (forceDelDeps st.formula vars on_) st.clauses := by
+  rcases hbridge htrue with ⟨sk, hall, hexhibit⟩
+  refine ⟨projectForceDelDepsWitness st.formula vars on_ sk, ?_⟩
+  intro σ
+  rw [matrixValue_projectForceDelDepsWitness st.formula st.clauses vars on_ σ sk hexhibit]
+  exact hall σ
 
 /-- Local deletion patch for one reduced-dependency pattern.
     For `of_`, the new formula only supplies the dependency vector with `on_`
@@ -2289,6 +3563,1518 @@ theorem DQBFTrue_forceDelDep_of_bridge
   rcases hbridge htrue with ⟨sk, hsk, hnoBoth⟩
   exact dqbfTrue_forceDelDep_of_no_both_bad
     f cs of_ on_ sk hexi hnoBoth
+
+/-- Enumerate all Boolean lists of a fixed length. -/
+private def allBoolLists : Nat → List (List Bool)
+  | 0 => [[]]
+  | n + 1 =>
+      (allBoolLists n).flatMap fun bs => [false :: bs, true :: bs]
+
+private theorem mem_allBoolLists_of_length :
+    ∀ {n} (bs : List Bool), bs.length = n → bs ∈ allBoolLists n
+  | 0, bs, hlen => by
+      cases bs with
+      | nil =>
+          simp [allBoolLists]
+      | cons b bs =>
+          simp at hlen
+  | n + 1, bs, hlen => by
+      cases bs with
+      | nil =>
+          simp at hlen
+      | cons b bs =>
+          have hlen' : bs.length = n := by
+            simpa using Nat.succ.inj hlen
+          have hmem := mem_allBoolLists_of_length bs hlen'
+          cases b with
+          | false =>
+              exact List.mem_flatMap_of_mem hmem (by simp [allBoolLists])
+          | true =>
+              exact List.mem_flatMap_of_mem hmem (by simp [allBoolLists])
+
+private def allBoolArrays (n : Nat) : List (Array Bool) :=
+  (allBoolLists n).map List.toArray
+
+private theorem mem_allBoolArrays_of_size (args : Array Bool) :
+    args ∈ allBoolArrays args.size := by
+  unfold allBoolArrays
+  apply List.mem_map.mpr
+  refine ⟨args.toList, ?_, ?_⟩
+  · exact mem_allBoolLists_of_length args.toList (by simp)
+  · exact (Array.toArray_eq).2 rfl
+
+private theorem deleteDepArgs_size
+    (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) :
+    (deleteDepArgs f of_ on_ σ).size =
+      ((f.depset.getD of_ #[]).filter (· ≠ on_)).size := by
+  simp [deleteDepArgs]
+
+private theorem list_length_filter_lt_length_of_mem_false
+    {α : Type} (p : α → Bool) {xs : List α} {x : α}
+    (hmem : x ∈ xs) (hp : p x = false) :
+    (xs.filter p).length < xs.length := by
+  exact Nat.lt_of_le_of_ne (List.length_filter_le p xs) (by
+    intro hlen
+    have hp_true :
+        p x = true :=
+      (List.length_filter_eq_length_iff.mp hlen) x hmem
+    rw [hp] at hp_true
+    cases hp_true)
+
+private theorem list_filter_eq_filter_filter_of_imp
+    {α : Type} (p q : α → Bool) (xs : List α)
+    (himp : ∀ x, p x = true → q x = true) :
+    xs.filter p = (xs.filter q).filter p := by
+  symm
+  rw [List.filter_filter]
+  apply List.filter_congr
+  intro x _
+  cases hp : p x
+  · simp
+  · have hq : q x = true := himp x hp
+    simp [hq]
+
+/-- A reduced-fiber view of a dependency witness. This is the finite measure
+    used by the paper-style descent proof: one local patch removes one whole
+    `deleteDepArgs` fiber. -/
+def DeleteWitnessFiber
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (args : Array Bool) : Prop :=
+  ∃ σ, deleteDepArgs f of_ on_ σ = args ∧
+    DeleteDepWitness f of_ on_ sk σ
+
+private noncomputable def deleteWitnessFiberPred
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (args : Array Bool) : Bool := by
+  classical
+  exact if _h : DeleteWitnessFiber f of_ on_ sk args then true else false
+
+private theorem deleteWitnessFiberPred_eq_true_iff
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (args : Array Bool) :
+    deleteWitnessFiberPred f of_ on_ sk args = true ↔
+      DeleteWitnessFiber f of_ on_ sk args := by
+  classical
+  unfold deleteWitnessFiberPred
+  by_cases hwit : DeleteWitnessFiber f of_ on_ sk args
+  · simp [hwit]
+  · simp [hwit]
+
+private noncomputable def deleteWitnessFiberList
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment) :
+    List (Array Bool) :=
+  (allBoolArrays ((f.depset.getD of_ #[]).filter (· ≠ on_)).size).filter
+    (deleteWitnessFiberPred f of_ on_ sk)
+
+private noncomputable def deleteWitnessFiberCountVar
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment) : Nat :=
+  (deleteWitnessFiberList f of_ on_ sk).length
+
+private noncomputable def deleteWitnessFiberCountSetList
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (sk : SkolemAssignment) : Nat :=
+  match vars with
+  | [] => 0
+  | of_ :: rest =>
+      deleteWitnessFiberCountVar f of_ on_ sk +
+        deleteWitnessFiberCountSetList f rest on_ sk
+
+noncomputable def deleteWitnessFiberCountSet
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (sk : SkolemAssignment) : Nat :=
+  deleteWitnessFiberCountSetList f vars.toList on_ sk
+
+private theorem mem_deleteWitnessFiberList_iff
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
+    (args : Array Bool) :
+    args ∈ deleteWitnessFiberList f of_ on_ sk ↔
+      args ∈ allBoolArrays ((f.depset.getD of_ #[]).filter (· ≠ on_)).size ∧
+        DeleteWitnessFiber f of_ on_ sk args := by
+  classical
+  unfold deleteWitnessFiberList
+  constructor
+  · intro hmem
+    rcases List.mem_filter.mp hmem with ⟨hall, hpred⟩
+    exact ⟨hall,
+      (deleteWitnessFiberPred_eq_true_iff f of_ on_ sk args).1 hpred⟩
+  · intro hmem
+    exact List.mem_filter.mpr
+      ⟨hmem.1,
+        (deleteWitnessFiberPred_eq_true_iff f of_ on_ sk args).2 hmem.2⟩
+
+private theorem deleteWitnessFiberCountVar_eq_zero_iff_noDeleteDepWitness
+    (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment) :
+    deleteWitnessFiberCountVar f of_ on_ sk = 0 ↔
+      ∀ σ, ¬ DeleteDepWitness f of_ on_ sk σ := by
+  constructor
+  · intro hzero σ hwit
+    have hnil : deleteWitnessFiberList f of_ on_ sk = [] := by
+      exact List.length_eq_zero_iff.mp hzero
+    have hall :
+        deleteDepArgs f of_ on_ σ ∈
+          allBoolArrays ((f.depset.getD of_ #[]).filter (· ≠ on_)).size := by
+      simpa [deleteDepArgs_size f of_ on_ σ] using
+        mem_allBoolArrays_of_size (deleteDepArgs f of_ on_ σ)
+    have hmem :
+        deleteDepArgs f of_ on_ σ ∈
+          deleteWitnessFiberList f of_ on_ sk := by
+      rw [mem_deleteWitnessFiberList_iff]
+      exact ⟨hall, ⟨σ, rfl, hwit⟩⟩
+    rw [hnil] at hmem
+    exact (List.not_mem_nil (a := deleteDepArgs f of_ on_ σ)) hmem
+  · intro hnowit
+    unfold deleteWitnessFiberCountVar
+    apply List.length_eq_zero_iff.mpr
+    apply List.eq_nil_iff_forall_not_mem.mpr
+    intro args hmem
+    rw [mem_deleteWitnessFiberList_iff] at hmem
+    rcases hmem.2 with ⟨σ, _, hwit⟩
+    exact hnowit σ hwit
+
+private theorem deleteWitnessFiberCountSetList_eq_zero_iff_noDeleteDepWitness
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (sk : SkolemAssignment) :
+    deleteWitnessFiberCountSetList f vars on_ sk = 0 ↔
+      ∀ of_ ∈ vars, ∀ σ, ¬ DeleteDepWitness f of_ on_ sk σ := by
+  induction vars with
+  | nil =>
+      simp [deleteWitnessFiberCountSetList]
+  | cons of_ rest ih =>
+      constructor
+      · intro hzero target hmem σ hwit
+        have hparts :
+            deleteWitnessFiberCountVar f of_ on_ sk = 0 ∧
+              deleteWitnessFiberCountSetList f rest on_ sk = 0 := by
+          exact Nat.add_eq_zero_iff.mp (by
+            simpa [deleteWitnessFiberCountSetList] using hzero)
+        rcases List.mem_cons.mp hmem with htarget | htarget
+        · subst target
+          exact (deleteWitnessFiberCountVar_eq_zero_iff_noDeleteDepWitness
+            f of_ on_ sk).1 hparts.1 σ hwit
+        · exact ih.mp hparts.2 target htarget σ hwit
+      · intro hnowit
+        have hvar :
+            deleteWitnessFiberCountVar f of_ on_ sk = 0 := by
+          exact (deleteWitnessFiberCountVar_eq_zero_iff_noDeleteDepWitness
+            f of_ on_ sk).2 (hnowit of_ (by simp))
+        have hrest :
+            deleteWitnessFiberCountSetList f rest on_ sk = 0 := by
+          exact ih.mpr (by
+            intro target htarget σ hwit
+            exact hnowit target (List.mem_cons_of_mem of_ htarget) σ hwit)
+        simp [deleteWitnessFiberCountSetList, hvar, hrest]
+
+private theorem deleteWitnessFiberCountSet_eq_zero_iff_noDeleteDepWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (sk : SkolemAssignment) :
+    deleteWitnessFiberCountSet f vars on_ sk = 0 ↔
+      ∀ of_ ∈ vars.toList, ∀ σ,
+        ¬ DeleteDepWitness f of_ on_ sk σ := by
+  simpa [deleteWitnessFiberCountSet] using
+    deleteWitnessFiberCountSetList_eq_zero_iff_noDeleteDepWitness
+      f vars.toList on_ sk
+
+theorem deleteWitnessFiberCountSet_zero_iff_exhibits
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (sk : SkolemAssignment)
+    (hexi : ∀ of_ ∈ vars.toList, f.isVarExistential of_ = true) :
+    deleteWitnessFiberCountSet f vars on_ sk = 0 ↔
+      ExhibitsDeleteIndependenceSet f vars on_ sk := by
+  rw [deleteWitnessFiberCountSet_eq_zero_iff_noDeleteDepWitness,
+    exhibitsDeleteIndependenceSet_iff_noDeleteDepWitness f vars on_ sk hexi]
+
+theorem deleteWitnessFiberCountSet_ne_zero_iff_existsDeleteDepWitness
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (sk : SkolemAssignment) :
+    deleteWitnessFiberCountSet f vars on_ sk ≠ 0 ↔
+      ∃ of_, of_ ∈ vars.toList ∧ ∃ σ,
+        DeleteDepWitness f of_ on_ sk σ := by
+  constructor
+  · intro hne
+    by_cases hwit :
+        ∃ of_, of_ ∈ vars.toList ∧ ∃ σ,
+          DeleteDepWitness f of_ on_ sk σ
+    · exact hwit
+    · exfalso
+      have hnowit :
+          ∀ of_ ∈ vars.toList, ∀ σ,
+            ¬ DeleteDepWitness f of_ on_ sk σ := by
+        intro of_ hof σ hdep
+        exact hwit ⟨of_, hof, σ, hdep⟩
+      exact hne ((deleteWitnessFiberCountSet_eq_zero_iff_noDeleteDepWitness
+        f vars on_ sk).2 hnowit)
+  · intro hwit hzero
+    rcases hwit with ⟨of_, hof, σ, hwit⟩
+    have hnowit :=
+      (deleteWitnessFiberCountSet_eq_zero_iff_noDeleteDepWitness
+        f vars on_ sk).1 hzero
+    exact hnowit of_ hof σ hwit
+
+theorem deleteWitnessFiber_patchDeleteWitnessAt_iff_of_ne
+    (f : DQBF) (patched of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment) (args : Array Bool)
+    (hneq : of_ ≠ patched) :
+    DeleteWitnessFiber f of_ on_
+        (patchDeleteWitnessAt f patched σ₀ sk) args ↔
+      DeleteWitnessFiber f of_ on_ sk args := by
+  constructor
+  · intro hwit
+    rcases hwit with ⟨σ, hargs, hdep⟩
+    exact ⟨σ, hargs,
+      (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+        f patched of_ on_ σ₀ σ sk hneq).1 hdep⟩
+  · intro hwit
+    rcases hwit with ⟨σ, hargs, hdep⟩
+    exact ⟨σ, hargs,
+      (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+        f patched of_ on_ σ₀ σ sk hneq).2 hdep⟩
+
+theorem deleteWitnessFiber_patchDeleteWitnessAt_imp_old_self
+    (f : DQBF) (of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment) (args : Array Bool)
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀)
+    (hpatch :
+      DeleteWitnessFiber f of_ on_
+        (patchDeleteWitnessAt f of_ σ₀ sk) args) :
+    DeleteWitnessFiber f of_ on_ sk args := by
+  rcases hpatch with ⟨σ, hargs, hdep⟩
+  by_cases hsame : args = deleteDepArgs f of_ on_ σ₀
+  · exfalso
+    exact deleteDepWitness_sameFiber_removed_by_patch
+      f of_ on_ σ₀ σ sk hexi hcontains hwit (hargs.trans hsame) hdep
+  · have hargs_ne :
+        deleteDepArgs f of_ on_ σ ≠ deleteDepArgs f of_ on_ σ₀ := by
+      intro heq
+      exact hsame (hargs.symm.trans heq)
+    exact ⟨σ, hargs,
+      (deleteDepWitness_patchDeleteWitnessAt_iff_of_deleteDepArgs_ne
+        f of_ on_ σ₀ σ sk hexi hargs_ne).1 hdep⟩
+
+private theorem not_deleteWitnessFiber_patchDeleteWitnessAt_target_self
+    (f : DQBF) (of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀) :
+    ¬ DeleteWitnessFiber f of_ on_
+        (patchDeleteWitnessAt f of_ σ₀ sk)
+        (deleteDepArgs f of_ on_ σ₀) := by
+  intro hfiber
+  rcases hfiber with ⟨σ, hargs, hdep⟩
+  exact deleteDepWitness_sameFiber_removed_by_patch
+    f of_ on_ σ₀ σ sk hexi hcontains hwit hargs hdep
+
+private theorem deleteWitnessFiberList_patchDeleteWitnessAt_eq_of_ne
+    (f : DQBF) (patched of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hneq : of_ ≠ patched) :
+    deleteWitnessFiberList f of_ on_
+        (patchDeleteWitnessAt f patched σ₀ sk) =
+      deleteWitnessFiberList f of_ on_ sk := by
+  unfold deleteWitnessFiberList
+  apply List.filter_congr
+  intro args _
+  by_cases hpatch :
+      DeleteWitnessFiber f of_ on_
+        (patchDeleteWitnessAt f patched σ₀ sk) args
+  · have hold :
+        DeleteWitnessFiber f of_ on_ sk args :=
+      (deleteWitnessFiber_patchDeleteWitnessAt_iff_of_ne
+        f patched of_ on_ σ₀ sk args hneq).1 hpatch
+    simp [deleteWitnessFiberPred, hpatch, hold]
+  · have hold :
+        ¬ DeleteWitnessFiber f of_ on_ sk args := by
+      intro hold
+      exact hpatch
+        ((deleteWitnessFiber_patchDeleteWitnessAt_iff_of_ne
+          f patched of_ on_ σ₀ sk args hneq).2 hold)
+    simp [deleteWitnessFiberPred, hpatch, hold]
+
+private theorem deleteWitnessFiberList_patchDeleteWitnessAt_proper_subset_self
+    (f : DQBF) (of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀) :
+    (∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_
+          (patchDeleteWitnessAt f of_ σ₀ sk) →
+        args ∈ deleteWitnessFiberList f of_ on_ sk) ∧
+      ∃ args,
+        args ∈ deleteWitnessFiberList f of_ on_ sk ∧
+          args ∉ deleteWitnessFiberList f of_ on_
+            (patchDeleteWitnessAt f of_ σ₀ sk) := by
+  constructor
+  · intro args hmem
+    rw [mem_deleteWitnessFiberList_iff] at hmem ⊢
+    exact ⟨hmem.1,
+      deleteWitnessFiber_patchDeleteWitnessAt_imp_old_self
+        f of_ on_ σ₀ sk args hexi hcontains hwit hmem.2⟩
+  · let targetArgs := deleteDepArgs f of_ on_ σ₀
+    refine ⟨targetArgs, ?_, ?_⟩
+    · rw [mem_deleteWitnessFiberList_iff]
+      exact ⟨by
+        simpa [targetArgs, deleteDepArgs_size f of_ on_ σ₀] using
+          mem_allBoolArrays_of_size targetArgs,
+        ⟨σ₀, rfl, hwit⟩⟩
+    · intro hmem
+      have hfiber :
+          DeleteWitnessFiber f of_ on_
+            (patchDeleteWitnessAt f of_ σ₀ sk) targetArgs :=
+        (mem_deleteWitnessFiberList_iff f of_ on_
+          (patchDeleteWitnessAt f of_ σ₀ sk) targetArgs).1 hmem |>.2
+      exact not_deleteWitnessFiber_patchDeleteWitnessAt_target_self
+        f of_ on_ σ₀ sk hexi hcontains hwit hfiber
+
+def DeleteWitnessFiberSetSubset
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (skNew skOld : SkolemAssignment) : Prop :=
+  ∀ of_, of_ ∈ vars.toList → ∀ args,
+    args ∈ deleteWitnessFiberList f of_ on_ skNew →
+      args ∈ deleteWitnessFiberList f of_ on_ skOld
+
+def DeleteWitnessFiberSetProperSubset
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (skNew skOld : SkolemAssignment) : Prop :=
+  DeleteWitnessFiberSetSubset f vars on_ skNew skOld ∧
+    ∃ of_, of_ ∈ vars.toList ∧ ∃ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skOld ∧
+        args ∉ deleteWitnessFiberList f of_ on_ skNew
+
+private theorem deleteWitnessFiberSetSubset_refl
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (sk : SkolemAssignment) :
+    DeleteWitnessFiberSetSubset f vars on_ sk sk := by
+  intro _ _ _ hmem
+  exact hmem
+
+private theorem deleteWitnessFiberSetSubset_trans
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (skA skB skC : SkolemAssignment)
+    (hAB : DeleteWitnessFiberSetSubset f vars on_ skA skB)
+    (hBC : DeleteWitnessFiberSetSubset f vars on_ skB skC) :
+    DeleteWitnessFiberSetSubset f vars on_ skA skC := by
+  intro of_ hof args hmem
+  exact hBC of_ hof args (hAB of_ hof args hmem)
+
+private theorem deleteWitnessFiberSetProperSubset_subset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skNew skOld : SkolemAssignment}
+    (h : DeleteWitnessFiberSetProperSubset f vars on_ skNew skOld) :
+    DeleteWitnessFiberSetSubset f vars on_ skNew skOld :=
+  h.1
+
+private theorem deleteWitnessFiberSetProperSubset_of_properSubset_subset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skA skB skC : SkolemAssignment}
+    (hAB : DeleteWitnessFiberSetProperSubset f vars on_ skA skB)
+    (hBC : DeleteWitnessFiberSetSubset f vars on_ skB skC) :
+    DeleteWitnessFiberSetProperSubset f vars on_ skA skC := by
+  constructor
+  · exact deleteWitnessFiberSetSubset_trans f vars on_ skA skB skC
+      hAB.1 hBC
+  · rcases hAB.2 with ⟨of_, hof, args, hmemB, hnotA⟩
+    exact ⟨of_, hof, args, hBC of_ hof args hmemB, hnotA⟩
+
+private theorem deleteWitnessFiberSetProperSubset_of_subset_properSubset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skA skB skC : SkolemAssignment}
+    (hAB : DeleteWitnessFiberSetSubset f vars on_ skA skB)
+    (hBC : DeleteWitnessFiberSetProperSubset f vars on_ skB skC) :
+    DeleteWitnessFiberSetProperSubset f vars on_ skA skC := by
+  constructor
+  · exact deleteWitnessFiberSetSubset_trans f vars on_ skA skB skC
+      hAB hBC.1
+  · rcases hBC.2 with ⟨of_, hof, args, hmemC, hnotB⟩
+    refine ⟨of_, hof, args, hmemC, ?_⟩
+    intro hmemA
+    exact hnotB (hAB of_ hof args hmemA)
+
+private theorem deleteWitnessFiberPred_imp_of_list_subset
+    (f : DQBF) (of_ on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld) :
+    ∀ args,
+      deleteWitnessFiberPred f of_ on_ skNew args = true →
+        deleteWitnessFiberPred f of_ on_ skOld args = true := by
+  intro args hnew
+  have hfiberNew :
+      DeleteWitnessFiber f of_ on_ skNew args :=
+    (deleteWitnessFiberPred_eq_true_iff f of_ on_ skNew args).1 hnew
+  rcases hfiberNew with ⟨σ, hargs, hwit⟩
+  have hbase :
+      args ∈ allBoolArrays
+        ((f.depset.getD of_ #[]).filter (· ≠ on_)).size := by
+    rw [← hargs]
+    simpa [deleteDepArgs_size f of_ on_ σ] using
+      mem_allBoolArrays_of_size (deleteDepArgs f of_ on_ σ)
+  have hmemNew :
+      args ∈ deleteWitnessFiberList f of_ on_ skNew :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skNew args).2
+      ⟨hbase, ⟨σ, hargs, hwit⟩⟩
+  have hmemOld :
+      args ∈ deleteWitnessFiberList f of_ on_ skOld :=
+    hsubset args hmemNew
+  exact (deleteWitnessFiberPred_eq_true_iff f of_ on_ skOld args).2
+    ((mem_deleteWitnessFiberList_iff f of_ on_ skOld args).1 hmemOld).2
+
+private theorem deleteWitnessFiberCountVar_le_of_list_subset
+    (f : DQBF) (of_ on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld) :
+    deleteWitnessFiberCountVar f of_ on_ skNew ≤
+      deleteWitnessFiberCountVar f of_ on_ skOld := by
+  let base := allBoolArrays ((f.depset.getD of_ #[]).filter (· ≠ on_)).size
+  let pNew := deleteWitnessFiberPred f of_ on_ skNew
+  let pOld := deleteWitnessFiberPred f of_ on_ skOld
+  have himp : ∀ args, pNew args = true → pOld args = true :=
+    deleteWitnessFiberPred_imp_of_list_subset f of_ on_ skNew skOld hsubset
+  unfold deleteWitnessFiberCountVar deleteWitnessFiberList
+  change (base.filter pNew).length ≤ (base.filter pOld).length
+  rw [list_filter_eq_filter_filter_of_imp pNew pOld base himp]
+  exact List.length_filter_le pNew (base.filter pOld)
+
+private theorem deleteWitnessFiberList_reverse_subset_of_count_eq
+    (f : DQBF) (of_ on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld)
+    (hcount :
+      deleteWitnessFiberCountVar f of_ on_ skNew =
+        deleteWitnessFiberCountVar f of_ on_ skOld) :
+    ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skOld →
+        args ∈ deleteWitnessFiberList f of_ on_ skNew := by
+  let base := allBoolArrays ((f.depset.getD of_ #[]).filter (· ≠ on_)).size
+  let pNew := deleteWitnessFiberPred f of_ on_ skNew
+  let pOld := deleteWitnessFiberPred f of_ on_ skOld
+  have himp : ∀ args, pNew args = true → pOld args = true :=
+    deleteWitnessFiberPred_imp_of_list_subset f of_ on_ skNew skOld hsubset
+  have hfilter :
+      base.filter pNew = (base.filter pOld).filter pNew :=
+    list_filter_eq_filter_filter_of_imp pNew pOld base himp
+  have hlen :
+      ((base.filter pOld).filter pNew).length =
+        (base.filter pOld).length := by
+    rw [← hfilter]
+    simpa [deleteWitnessFiberCountVar, deleteWitnessFiberList, base,
+      pNew, pOld] using hcount
+  have hall :
+      ∀ args, args ∈ base.filter pOld → pNew args = true :=
+    List.length_filter_eq_length_iff.mp hlen
+  intro args hmemOld
+  have hbase :
+      args ∈ allBoolArrays
+        ((f.depset.getD of_ #[]).filter (· ≠ on_)).size :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skOld args).1 hmemOld |>.1
+  have hold :
+      DeleteWitnessFiber f of_ on_ skOld args :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skOld args).1 hmemOld |>.2
+  have hpOld : pOld args = true :=
+    (deleteWitnessFiberPred_eq_true_iff f of_ on_ skOld args).2 hold
+  have hpNew : pNew args = true :=
+    hall args (by
+      rw [List.mem_filter]
+      exact ⟨by simpa [base] using hbase, hpOld⟩)
+  exact (mem_deleteWitnessFiberList_iff f of_ on_ skNew args).2
+    ⟨hbase,
+      (deleteWitnessFiberPred_eq_true_iff f of_ on_ skNew args).1 hpNew⟩
+
+private theorem deleteWitnessFiberCountVar_lt_of_list_subset_missing
+    (f : DQBF) (of_ on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld)
+    (hmissing : ∃ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skOld ∧
+        args ∉ deleteWitnessFiberList f of_ on_ skNew) :
+    deleteWitnessFiberCountVar f of_ on_ skNew <
+      deleteWitnessFiberCountVar f of_ on_ skOld := by
+  rcases hmissing with ⟨targetArgs, hold, hnew⟩
+  let base := allBoolArrays ((f.depset.getD of_ #[]).filter (· ≠ on_)).size
+  let pNew := deleteWitnessFiberPred f of_ on_ skNew
+  let pOld := deleteWitnessFiberPred f of_ on_ skOld
+  have htargetOld : targetArgs ∈ base.filter pOld := by
+    simpa [deleteWitnessFiberList, base, pOld] using hold
+  have htargetNewFalse : pNew targetArgs = false := by
+    have hbase :
+        targetArgs ∈ allBoolArrays
+          ((f.depset.getD of_ #[]).filter (· ≠ on_)).size :=
+      ((mem_deleteWitnessFiberList_iff f of_ on_ skOld targetArgs).1 hold).1
+    unfold pNew deleteWitnessFiberPred
+    by_cases hfiber :
+        DeleteWitnessFiber f of_ on_ skNew targetArgs
+    · have hmemNew :
+          targetArgs ∈ deleteWitnessFiberList f of_ on_ skNew :=
+        (mem_deleteWitnessFiberList_iff f of_ on_ skNew targetArgs).2
+          ⟨hbase, hfiber⟩
+      exact False.elim (hnew hmemNew)
+    · simp [hfiber]
+  have himp : ∀ args, pNew args = true → pOld args = true :=
+    deleteWitnessFiberPred_imp_of_list_subset f of_ on_ skNew skOld hsubset
+  unfold deleteWitnessFiberCountVar deleteWitnessFiberList
+  change (base.filter pNew).length < (base.filter pOld).length
+  rw [list_filter_eq_filter_filter_of_imp pNew pOld base himp]
+  exact list_length_filter_lt_length_of_mem_false
+    pNew htargetOld htargetNewFalse
+
+private theorem deleteWitnessFiberCountSetList_le_of_subset
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ of_, of_ ∈ vars → ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld) :
+    deleteWitnessFiberCountSetList f vars on_ skNew ≤
+      deleteWitnessFiberCountSetList f vars on_ skOld := by
+  revert hsubset
+  induction vars with
+  | nil =>
+      intro _hsubset
+      simp [deleteWitnessFiberCountSetList]
+  | cons head rest ih =>
+      intro hsubset
+      have hhead :
+          deleteWitnessFiberCountVar f head on_ skNew ≤
+            deleteWitnessFiberCountVar f head on_ skOld := by
+        exact deleteWitnessFiberCountVar_le_of_list_subset
+          f head on_ skNew skOld
+          (fun args hmem =>
+            hsubset head (by simp) args hmem)
+      have htail :
+          deleteWitnessFiberCountSetList f rest on_ skNew ≤
+            deleteWitnessFiberCountSetList f rest on_ skOld := by
+        exact ih
+          (fun of_ hof args hmem =>
+            hsubset of_ (List.mem_cons_of_mem head hof) args hmem)
+      simpa [deleteWitnessFiberCountSetList] using
+        Nat.add_le_add hhead htail
+
+private theorem deleteWitnessFiberCountSetList_lt_of_subset_missing
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ of_, of_ ∈ vars → ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld)
+    (hmissing : ∃ of_, of_ ∈ vars ∧ ∃ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skOld ∧
+        args ∉ deleteWitnessFiberList f of_ on_ skNew) :
+    deleteWitnessFiberCountSetList f vars on_ skNew <
+      deleteWitnessFiberCountSetList f vars on_ skOld := by
+  revert hsubset hmissing
+  induction vars with
+  | nil =>
+      intro _hsubset hmissing
+      rcases hmissing with ⟨of_, hof, _args, _hold, _hnew⟩
+      cases hof
+  | cons head rest ih =>
+      intro hsubset hmissing
+      rcases hmissing with ⟨of_, hof, args, hold, hnew⟩
+      simp [deleteWitnessFiberCountSetList]
+      cases hof with
+      | head =>
+        have hhead :
+            deleteWitnessFiberCountVar f head on_ skNew <
+              deleteWitnessFiberCountVar f head on_ skOld := by
+          exact deleteWitnessFiberCountVar_lt_of_list_subset_missing
+            f head on_ skNew skOld
+            (fun args hmem =>
+              hsubset head (by simp) args hmem)
+            ⟨args, hold, hnew⟩
+        have htail :
+            deleteWitnessFiberCountSetList f rest on_ skNew ≤
+              deleteWitnessFiberCountSetList f rest on_ skOld := by
+          exact deleteWitnessFiberCountSetList_le_of_subset
+            f rest on_ skNew skOld
+            (fun of_ hof args hmem =>
+              hsubset of_ (List.mem_cons_of_mem head hof) args hmem)
+        exact Nat.add_lt_add_of_lt_of_le hhead htail
+      | tail _ hof_tail =>
+        have hhead :
+            deleteWitnessFiberCountVar f head on_ skNew ≤
+              deleteWitnessFiberCountVar f head on_ skOld := by
+          exact deleteWitnessFiberCountVar_le_of_list_subset
+            f head on_ skNew skOld
+            (fun args hmem =>
+              hsubset head (by simp) args hmem)
+        have htail :
+            deleteWitnessFiberCountSetList f rest on_ skNew <
+              deleteWitnessFiberCountSetList f rest on_ skOld := by
+          exact ih
+            (fun of_ hof args hmem =>
+              hsubset of_ (List.mem_cons_of_mem head hof) args hmem)
+            ⟨of_, hof_tail, args, hold, hnew⟩
+        exact Nat.add_lt_add_of_le_of_lt hhead htail
+
+private theorem deleteWitnessFiberCountSet_lt_of_properSubset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skNew skOld : SkolemAssignment}
+    (hproper : DeleteWitnessFiberSetProperSubset f vars on_ skNew skOld) :
+    deleteWitnessFiberCountSet f vars on_ skNew <
+      deleteWitnessFiberCountSet f vars on_ skOld := by
+  simpa [deleteWitnessFiberCountSet] using
+    deleteWitnessFiberCountSetList_lt_of_subset_missing
+      f vars.toList on_ skNew skOld hproper.1 hproper.2
+
+private theorem deleteWitnessFiberCountSet_le_of_subset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skNew skOld : SkolemAssignment}
+    (hsubset : DeleteWitnessFiberSetSubset f vars on_ skNew skOld) :
+    deleteWitnessFiberCountSet f vars on_ skNew ≤
+      deleteWitnessFiberCountSet f vars on_ skOld := by
+  simpa [deleteWitnessFiberCountSet] using
+    deleteWitnessFiberCountSetList_le_of_subset
+      f vars.toList on_ skNew skOld hsubset
+
+private theorem deleteWitnessFiberCountSetList_reverse_subset_of_count_eq
+    (f : DQBF) (vars : List Var) (on_ : Var)
+    (skNew skOld : SkolemAssignment)
+    (hsubset : ∀ of_, of_ ∈ vars → ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skNew →
+        args ∈ deleteWitnessFiberList f of_ on_ skOld)
+    (hcount :
+      deleteWitnessFiberCountSetList f vars on_ skNew =
+        deleteWitnessFiberCountSetList f vars on_ skOld) :
+    ∀ of_, of_ ∈ vars → ∀ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skOld →
+        args ∈ deleteWitnessFiberList f of_ on_ skNew := by
+  revert hsubset hcount
+  induction vars with
+  | nil =>
+      intro _hsubset _hcount of_ hof
+      cases hof
+  | cons head rest ih =>
+      intro hsubset hcount of_ hof args hmemOld
+      have hhead_le :
+          deleteWitnessFiberCountVar f head on_ skNew ≤
+            deleteWitnessFiberCountVar f head on_ skOld :=
+        deleteWitnessFiberCountVar_le_of_list_subset
+          f head on_ skNew skOld
+          (fun args hmem =>
+            hsubset head (by simp) args hmem)
+      have htail_le :
+          deleteWitnessFiberCountSetList f rest on_ skNew ≤
+            deleteWitnessFiberCountSetList f rest on_ skOld :=
+        deleteWitnessFiberCountSetList_le_of_subset
+          f rest on_ skNew skOld
+          (fun of_ hof args hmem =>
+            hsubset of_ (List.mem_cons_of_mem head hof) args hmem)
+      have hhead_eq :
+          deleteWitnessFiberCountVar f head on_ skNew =
+            deleteWitnessFiberCountVar f head on_ skOld := by
+        by_cases hEq :
+            deleteWitnessFiberCountVar f head on_ skNew =
+              deleteWitnessFiberCountVar f head on_ skOld
+        · exact hEq
+        have hhead_lt :
+            deleteWitnessFiberCountVar f head on_ skNew <
+              deleteWitnessFiberCountVar f head on_ skOld :=
+          Nat.lt_of_le_of_ne hhead_le hEq
+        have hsum_lt :
+            deleteWitnessFiberCountSetList f (head :: rest) on_ skNew <
+              deleteWitnessFiberCountSetList f (head :: rest) on_ skOld := by
+          simpa [deleteWitnessFiberCountSetList] using
+            Nat.add_lt_add_of_lt_of_le hhead_lt htail_le
+        exact False.elim ((Nat.ne_of_lt hsum_lt) hcount)
+      have htail_eq :
+          deleteWitnessFiberCountSetList f rest on_ skNew =
+            deleteWitnessFiberCountSetList f rest on_ skOld := by
+        simpa [deleteWitnessFiberCountSetList, hhead_eq] using hcount
+      cases List.mem_cons.mp hof with
+      | inl hhead =>
+        subst of_
+        exact deleteWitnessFiberList_reverse_subset_of_count_eq
+          f head on_ skNew skOld
+          (fun args hmem =>
+            hsubset head (by simp) args hmem)
+          hhead_eq args hmemOld
+      | inr htail =>
+        exact ih
+          (fun of_ hof args hmem =>
+            hsubset of_ (List.mem_cons_of_mem head hof) args hmem)
+          htail_eq of_ htail args hmemOld
+
+private theorem deleteWitnessFiberSetSubset_antisymm_of_count_eq
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skNew skOld : SkolemAssignment}
+    (hsubset : DeleteWitnessFiberSetSubset f vars on_ skNew skOld)
+    (hcount :
+      deleteWitnessFiberCountSet f vars on_ skNew =
+        deleteWitnessFiberCountSet f vars on_ skOld) :
+    DeleteWitnessFiberSetSubset f vars on_ skOld skNew := by
+  simpa [DeleteWitnessFiberSetSubset] using
+    deleteWitnessFiberCountSetList_reverse_subset_of_count_eq
+      f vars.toList on_ skNew skOld hsubset
+      (by simpa [deleteWitnessFiberCountSet] using hcount)
+
+theorem deleteWitnessFiberCountSet_eq_of_subset_subset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skA skB : SkolemAssignment}
+    (hAB : DeleteWitnessFiberSetSubset f vars on_ skA skB)
+    (hBA : DeleteWitnessFiberSetSubset f vars on_ skB skA) :
+    deleteWitnessFiberCountSet f vars on_ skA =
+      deleteWitnessFiberCountSet f vars on_ skB := by
+  exact Nat.le_antisymm
+    (deleteWitnessFiberCountSet_le_of_subset hAB)
+    (deleteWitnessFiberCountSet_le_of_subset hBA)
+
+private theorem deleteWitnessFiberSet_missing_of_subset_count_lt
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skSmall skBig : SkolemAssignment}
+    (hsubset :
+      DeleteWitnessFiberSetSubset f vars on_ skSmall skBig)
+    (hlt :
+      deleteWitnessFiberCountSet f vars on_ skSmall <
+        deleteWitnessFiberCountSet f vars on_ skBig) :
+    ∃ of_, of_ ∈ vars.toList ∧ ∃ args,
+      args ∈ deleteWitnessFiberList f of_ on_ skBig ∧
+        args ∉ deleteWitnessFiberList f of_ on_ skSmall := by
+  classical
+  by_cases hmissing :
+      ∃ of_, of_ ∈ vars.toList ∧ ∃ args,
+        args ∈ deleteWitnessFiberList f of_ on_ skBig ∧
+          args ∉ deleteWitnessFiberList f of_ on_ skSmall
+  · exact hmissing
+  · have hreverse :
+        DeleteWitnessFiberSetSubset f vars on_ skBig skSmall := by
+      intro of_ hof args hmemBig
+      by_cases hmemSmall :
+          args ∈ deleteWitnessFiberList f of_ on_ skSmall
+      · exact hmemSmall
+      · exact False.elim
+          (hmissing ⟨of_, hof, args, hmemBig, hmemSmall⟩)
+    have heq :
+        deleteWitnessFiberCountSet f vars on_ skSmall =
+          deleteWitnessFiberCountSet f vars on_ skBig :=
+      deleteWitnessFiberCountSet_eq_of_subset_subset hsubset hreverse
+    exact False.elim ((Nat.ne_of_lt hlt) heq)
+
+theorem deleteWitnessFiberSetProperSubset_of_subset_count_lt
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skSmall skBig : SkolemAssignment}
+    (hsubset :
+      DeleteWitnessFiberSetSubset f vars on_ skSmall skBig)
+    (hlt :
+      deleteWitnessFiberCountSet f vars on_ skSmall <
+        deleteWitnessFiberCountSet f vars on_ skBig) :
+    DeleteWitnessFiberSetProperSubset f vars on_ skSmall skBig :=
+  ⟨hsubset, deleteWitnessFiberSet_missing_of_subset_count_lt hsubset hlt⟩
+
+private theorem deleteWitnessFiberSet_missingWitness_of_subset_count_lt
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skSmall skBig : SkolemAssignment}
+    (hsubset :
+      DeleteWitnessFiberSetSubset f vars on_ skSmall skBig)
+    (hlt :
+      deleteWitnessFiberCountSet f vars on_ skSmall <
+        deleteWitnessFiberCountSet f vars on_ skBig) :
+    ∃ of_, of_ ∈ vars.toList ∧ ∃ args,
+      DeleteWitnessFiber f of_ on_ skBig args ∧
+        ¬ DeleteWitnessFiber f of_ on_ skSmall args := by
+  rcases deleteWitnessFiberSet_missing_of_subset_count_lt
+      (f := f) (vars := vars) (on_ := on_)
+      (skSmall := skSmall) (skBig := skBig) hsubset hlt with
+    ⟨of_, hof, args, hmemBig, hnotSmall⟩
+  have hbig :
+      DeleteWitnessFiber f of_ on_ skBig args :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skBig args).1 hmemBig |>.2
+  have hbase :
+      args ∈ allBoolArrays
+        ((f.depset.getD of_ #[]).filter (· ≠ on_)).size :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skBig args).1 hmemBig |>.1
+  have hnotWitnessSmall :
+      ¬ DeleteWitnessFiber f of_ on_ skSmall args := by
+    intro hsmall
+    exact hnotSmall
+      ((mem_deleteWitnessFiberList_iff f of_ on_ skSmall args).2
+        ⟨hbase, hsmall⟩)
+  exact ⟨of_, hof, args, hbig, hnotWitnessSmall⟩
+
+private theorem not_deleteDepWitness_of_not_deleteWitnessFiber_args
+    {f : DQBF} {of_ on_ : Var} {sk : SkolemAssignment}
+    {σ : UnivAssignment} {args : Array Bool}
+    (hnot :
+      ¬ DeleteWitnessFiber f of_ on_ sk args)
+    (hargs : deleteDepArgs f of_ on_ σ = args) :
+    ¬ DeleteDepWitness f of_ on_ sk σ := by
+  intro hwit
+  exact hnot ⟨σ, hargs, hwit⟩
+
+private theorem deleteWitnessFiberSet_missingAssignment_of_subset_count_lt
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skSmall skBig : SkolemAssignment}
+    (hsubset :
+      DeleteWitnessFiberSetSubset f vars on_ skSmall skBig)
+    (hlt :
+      deleteWitnessFiberCountSet f vars on_ skSmall <
+        deleteWitnessFiberCountSet f vars on_ skBig) :
+    ∃ of_, of_ ∈ vars.toList ∧ ∃ σ,
+      DeleteDepWitness f of_ on_ skBig σ ∧
+        ¬ DeleteDepWitness f of_ on_ skSmall σ := by
+  rcases deleteWitnessFiberSet_missingWitness_of_subset_count_lt
+      (f := f) (vars := vars) (on_ := on_)
+      (skSmall := skSmall) (skBig := skBig) hsubset hlt with
+    ⟨of_, hof, args, hbig, hnotSmall⟩
+  rcases hbig with ⟨σ, hargs, hwitBig⟩
+  have hnotSmallσ :
+      ¬ DeleteDepWitness f of_ on_ skSmall σ :=
+    not_deleteDepWitness_of_not_deleteWitnessFiber_args
+      (f := f) (of_ := of_) (on_ := on_) (sk := skSmall)
+      (σ := σ) (args := args) hnotSmall hargs
+  exact ⟨of_, hof, σ, hwitBig, hnotSmallσ⟩
+
+theorem deleteWitnessFiberSet_missingAssignment_of_properSubset
+    {f : DQBF} {vars : Array Var} {on_ : Var}
+    {skSmall skBig : SkolemAssignment}
+    (hproper :
+      DeleteWitnessFiberSetProperSubset f vars on_ skSmall skBig) :
+    ∃ of_, of_ ∈ vars.toList ∧ ∃ σ,
+      DeleteDepWitness f of_ on_ skBig σ ∧
+        ¬ DeleteDepWitness f of_ on_ skSmall σ := by
+  rcases hproper with ⟨_hsubset, hmissing⟩
+  rcases hmissing with ⟨of_, hof, args, hmemBig, hnotSmall⟩
+  have hbig :
+      DeleteWitnessFiber f of_ on_ skBig args :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skBig args).1 hmemBig |>.2
+  rcases hbig with ⟨σ, hargs, hwitBig⟩
+  have hbase :
+      args ∈ allBoolArrays
+        ((f.depset.getD of_ #[]).filter (· ≠ on_)).size :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skBig args).1 hmemBig |>.1
+  have hnotSmallFiber :
+      ¬ DeleteWitnessFiber f of_ on_ skSmall args := by
+    intro hsmall
+    exact hnotSmall
+      ((mem_deleteWitnessFiberList_iff f of_ on_ skSmall args).2
+        ⟨hbase, hsmall⟩)
+  exact ⟨of_, hof, σ, hwitBig,
+    not_deleteDepWitness_of_not_deleteWitnessFiber_args
+      (f := f) (of_ := of_) (on_ := on_) (sk := skSmall)
+      (σ := σ) (args := args) hnotSmallFiber hargs⟩
+
+theorem deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
+    (f : DQBF) (vars : Array Var) (patched on_ : Var)
+    (σ₀ : UnivAssignment) (sk : SkolemAssignment)
+    (hmem : patched ∈ vars.toList)
+    (hexi : f.isVarExistential patched = true)
+    (hcontains : (f.depset.getD patched #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f patched on_ sk σ₀) :
+    DeleteWitnessFiberSetProperSubset f vars on_
+      (patchDeleteWitnessAt f patched σ₀ sk) sk := by
+  constructor
+  · intro of_ _hof args hnew
+    by_cases hEq : of_ = patched
+    · subst of_
+      exact
+        (deleteWitnessFiberList_patchDeleteWitnessAt_proper_subset_self
+          f patched on_ σ₀ sk hexi hcontains hwit).1 args hnew
+    · simpa [deleteWitnessFiberList_patchDeleteWitnessAt_eq_of_ne
+        f patched of_ on_ σ₀ sk hEq] using hnew
+  · rcases
+      (deleteWitnessFiberList_patchDeleteWitnessAt_proper_subset_self
+        f patched on_ σ₀ sk hexi hcontains hwit).2 with
+      ⟨args, hold, hnew⟩
+    exact ⟨patched, hmem, args, hold, hnew⟩
+
+theorem deleteWitnessFiberSetProperSubset_second_distinct_patch
+    (f : DQBF) (vars : Array Var) (left right on_ : Var)
+    (σLeft σRight : UnivAssignment) (sk : SkolemAssignment)
+    (hleft_mem : left ∈ vars.toList)
+    (hright_mem : right ∈ vars.toList)
+    (hneq : left ≠ right)
+    (hexi_left : f.isVarExistential left = true)
+    (hcontains_left : (f.depset.getD left #[]).contains on_ = true)
+    (hwit_left : DeleteDepWitness f left on_ sk σLeft)
+    (hexi_right : f.isVarExistential right = true)
+    (hcontains_right : (f.depset.getD right #[]).contains on_ = true)
+    (hwit_right : DeleteDepWitness f right on_ sk σRight) :
+    let sk₁ := patchDeleteWitnessAt f left σLeft sk
+    DeleteWitnessFiberSetProperSubset f vars on_
+      (patchDeleteWitnessAt f right σRight sk₁) sk := by
+  intro sk₁
+  have hleftProper :
+      DeleteWitnessFiberSetProperSubset f vars on_ sk₁ sk := by
+    exact deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
+      f vars left on_ σLeft sk hleft_mem hexi_left hcontains_left hwit_left
+  have hwit_right₁ :
+      DeleteDepWitness f right on_ sk₁ σRight := by
+    dsimp [sk₁]
+    exact (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+      f left right on_ σLeft σRight sk (Ne.symm hneq)).2 hwit_right
+  have hrightProper :
+      DeleteWitnessFiberSetProperSubset f vars on_
+        (patchDeleteWitnessAt f right σRight sk₁) sk₁ := by
+    exact deleteWitnessFiberSetProperSubset_patchDeleteWitnessAt_of_mem
+      f vars right on_ σRight sk₁ hright_mem hexi_right hcontains_right
+      hwit_right₁
+  constructor
+  · exact deleteWitnessFiberSetSubset_trans f vars on_
+      (patchDeleteWitnessAt f right σRight sk₁) sk₁ sk
+      hrightProper.1 hleftProper.1
+  · rcases
+      (deleteWitnessFiberList_patchDeleteWitnessAt_proper_subset_self
+        f left on_ σLeft sk hexi_left hcontains_left hwit_left).2 with
+      ⟨args, hold, hnew⟩
+    refine ⟨left, hleft_mem, args, hold, ?_⟩
+    intro hmem
+    have hmem₁ : args ∈ deleteWitnessFiberList f left on_ sk₁ := by
+      simpa [deleteWitnessFiberList_patchDeleteWitnessAt_eq_of_ne
+        f right left on_ σRight sk₁ hneq] using hmem
+    exact hnew hmem₁
+
+theorem deleteWitnessFiberSetSubset_deleteDepWitness
+    {f : DQBF} {vars : Array Var} {on_ of_ : Var}
+    {skSmall skBig : SkolemAssignment} {σ : UnivAssignment}
+    (hexi : f.isVarExistential of_ = true)
+    (hsubset :
+      DeleteWitnessFiberSetSubset f vars on_ skSmall skBig)
+    (hof : of_ ∈ vars.toList)
+    (hwitSmall : DeleteDepWitness f of_ on_ skSmall σ) :
+    DeleteDepWitness f of_ on_ skBig σ := by
+  have hfiberSmall :
+      DeleteWitnessFiber f of_ on_ skSmall
+        (deleteDepArgs f of_ on_ σ) :=
+    ⟨σ, rfl, hwitSmall⟩
+  have hmemSmall :
+      (deleteDepArgs f of_ on_ σ) ∈
+        deleteWitnessFiberList f of_ on_ skSmall := by
+    rw [mem_deleteWitnessFiberList_iff]
+    exact ⟨by
+      simpa [deleteDepArgs_size f of_ on_ σ] using
+        mem_allBoolArrays_of_size (deleteDepArgs f of_ on_ σ),
+      hfiberSmall⟩
+  have hmemBig :
+      (deleteDepArgs f of_ on_ σ) ∈
+        deleteWitnessFiberList f of_ on_ skBig :=
+    hsubset of_ hof (deleteDepArgs f of_ on_ σ) hmemSmall
+  have hfiberBig :
+      DeleteWitnessFiber f of_ on_ skBig
+        (deleteDepArgs f of_ on_ σ) :=
+    (mem_deleteWitnessFiberList_iff f of_ on_ skBig
+      (deleteDepArgs f of_ on_ σ)).1 hmemBig |>.2
+  rcases hfiberBig with ⟨τ, hτargs, hwitBigτ⟩
+  exact deleteDepWitness_of_deleteDepArgs_eq
+    f of_ on_ σ τ skBig hexi hτargs.symm hwitBigτ
+
+theorem deleteWitnessFiberSetSubset_not_deleteDepWitness
+    {f : DQBF} {vars : Array Var} {on_ of_ : Var}
+    {skSmall skBig : SkolemAssignment} {σ : UnivAssignment}
+    (hexi : f.isVarExistential of_ = true)
+    (hsubset :
+      DeleteWitnessFiberSetSubset f vars on_ skSmall skBig)
+    (hof : of_ ∈ vars.toList)
+    (hnotBig : ¬ DeleteDepWitness f of_ on_ skBig σ) :
+    ¬ DeleteDepWitness f of_ on_ skSmall σ := by
+  intro hwitSmall
+  exact hnotBig
+    (deleteWitnessFiberSetSubset_deleteDepWitness
+      (f := f) (vars := vars) (on_ := on_) (of_ := of_)
+      (skSmall := skSmall) (skBig := skBig) (σ := σ)
+      hexi hsubset hof hwitSmall)
+
+theorem deleteWitnessFiberSetProperSubset_of_subset_deleteDepWitness
+    {f : DQBF} {vars : Array Var} {on_ of_ : Var}
+    {skSmall skBig : SkolemAssignment} {σ : UnivAssignment}
+    (hexi : f.isVarExistential of_ = true)
+    (hsubset :
+      DeleteWitnessFiberSetSubset f vars on_ skSmall skBig)
+    (hof : of_ ∈ vars.toList)
+    (hwitBig : DeleteDepWitness f of_ on_ skBig σ)
+    (hnotSmall : ¬ DeleteDepWitness f of_ on_ skSmall σ) :
+    DeleteWitnessFiberSetProperSubset f vars on_ skSmall skBig := by
+  constructor
+  · exact hsubset
+  · let args := deleteDepArgs f of_ on_ σ
+    refine ⟨of_, hof, args, ?_, ?_⟩
+    · rw [mem_deleteWitnessFiberList_iff]
+      exact ⟨by
+        simpa [args, deleteDepArgs_size f of_ on_ σ] using
+          mem_allBoolArrays_of_size args,
+        ⟨σ, rfl, hwitBig⟩⟩
+    · intro hmemSmall
+      have hfiberSmall :
+          DeleteWitnessFiber f of_ on_ skSmall args :=
+        (mem_deleteWitnessFiberList_iff f of_ on_ skSmall args).1
+          hmemSmall |>.2
+      rcases hfiberSmall with ⟨τ, hτargs, hwitSmallτ⟩
+      exact hnotSmall
+        (deleteDepWitness_of_deleteDepArgs_eq
+          f of_ on_ σ τ skSmall hexi
+          (by simpa [args] using hτargs.symm) hwitSmallτ)
+
+private theorem deleteWitnessFiberCountVar_patchDeleteWitnessAt_eq_of_ne
+    (f : DQBF) (patched of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hneq : of_ ≠ patched) :
+    deleteWitnessFiberCountVar f of_ on_
+        (patchDeleteWitnessAt f patched σ₀ sk) =
+      deleteWitnessFiberCountVar f of_ on_ sk := by
+  unfold deleteWitnessFiberCountVar
+  rw [deleteWitnessFiberList_patchDeleteWitnessAt_eq_of_ne
+    f patched of_ on_ σ₀ sk hneq]
+
+private theorem deleteWitnessFiberCountVar_patchDeleteWitnessAt_lt_self
+    (f : DQBF) (of_ on_ : Var) (σ₀ : UnivAssignment)
+    (sk : SkolemAssignment)
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀) :
+    deleteWitnessFiberCountVar f of_ on_
+        (patchDeleteWitnessAt f of_ σ₀ sk) <
+      deleteWitnessFiberCountVar f of_ on_ sk := by
+  let targetArgs := deleteDepArgs f of_ on_ σ₀
+  let base := allBoolArrays ((f.depset.getD of_ #[]).filter (· ≠ on_)).size
+  let pOld := deleteWitnessFiberPred f of_ on_ sk
+  let pNew :=
+    deleteWitnessFiberPred f of_ on_
+      (patchDeleteWitnessAt f of_ σ₀ sk)
+  have hbase : targetArgs ∈ base := by
+    simpa [targetArgs, base, deleteDepArgs_size f of_ on_ σ₀] using
+      mem_allBoolArrays_of_size targetArgs
+  have htargetOld : targetArgs ∈ base.filter pOld := by
+    rw [List.mem_filter]
+    refine ⟨hbase, ?_⟩
+    exact (deleteWitnessFiberPred_eq_true_iff f of_ on_ sk targetArgs).2
+      ⟨σ₀, rfl, hwit⟩
+  have htargetNewFalse : pNew targetArgs = false := by
+    have hnot :
+        ¬ DeleteWitnessFiber f of_ on_
+            (patchDeleteWitnessAt f of_ σ₀ sk) targetArgs :=
+      not_deleteWitnessFiber_patchDeleteWitnessAt_target_self
+        f of_ on_ σ₀ sk hexi hcontains hwit
+    unfold pNew deleteWitnessFiberPred
+    simp [hnot]
+  have himp : ∀ args, pNew args = true → pOld args = true := by
+    intro args hnew
+    have hnewFiber :
+        DeleteWitnessFiber f of_ on_
+          (patchDeleteWitnessAt f of_ σ₀ sk) args :=
+      (deleteWitnessFiberPred_eq_true_iff
+        f of_ on_ (patchDeleteWitnessAt f of_ σ₀ sk) args).1 hnew
+    exact (deleteWitnessFiberPred_eq_true_iff f of_ on_ sk args).2
+      (deleteWitnessFiber_patchDeleteWitnessAt_imp_old_self
+        f of_ on_ σ₀ sk args hexi hcontains hwit hnewFiber)
+  unfold deleteWitnessFiberCountVar deleteWitnessFiberList
+  change (base.filter pNew).length < (base.filter pOld).length
+  rw [list_filter_eq_filter_filter_of_imp pNew pOld base himp]
+  exact list_length_filter_lt_length_of_mem_false
+    pNew htargetOld htargetNewFalse
+
+private theorem deleteWitnessFiberCountSetList_patchDeleteWitnessAt_le
+    (f : DQBF) (vars : List Var) (patched on_ : Var)
+    (σ₀ : UnivAssignment) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential patched = true)
+    (hcontains : (f.depset.getD patched #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f patched on_ sk σ₀) :
+    deleteWitnessFiberCountSetList f vars on_
+        (patchDeleteWitnessAt f patched σ₀ sk) ≤
+      deleteWitnessFiberCountSetList f vars on_ sk := by
+  induction vars with
+  | nil =>
+      simp [deleteWitnessFiberCountSetList]
+  | cons of_ rest ih =>
+      by_cases hof : of_ = patched
+      · subst of_
+        have hself_lt :
+            deleteWitnessFiberCountVar f patched on_
+                (patchDeleteWitnessAt f patched σ₀ sk) <
+              deleteWitnessFiberCountVar f patched on_ sk :=
+          deleteWitnessFiberCountVar_patchDeleteWitnessAt_lt_self
+            f patched on_ σ₀ sk hexi hcontains hwit
+        exact Nat.add_le_add (Nat.le_of_lt hself_lt) ih
+      · have hself_eq :
+            deleteWitnessFiberCountVar f of_ on_
+                (patchDeleteWitnessAt f patched σ₀ sk) =
+              deleteWitnessFiberCountVar f of_ on_ sk :=
+          deleteWitnessFiberCountVar_patchDeleteWitnessAt_eq_of_ne
+            f patched of_ on_ σ₀ sk hof
+        rw [deleteWitnessFiberCountSetList, deleteWitnessFiberCountSetList,
+          hself_eq]
+        exact Nat.add_le_add_left ih _
+
+private theorem deleteWitnessFiberCountSetList_patchDeleteWitnessAt_lt_of_mem
+    (f : DQBF) (vars : List Var) (patched on_ : Var)
+    (σ₀ : UnivAssignment) (sk : SkolemAssignment)
+    (hmem : patched ∈ vars)
+    (hexi : f.isVarExistential patched = true)
+    (hcontains : (f.depset.getD patched #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f patched on_ sk σ₀) :
+    deleteWitnessFiberCountSetList f vars on_
+        (patchDeleteWitnessAt f patched σ₀ sk) <
+      deleteWitnessFiberCountSetList f vars on_ sk := by
+  induction vars with
+  | nil =>
+      cases hmem
+  | cons of_ rest ih =>
+      by_cases hof : of_ = patched
+      · subst of_
+        have hself_lt :
+            deleteWitnessFiberCountVar f patched on_
+                (patchDeleteWitnessAt f patched σ₀ sk) <
+              deleteWitnessFiberCountVar f patched on_ sk :=
+          deleteWitnessFiberCountVar_patchDeleteWitnessAt_lt_self
+            f patched on_ σ₀ sk hexi hcontains hwit
+        have hrest_le :
+            deleteWitnessFiberCountSetList f rest on_
+                (patchDeleteWitnessAt f patched σ₀ sk) ≤
+              deleteWitnessFiberCountSetList f rest on_ sk :=
+          deleteWitnessFiberCountSetList_patchDeleteWitnessAt_le
+            f rest patched on_ σ₀ sk hexi hcontains hwit
+        exact Nat.add_lt_add_of_lt_of_le hself_lt hrest_le
+      · have htail : patched ∈ rest := by
+          rcases List.mem_cons.mp hmem with hhead | htail
+          · exact False.elim (hof hhead.symm)
+          · exact htail
+        have hself_eq :
+            deleteWitnessFiberCountVar f of_ on_
+                (patchDeleteWitnessAt f patched σ₀ sk) =
+              deleteWitnessFiberCountVar f of_ on_ sk :=
+          deleteWitnessFiberCountVar_patchDeleteWitnessAt_eq_of_ne
+            f patched of_ on_ σ₀ sk hof
+        have htail_lt :=
+          ih htail
+        rw [deleteWitnessFiberCountSetList, deleteWitnessFiberCountSetList,
+          hself_eq]
+        exact Nat.add_lt_add_left htail_lt _
+
+theorem deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+    (f : DQBF) (vars : Array Var) (patched on_ : Var)
+    (σ₀ : UnivAssignment) (sk : SkolemAssignment)
+    (hmem : patched ∈ vars.toList)
+    (hexi : f.isVarExistential patched = true)
+    (hcontains : (f.depset.getD patched #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f patched on_ sk σ₀) :
+    deleteWitnessFiberCountSet f vars on_
+        (patchDeleteWitnessAt f patched σ₀ sk) <
+      deleteWitnessFiberCountSet f vars on_ sk := by
+  simpa [deleteWitnessFiberCountSet] using
+    deleteWitnessFiberCountSetList_patchDeleteWitnessAt_lt_of_mem
+      f vars.toList patched on_ σ₀ sk hmem hexi hcontains hwit
+
+private theorem deleteWitnessFiberCountSet_patchDeleteWitnessAt_le
+    (f : DQBF) (vars : Array Var) (patched on_ : Var)
+    (σ₀ : UnivAssignment) (sk : SkolemAssignment)
+    (hexi : f.isVarExistential patched = true)
+    (hcontains : (f.depset.getD patched #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f patched on_ sk σ₀) :
+    deleteWitnessFiberCountSet f vars on_
+        (patchDeleteWitnessAt f patched σ₀ sk) ≤
+      deleteWitnessFiberCountSet f vars on_ sk := by
+  simpa [deleteWitnessFiberCountSet] using
+    deleteWitnessFiberCountSetList_patchDeleteWitnessAt_le
+      f vars.toList patched on_ σ₀ sk hexi hcontains hwit
+
+private theorem deleteWitnessFiberCountSetList_patchDeleteWitnessAt_eq_of_not_mem
+    (f : DQBF) (vars : List Var) (patched on_ : Var)
+    (σ₀ : UnivAssignment) (sk : SkolemAssignment)
+    (hnotmem : patched ∉ vars) :
+    deleteWitnessFiberCountSetList f vars on_
+        (patchDeleteWitnessAt f patched σ₀ sk) =
+      deleteWitnessFiberCountSetList f vars on_ sk := by
+  induction vars with
+  | nil =>
+      simp [deleteWitnessFiberCountSetList]
+  | cons of_ rest ih =>
+      have hne : of_ ≠ patched := by
+        intro hEq
+        exact hnotmem (by simp [hEq])
+      have hnotmem_tail : patched ∉ rest := by
+        intro hmem
+        exact hnotmem (List.mem_cons_of_mem of_ hmem)
+      have hself :
+          deleteWitnessFiberCountVar f of_ on_
+              (patchDeleteWitnessAt f patched σ₀ sk) =
+            deleteWitnessFiberCountVar f of_ on_ sk :=
+        deleteWitnessFiberCountVar_patchDeleteWitnessAt_eq_of_ne
+          f patched of_ on_ σ₀ sk hne
+      rw [deleteWitnessFiberCountSetList, deleteWitnessFiberCountSetList,
+        hself, ih hnotmem_tail]
+
+private theorem deleteWitnessFiberCountSet_patchDeleteWitnessAt_eq_of_not_mem
+    (f : DQBF) (vars : Array Var) (patched on_ : Var)
+    (σ₀ : UnivAssignment) (sk : SkolemAssignment)
+    (hnotmem : patched ∉ vars.toList) :
+    deleteWitnessFiberCountSet f vars on_
+        (patchDeleteWitnessAt f patched σ₀ sk) =
+      deleteWitnessFiberCountSet f vars on_ sk := by
+  simpa [deleteWitnessFiberCountSet] using
+    deleteWitnessFiberCountSetList_patchDeleteWitnessAt_eq_of_not_mem
+      f vars.toList patched on_ σ₀ sk hnotmem
+
+theorem deleteWitnessFiberCountSet_second_distinct_patch_lt
+    (f : DQBF) (vars : Array Var) (of_ nextOf on_ : Var)
+    (σ₀ σ : UnivAssignment) (sk : SkolemAssignment)
+    (hof : of_ ∈ vars.toList)
+    (hnext_ne : nextOf ≠ of_)
+    (hexi_of : f.isVarExistential of_ = true)
+    (hcontains_of : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit_of : DeleteDepWitness f of_ on_ sk σ₀)
+    (hexi_next : f.isVarExistential nextOf = true)
+    (hcontains_next : (f.depset.getD nextOf #[]).contains on_ = true)
+    (hwit_next : DeleteDepWitness f nextOf on_ sk σ) :
+    deleteWitnessFiberCountSet f vars on_
+        (patchDeleteWitnessAt f nextOf σ
+          (patchDeleteWitnessAt f of_ σ₀ sk)) <
+      deleteWitnessFiberCountSet f vars on_ sk := by
+  let sk₁ := patchDeleteWitnessAt f of_ σ₀ sk
+  have hwit_next₁ :
+      DeleteDepWitness f nextOf on_ sk₁ σ := by
+    exact (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+      f of_ nextOf on_ σ₀ σ sk hnext_ne).2 hwit_next
+  have hle :
+      deleteWitnessFiberCountSet f vars on_
+          (patchDeleteWitnessAt f nextOf σ sk₁) ≤
+        deleteWitnessFiberCountSet f vars on_ sk₁ :=
+    deleteWitnessFiberCountSet_patchDeleteWitnessAt_le
+      f vars nextOf on_ σ sk₁ hexi_next hcontains_next hwit_next₁
+  have hlt :
+      deleteWitnessFiberCountSet f vars on_ sk₁ <
+        deleteWitnessFiberCountSet f vars on_ sk :=
+    deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+      f vars of_ on_ σ₀ sk hof hexi_of hcontains_of hwit_of
+  exact Nat.lt_of_le_of_lt hle hlt
+
+private theorem litValue_true_false_implies_varValue_ne
+    (f : DQBF) (σ : UnivAssignment)
+    (skTrue skFalse : SkolemAssignment) (l : Literal)
+    (htrue : f.litValue σ skTrue l = true)
+    (hfalse : f.litValue σ skFalse l = false) :
+    f.varValue σ skFalse l.var ≠ f.varValue σ skTrue l.var := by
+  unfold DQBF.litValue at htrue hfalse
+  by_cases hpos : l.isPos
+  · simp [hpos] at htrue hfalse
+    rw [htrue, hfalse]
+    simp
+  · simp [hpos] at htrue hfalse
+    cases hbase : f.varValue σ skTrue l.var <;>
+      cases hcand : f.varValue σ skFalse l.var <;>
+      simp [hbase, hcand] at htrue hfalse ⊢
+
+private theorem matrixValue_true_false_changed_lit
+    (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment)
+    (skTrue skFalse : SkolemAssignment)
+    (htrue : cs.matrixValue f σ skTrue = true)
+    (hfalse : cs.matrixValue f σ skFalse = false) :
+    ∃ cref c l,
+      cs.getClause cref = some c ∧
+      f.clauseValue σ skFalse c.lits = false ∧
+      l ∈ c.lits.toList ∧
+      f.litValue σ skTrue l = true ∧
+      f.litValue σ skFalse l = false ∧
+      f.varValue σ skFalse l.var ≠ f.varValue σ skTrue l.var := by
+  rcases matrixValue_false_implies_exists_false_clause
+      f cs σ skFalse hfalse with
+    ⟨cref, c, hget, hclause_false⟩
+  have hclause_true : f.clauseValue σ skTrue c.lits = true :=
+    clauseValue_of_matrixValue f cs σ skTrue cref c htrue hget
+  rcases clauseValue_true_false_implies_exists_true_false_lit
+      f σ skTrue skFalse c.lits hclause_true hclause_false with
+    ⟨l, hlmem, hltrue, hlfalse⟩
+  exact ⟨cref, c, l, hget, hclause_false, hlmem, hltrue, hlfalse,
+    litValue_true_false_implies_varValue_ne
+      f σ skTrue skFalse l hltrue hlfalse⟩
+
+private def TargetRepairProgressCandidate
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase skCand : SkolemAssignment) : Prop :=
+  deleteWitnessFiberCountSet s.formula vars on_ skCand <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase ∧
+    ∀ of_ ∈ vars.toList, ∀ args,
+      DeleteWitnessFiber s.formula of_ on_ skCand args →
+        DeleteWitnessFiber s.formula of_ on_ skBase args
+
+private theorem targetRepairProgressCandidate_patch_not_mem
+    {s : CheckState} {vars : Array Var} {on_ patched : Var}
+    {skBase skCand : SkolemAssignment} {σSeed : UnivAssignment}
+    (hprogress : TargetRepairProgressCandidate s vars on_ skBase skCand)
+    (hnot_mem : patched ∉ vars.toList) :
+    TargetRepairProgressCandidate s vars on_ skBase
+      (patchDeleteWitnessAt s.formula patched σSeed skCand) := by
+  constructor
+  · rw [deleteWitnessFiberCountSet_patchDeleteWitnessAt_eq_of_not_mem
+      s.formula vars patched on_ σSeed skCand hnot_mem]
+    exact hprogress.1
+  · intro of_ hof args hfiber
+    have hne : of_ ≠ patched := by
+      intro hEq
+      exact hnot_mem (by simpa [hEq] using hof)
+    exact hprogress.2 of_ hof args
+      ((deleteWitnessFiber_patchDeleteWitnessAt_iff_of_ne
+        s.formula patched of_ on_ σSeed skCand args hne).1 hfiber)
+
+private theorem targetRepairProgressCandidate_initial_patch
+    {s : CheckState} {vars : Array Var} {on_ patched : Var}
+    {sk : SkolemAssignment} {σSeed : UnivAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpatched_mem : patched ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula patched on_ sk σSeed) :
+    TargetRepairProgressCandidate s vars on_ sk
+      (patchDeleteWitnessAt s.formula patched σSeed sk) := by
+  constructor
+  · exact deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+      s.formula vars patched on_ σSeed sk hpatched_mem
+      (hexi patched hpatched_mem) (hcontains patched hpatched_mem) hwit
+  · intro of_ hof args hfiber
+    by_cases hof_patched : of_ = patched
+    · subst of_
+      exact deleteWitnessFiber_patchDeleteWitnessAt_imp_old_self
+        s.formula patched on_ σSeed sk args
+        (hexi patched hpatched_mem) (hcontains patched hpatched_mem)
+        hwit hfiber
+    · exact (deleteWitnessFiber_patchDeleteWitnessAt_iff_of_ne
+        s.formula patched of_ on_ σSeed sk args hof_patched).1 hfiber
+
+private theorem targetRepairProgressCandidate_patch_mem
+    {s : CheckState} {vars : Array Var} {on_ patched : Var}
+    {skBase skCand : SkolemAssignment} {σSeed : UnivAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hprogress : TargetRepairProgressCandidate s vars on_ skBase skCand)
+    (hpatched_mem : patched ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula patched on_ skCand σSeed) :
+    TargetRepairProgressCandidate s vars on_ skBase
+      (patchDeleteWitnessAt s.formula patched σSeed skCand) := by
+  constructor
+  · exact Nat.lt_trans
+      (deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+        s.formula vars patched on_ σSeed skCand hpatched_mem
+        (hexi patched hpatched_mem) (hcontains patched hpatched_mem) hwit)
+      hprogress.1
+  · intro of_ hof args hfiber
+    by_cases hof_patched : of_ = patched
+    · subst of_
+      exact hprogress.2 patched hpatched_mem args
+        (deleteWitnessFiber_patchDeleteWitnessAt_imp_old_self
+          s.formula patched on_ σSeed skCand args
+          (hexi patched hpatched_mem) (hcontains patched hpatched_mem)
+          hwit hfiber)
+    · exact hprogress.2 of_ hof args
+        ((deleteWitnessFiber_patchDeleteWitnessAt_iff_of_ne
+          s.formula patched of_ on_ σSeed skCand args hof_patched).1
+          hfiber)
+
+private theorem targetRepairProgressCandidate_patch_of_witness
+    {s : CheckState} {vars : Array Var} {on_ patched : Var}
+    {skBase skCand : SkolemAssignment} {σSeed : UnivAssignment}
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hprogress : TargetRepairProgressCandidate s vars on_ skBase skCand)
+    (hwit : DeleteDepWitness s.formula patched on_ skCand σSeed) :
+    TargetRepairProgressCandidate s vars on_ skBase
+      (patchDeleteWitnessAt s.formula patched σSeed skCand) := by
+  by_cases hpatched_mem : patched ∈ vars.toList
+  · exact targetRepairProgressCandidate_patch_mem
+      (s := s) (vars := vars) (on_ := on_) (patched := patched)
+      (skBase := skBase) (skCand := skCand) (σSeed := σSeed)
+      hexi hcontains hprogress hpatched_mem hwit
+  · exact targetRepairProgressCandidate_patch_not_mem
+      (s := s) (vars := vars) (on_ := on_) (patched := patched)
+      (skBase := skBase) (skCand := skCand) (σSeed := σSeed)
+      hprogress hpatched_mem
+
+private theorem targetRepairProgressCandidate_of_properSubset
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hproper : DeleteWitnessFiberSetProperSubset
+      s.formula vars on_ skCand skBase) :
+    TargetRepairProgressCandidate s vars on_ skBase skCand := by
+  constructor
+  · exact deleteWitnessFiberCountSet_lt_of_properSubset hproper
+  · intro of_ hof args hfiberCand
+    have hmemCand :
+        args ∈ deleteWitnessFiberList s.formula of_ on_ skCand := by
+      rcases hfiberCand with ⟨σ, hargs, hwit⟩
+      have hsize :
+          args.size =
+            ((s.formula.depset.getD of_ #[]).filter (· ≠ on_)).size := by
+        rw [← hargs]
+        simpa using deleteDepArgs_size s.formula of_ on_ σ
+      rw [mem_deleteWitnessFiberList_iff]
+      refine ⟨?_, ⟨σ, hargs, hwit⟩⟩
+      simpa [hsize] using
+        mem_allBoolArrays_of_size args
+    have hmemBase :
+        args ∈ deleteWitnessFiberList s.formula of_ on_ skBase :=
+      hproper.1 of_ hof args hmemCand
+    exact (mem_deleteWitnessFiberList_iff
+      s.formula of_ on_ skBase args).1 hmemBase |>.2
+
+private theorem targetRepairProgressCandidate_subset
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hprogress : TargetRepairProgressCandidate s vars on_ skBase skCand) :
+    DeleteWitnessFiberSetSubset s.formula vars on_ skCand skBase := by
+  intro of_ hof args hmemCand
+  have hmemCand' :=
+    (mem_deleteWitnessFiberList_iff s.formula of_ on_ skCand args).1 hmemCand
+  exact (mem_deleteWitnessFiberList_iff s.formula of_ on_ skBase args).2
+    ⟨hmemCand'.1, hprogress.2 of_ hof args hmemCand'.2⟩
+
+private theorem targetRepairProgressCandidate_properSubset
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hprogress : TargetRepairProgressCandidate s vars on_ skBase skCand) :
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase := by
+  exact deleteWitnessFiberSetProperSubset_of_subset_count_lt
+    (targetRepairProgressCandidate_subset hprogress) hprogress.1
+
+private theorem targetRepairProgressCandidate_missingAssignment
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hprogress : TargetRepairProgressCandidate s vars on_ skBase skCand) :
+    ∃ of_, of_ ∈ vars.toList ∧ ∃ σ,
+      DeleteDepWitness s.formula of_ on_ skBase σ ∧
+        ¬ DeleteDepWitness s.formula of_ on_ skCand σ := by
+  exact deleteWitnessFiberSet_missingAssignment_of_properSubset
+    (targetRepairProgressCandidate_properSubset hprogress)
+
+private theorem targetRepairProgressCandidate_descent_or_false
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hprogress : TargetRepairProgressCandidate s vars on_ skBase skCand) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+    ∃ σ, s.clauses.matrixValue s.formula σ skCand = false := by
+  classical
+  by_cases hfail :
+      ∃ σ, s.clauses.matrixValue s.formula σ skCand = false
+  · exact Or.inr hfail
+  · left
+    refine ⟨skCand, ?_, hprogress.1⟩
+    intro σ
+    cases hval : s.clauses.matrixValue s.formula σ skCand with
+    | false => exact False.elim (hfail ⟨σ, hval⟩)
+    | true => rfl
+
+private theorem targetRepairProgressCandidate_false_matrix_changed_lit
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment} {σ : UnivAssignment}
+    (_hprogress : TargetRepairProgressCandidate s vars on_ skBase skCand)
+    (hallBase : ∀ τ, s.clauses.matrixValue s.formula τ skBase = true)
+    (hfalse : s.clauses.matrixValue s.formula σ skCand = false) :
+    ∃ cref c l,
+      s.clauses.getClause cref = some c ∧
+      s.formula.clauseValue σ skCand c.lits = false ∧
+      l ∈ c.lits.toList ∧
+      s.formula.litValue σ skBase l = true ∧
+      s.formula.litValue σ skCand l = false ∧
+      s.formula.varValue σ skCand l.var ≠
+        s.formula.varValue σ skBase l.var := by
+  exact matrixValue_true_false_changed_lit
+    s.formula s.clauses σ skBase skCand (hallBase σ) hfalse
 
 theorem varValue_addDependencyFormula_old
     (f : DQBF) (of_ on_ v : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
@@ -10393,6 +13179,5921 @@ private theorem checkModifyExistentialDelStep_full_sound_of_notDependsOn_true_br
       EStateM.run, Bind.bind, EStateM.bind, hget_formula, EStateM.pure, Pure.pure,
       FullStepFullPost] using ⟨hfull, hlookupExi⟩
 
+private def NoDeleteCrossPaths (st : CheckState) (on_ of_ : Var) : Prop :=
+  let reachPos := getReachable st (mkLit on_ true)
+  let reachNeg := getReachable st (mkLit on_ false)
+  !((reachPos.getD (of_ * 2) false && reachNeg.getD (of_ * 2 + 1) false) ||
+    (reachPos.getD (of_ * 2 + 1) false && reachNeg.getD (of_ * 2) false)) = true
+
+private def NoDeleteCrossPathsSet
+    (st : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ of_ ∈ vars.toList, NoDeleteCrossPaths st on_ of_
+
+private theorem noDeleteCrossPaths_not_reachPos_neg_reachNeg_pos
+    {st : CheckState} {on_ of_ : Var}
+    (hpaths : NoDeleteCrossPaths st on_ of_) :
+    ¬ ((getReachable st (mkLit on_ true)).getD (of_ * 2) false = true ∧
+       (getReachable st (mkLit on_ false)).getD (of_ * 2 + 1) false = true) := by
+  intro hbad
+  rcases hbad with ⟨hposNeg, hnegPos⟩
+  simp [NoDeleteCrossPaths, hposNeg, hnegPos] at hpaths
+
+private theorem noDeleteCrossPaths_not_reachPos_pos_reachNeg_neg
+    {st : CheckState} {on_ of_ : Var}
+    (hpaths : NoDeleteCrossPaths st on_ of_) :
+    ¬ ((getReachable st (mkLit on_ true)).getD (of_ * 2 + 1) false = true ∧
+       (getReachable st (mkLit on_ false)).getD (of_ * 2) false = true) := by
+  intro hbad
+  rcases hbad with ⟨hposPos, hnegNeg⟩
+  simp [NoDeleteCrossPaths, hposPos, hnegNeg] at hpaths
+
+private theorem noDeleteCrossPaths_not_reachPos_lit_reachNeg_negate
+    {st : CheckState} {on_ of_ : Var} {pos : Bool}
+    (hpaths : NoDeleteCrossPaths st on_ of_) :
+    ¬ ((getReachable st (mkLit on_ true)).getD (mkLit of_ pos).x false = true ∧
+       (getReachable st (mkLit on_ false)).getD (mkLit of_ (!pos)).x false = true) := by
+  cases pos
+  · intro hbad
+    exact noDeleteCrossPaths_not_reachPos_neg_reachNeg_pos hpaths (by
+      simpa [mkLit] using hbad)
+  · intro hbad
+    exact noDeleteCrossPaths_not_reachPos_pos_reachNeg_neg hpaths (by
+      simpa [mkLit] using hbad)
+
+private theorem not_noDeleteCrossPaths_reach_pair
+    {st : CheckState} {on_ of_ : Var}
+    (hbad : ¬ NoDeleteCrossPaths st on_ of_) :
+    ((getReachable st (mkLit on_ true)).getD (of_ * 2) false = true ∧
+       (getReachable st (mkLit on_ false)).getD (of_ * 2 + 1) false = true) ∨
+    ((getReachable st (mkLit on_ true)).getD (of_ * 2 + 1) false = true ∧
+       (getReachable st (mkLit on_ false)).getD (of_ * 2) false = true) := by
+  let a := (getReachable st (mkLit on_ true)).getD (of_ * 2) false
+  let b := (getReachable st (mkLit on_ false)).getD (of_ * 2 + 1) false
+  let c := (getReachable st (mkLit on_ true)).getD (of_ * 2 + 1) false
+  let d := (getReachable st (mkLit on_ false)).getD (of_ * 2) false
+  cases ha : a <;> cases hb : b <;> cases hc : c <;> cases hd : d <;>
+    simp [NoDeleteCrossPaths, a, b, c, d, ha, hb, hc, hd] at hbad ⊢
+
+private theorem not_noDeleteCrossPaths_exists_reach_pair
+    {st : CheckState} {on_ of_ : Var}
+    (hbad : ¬ NoDeleteCrossPaths st on_ of_) :
+    ∃ pos : Bool,
+      (getReachable st (mkLit on_ true)).getD (mkLit of_ pos).x false = true ∧
+      (getReachable st (mkLit on_ false)).getD (mkLit of_ (!pos)).x false = true := by
+  rcases not_noDeleteCrossPaths_reach_pair hbad with hnegPos | hposNeg
+  · exact ⟨false, by simpa [mkLit] using hnegPos⟩
+  · exact ⟨true, by simpa [mkLit] using hposNeg⟩
+
+private theorem noDeleteCrossPathsSet_not_reachPos_lit_reachNeg_negate
+    {st : CheckState} {vars : Array Var} {on_ of_ : Var} {pos : Bool}
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList) :
+    ¬ ((getReachable st (mkLit on_ true)).getD (mkLit of_ pos).x false = true ∧
+       (getReachable st (mkLit on_ false)).getD (mkLit of_ (!pos)).x false = true) :=
+  noDeleteCrossPaths_not_reachPos_lit_reachNeg_negate (hpaths of_ hof)
+
+private inductive DeletePurePath
+    (st : CheckState) (on_ : Var) (start : Literal) : Literal → Prop
+  | first
+      {lit : Literal} {cref : CRef} {clause : Clause}
+      (hget : st.clauses.getClause cref = some clause)
+      (hstart : start ∈ clause.lits.toList)
+      (hnoStartNeg : start.negate ∉ clause.lits.toList)
+      (hlit : lit ∈ clause.lits.toList)
+      (hne : lit ≠ start)
+      (hexi : st.formula.isVarExistential lit.var = true)
+      (hdep : (st.formula.depset.getD lit.var #[]).contains on_ = true) :
+      DeletePurePath st on_ start lit
+  | step
+      {prev lit : Literal} {cref : CRef} {clause : Clause}
+      (hprev : DeletePurePath st on_ start prev)
+      (hget : st.clauses.getClause cref = some clause)
+      (hcur : prev.negate ∈ clause.lits.toList)
+      (hnoStartNeg : start.negate ∉ clause.lits.toList)
+      (hlit : lit ∈ clause.lits.toList)
+      (hne : lit ≠ prev.negate)
+      (hexi : st.formula.isVarExistential lit.var = true)
+      (hdep : (st.formula.depset.getD lit.var #[]).contains on_ = true) :
+      DeletePurePath st on_ start lit
+
+private theorem mkLit_ne_of_var_ne
+    {v w : Var} {p q : Bool} (hne : v ≠ w) :
+    mkLit v p ≠ mkLit w q := by
+  intro hEq
+  have hvar := congrArg Literal.var hEq
+  exact hne (by simpa [mkLit_var_early] using hvar)
+
+private theorem deletePurePath_first_mkLit
+    {st : CheckState} {on_ of_ : Var} {startPos targetPos : Bool}
+    {cref : CRef} {clause : Clause}
+    (hget : st.clauses.getClause cref = some clause)
+    (hstart : mkLit on_ startPos ∈ clause.lits.toList)
+    (hnoStartNeg : (mkLit on_ startPos).negate ∉ clause.lits.toList)
+    (htarget : mkLit of_ targetPos ∈ clause.lits.toList)
+    (hof_ne : of_ ≠ on_)
+    (hexi : st.formula.isVarExistential of_ = true)
+    (hdep : (st.formula.depset.getD of_ #[]).contains on_ = true) :
+    DeletePurePath st on_ (mkLit on_ startPos) (mkLit of_ targetPos) :=
+  DeletePurePath.first hget hstart hnoStartNeg htarget
+    (mkLit_ne_of_var_ne hof_ne)
+    (by simpa [mkLit_var_early] using hexi)
+    (by simpa [mkLit_var_early] using hdep)
+
+private theorem deletePurePath_first_of_universal_clause_lit
+    {st : CheckState} {on_ of_ : Var} {targetPos : Bool}
+    {start : Literal} {cref : CRef} {clause : Clause}
+    (hget : st.clauses.getClause cref = some clause)
+    (hstart : start ∈ clause.lits.toList)
+    (hstart_var : start.var = on_)
+    (hnoCompl : ∀ l ∈ clause.lits.toList, l.negate ∉ clause.lits.toList)
+    (htarget : mkLit of_ targetPos ∈ clause.lits.toList)
+    (hof_ne : of_ ≠ on_)
+    (hexi : st.formula.isVarExistential of_ = true)
+    (hdep : (st.formula.depset.getD of_ #[]).contains on_ = true) :
+    ∃ startPos,
+      start = mkLit on_ startPos ∧
+      DeletePurePath st on_ (mkLit on_ startPos) (mkLit of_ targetPos) := by
+  let startPos := start.isPos
+  have hstart_eq : start = mkLit on_ startPos := by
+    calc
+      start = mkLit start.var start.isPos := literal_eq_mkLit_var_isPos start
+      _ = mkLit on_ startPos := by rw [hstart_var]
+  have hstart_mem : mkLit on_ startPos ∈ clause.lits.toList := by
+    simpa [← hstart_eq] using hstart
+  have hnoStartNeg : (mkLit on_ startPos).negate ∉ clause.lits.toList := by
+    simpa [← hstart_eq] using hnoCompl start hstart
+  exact ⟨startPos, hstart_eq,
+    deletePurePath_first_mkLit hget hstart_mem hnoStartNeg htarget
+      hof_ne hexi hdep⟩
+
+theorem universal_lit_false_eq_mkLit_not_sigma
+    (f : DQBF) (on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (l : Literal)
+    (huniv : f.isVarExistential l.var = false)
+    (hvar : l.var = on_)
+    (hfalse : f.litValue σ sk l = false) :
+    l = mkLit on_ (!(σ on_)) := by
+  have hl : l = mkLit l.var l.isPos := literal_eq_mkLit_var_isPos l
+  have hfalse' := hfalse
+  simp only [DQBF.litValue, DQBF.varValue] at hfalse'
+  rw [huniv] at hfalse'
+  simp only [Bool.false_eq_true, ↓reduceIte] at hfalse'
+  rw [hvar] at hfalse'
+  rw [hl, hvar]
+  cases hp : l.isPos <;> cases hs : σ on_ <;>
+    simp [hp, hs] at hfalse' ⊢
+
+private theorem deletePurePath_first_of_universal_changed_clause_lit
+    {st : CheckState} {on_ of_ : Var} {targetPos : Bool}
+    {start : Literal} {cref : CRef} {clause : Clause}
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hget : st.clauses.getClause cref = some clause)
+    (hstart : start ∈ clause.lits.toList)
+    (hstart_var : start.var = on_)
+    (hstart_false : st.formula.litValue σ sk start = false)
+    (hnoCompl : ∀ l ∈ clause.lits.toList, l.negate ∉ clause.lits.toList)
+    (htarget : mkLit of_ targetPos ∈ clause.lits.toList)
+    (hof_ne : of_ ≠ on_)
+    (hexi : st.formula.isVarExistential of_ = true)
+    (hdep : (st.formula.depset.getD of_ #[]).contains on_ = true) :
+    ∃ startPos,
+      startPos = !(σ on_) ∧
+      start = mkLit on_ startPos ∧
+      DeletePurePath st on_ (mkLit on_ startPos) (mkLit of_ targetPos) := by
+  have huniv_start : st.formula.isVarExistential start.var = false := by
+    simpa [hstart_var] using hon_univ
+  let startPos := !(σ on_)
+  have hstart_eq : start = mkLit on_ startPos := by
+    simpa [startPos] using
+      universal_lit_false_eq_mkLit_not_sigma
+        st.formula on_ σ sk start huniv_start hstart_var hstart_false
+  have hstart_mem : mkLit on_ startPos ∈ clause.lits.toList := by
+    simpa [← hstart_eq] using hstart
+  have hnoStartNeg : (mkLit on_ startPos).negate ∉ clause.lits.toList := by
+    simpa [← hstart_eq] using hnoCompl start hstart
+  exact ⟨startPos, rfl, hstart_eq,
+    deletePurePath_first_mkLit hget hstart_mem hnoStartNeg htarget
+      hof_ne hexi hdep⟩
+
+private theorem deletePurePath_target_isVarExistential
+    {st : CheckState} {on_ : Var} {start target : Literal}
+    (hpath : DeletePurePath st on_ start target) :
+    st.formula.isVarExistential target.var = true := by
+  induction hpath with
+  | first _ _ _ _ _ hexi _ =>
+      exact hexi
+  | step _ _ _ _ _ _ hexi _ _ =>
+      exact hexi
+
+private theorem deletePurePath_target_dependsOn
+    {st : CheckState} {on_ : Var} {start target : Literal}
+    (hpath : DeletePurePath st on_ start target) :
+    (st.formula.depset.getD target.var #[]).contains on_ = true := by
+  induction hpath with
+  | first _ _ _ _ _ _ hdep =>
+      exact hdep
+  | step _ _ _ _ _ _ _ hdep _ =>
+      exact hdep
+
+private theorem deletePurePath_last_step_or_first
+    {st : CheckState} {on_ : Var} {start target : Literal}
+    (hpath : DeletePurePath st on_ start target) :
+    (∃ cref clause,
+      st.clauses.getClause cref = some clause ∧
+      start ∈ clause.lits.toList ∧
+      start.negate ∉ clause.lits.toList ∧
+      target ∈ clause.lits.toList ∧
+      target ≠ start ∧
+      st.formula.isVarExistential target.var = true ∧
+      (st.formula.depset.getD target.var #[]).contains on_ = true) ∨
+    (∃ prev cref clause,
+      DeletePurePath st on_ start prev ∧
+      st.clauses.getClause cref = some clause ∧
+      prev.negate ∈ clause.lits.toList ∧
+      start.negate ∉ clause.lits.toList ∧
+      target ∈ clause.lits.toList ∧
+      target ≠ prev.negate ∧
+      st.formula.isVarExistential target.var = true ∧
+      (st.formula.depset.getD target.var #[]).contains on_ = true) := by
+  cases hpath with
+  | first hget hstart hnoStartNeg htarget hne hexi hdep =>
+      exact Or.inl
+        ⟨_, _, hget, hstart, hnoStartNeg, htarget, hne, hexi, hdep⟩
+  | step hprev hget hcur hnoStartNeg htarget hne hexi hdep =>
+      exact Or.inr
+        ⟨_, _, _, hprev, hget, hcur, hnoStartNeg, htarget, hne,
+          hexi, hdep⟩
+
+private theorem literal_x_lt_numLits_of_var_le_maxVar
+    (l : Literal) {maxVar : Nat} (hle : l.var ≤ maxVar) :
+    l.x < maxVar * 2 + 2 := by
+  have hdecomp : l.x = (l.x / 2) * 2 + l.x % 2 := by
+    simpa [Nat.mul_comm] using (Nat.div_add_mod l.x 2).symm
+  have hmod : l.x % 2 < 2 := Nat.mod_lt _ (by decide)
+  unfold Literal.var at hle
+  calc
+    l.x = (l.x / 2) * 2 + l.x % 2 := hdecomp
+    _ < (l.x / 2) * 2 + 2 := Nat.add_lt_add_left hmod _
+    _ = (l.x / 2 + 1) * 2 := by omega
+    _ ≤ (maxVar + 1) * 2 := Nat.mul_le_mul_right 2 (Nat.succ_le_succ hle)
+    _ = maxVar * 2 + 2 := by omega
+
+private theorem literal_negate_var (l : Literal) :
+    l.negate.var = l.var := by
+  unfold Literal.negate Literal.var
+  apply Nat.eq_of_testBit_eq
+  intro k
+  simp only [← Nat.testBit_succ, Nat.testBit_xor]
+  have h1 : Nat.testBit 1 (k + 1) = false := by
+    rw [Bool.eq_false_iff]
+    exact fun h => Nat.succ_ne_zero k (Nat.testBit_one_eq_true_iff_self_eq_zero.mp h)
+  simp [h1]
+
+private theorem one_testBit_succ_false (k : Nat) :
+    Nat.testBit 1 (k + 1) = false := by
+  rw [Bool.eq_false_iff]
+  exact fun h => Nat.succ_ne_zero k (Nat.testBit_one_eq_true_iff_self_eq_zero.mp h)
+
+private theorem testBit_mul2_add_one_succ (v k : Nat) :
+    (v * 2 + 1).testBit (k + 1) = (v * 2).testBit (k + 1) := by
+  rw [Nat.testBit_succ, Nat.testBit_succ]
+  have h1 : (v * 2 + 1) / 2 = v := by omega
+  have h2 : (v * 2) / 2 = v := by omega
+  rw [h1, h2]
+
+private theorem xor_mul_two_false (v : Nat) :
+    v * 2 ^^^ 1 = v * 2 + 1 := by
+  apply Nat.eq_of_testBit_eq
+  intro k
+  cases k with
+  | zero => simp
+  | succ k =>
+      rw [Nat.testBit_xor, one_testBit_succ_false]
+      simp [testBit_mul2_add_one_succ]
+
+private theorem xor_mul_two_true (v : Nat) :
+    v * 2 + 1 ^^^ 1 = v * 2 := by
+  apply Nat.eq_of_testBit_eq
+  intro k
+  cases k with
+  | zero => simp
+  | succ k =>
+      rw [Nat.testBit_xor, one_testBit_succ_false]
+      simp [testBit_mul2_add_one_succ]
+
+private theorem mkLit_negate (v : Var) (pos : Bool) :
+    (mkLit v pos).negate = mkLit v (!pos) := by
+  cases pos <;> simp [mkLit, Literal.negate, xor_mul_two_false, xor_mul_two_true]
+
+private theorem deletePurePath_step_mkLit_of_var_ne
+    {st : CheckState} {on_ prevOf nextOf : Var}
+    {startPos prevPos nextPos : Bool}
+    {cref : CRef} {clause : Clause}
+    (hprev : DeletePurePath st on_ (mkLit on_ startPos) (mkLit prevOf prevPos))
+    (hget : st.clauses.getClause cref = some clause)
+    (hcur : (mkLit prevOf prevPos).negate ∈ clause.lits.toList)
+    (hnoStartNeg : (mkLit on_ startPos).negate ∉ clause.lits.toList)
+    (hnext : mkLit nextOf nextPos ∈ clause.lits.toList)
+    (hnext_ne_prev : nextOf ≠ prevOf)
+    (hexi : st.formula.isVarExistential nextOf = true)
+    (hdep : (st.formula.depset.getD nextOf #[]).contains on_ = true) :
+    DeletePurePath st on_ (mkLit on_ startPos) (mkLit nextOf nextPos) := by
+  have hne : mkLit nextOf nextPos ≠ (mkLit prevOf prevPos).negate := by
+    intro hEq
+    have hvar := congrArg Literal.var hEq
+    rw [mkLit_var_early, literal_negate_var, mkLit_var_early] at hvar
+    exact hnext_ne_prev hvar
+  exact DeletePurePath.step hprev hget hcur hnoStartNeg hnext hne
+    (by simpa [mkLit_var_early] using hexi)
+    (by simpa [mkLit_var_early] using hdep)
+
+private theorem literal_negate_x_lt_numLits_of_var_le_maxVar
+    (l : Literal) {maxVar : Nat} (hle : l.var ≤ maxVar) :
+    l.negate.x < maxVar * 2 + 2 := by
+  exact literal_x_lt_numLits_of_var_le_maxVar l.negate
+    (by simpa [literal_negate_var] using hle)
+
+private theorem mkLit_x_lt_numLits_of_var_le_maxVar
+    {v maxVar : Nat} {pos : Bool} (hle : v ≤ maxVar) :
+    (mkLit v pos).x < maxVar * 2 + 2 := by
+  exact literal_x_lt_numLits_of_var_le_maxVar (mkLit v pos)
+    (by simpa [mkLit_var_early] using hle)
+
+private theorem clauseLit_x_lt_numLits_of_fullCorrect_raw_not_deleted
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    {cref : CRef} {clause : Clause} {lit : Literal}
+    (hraw : st.clauses.getClauseRaw cref = some clause)
+    (hdeleted : clause.deleted = false)
+    (hlit : lit ∈ clause.lits.toList) :
+    lit.x < st.formula.maxVar * 2 + 2 := by
+  have hget : st.clauses.getClause cref = some clause :=
+    getClause_of_getClauseRaw_not_deleted hraw hdeleted
+  exact literal_x_lt_numLits_of_var_le_maxVar lit
+    ((hfull.toCorrect.clauses_wf cref clause hget lit hlit).2)
+
+private theorem isVarExistential_literal_var_le_maxVar_of_fullCorrect
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {lit : Literal}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hexi : st.formula.isVarExistential lit.var = true) :
+    lit.var ≤ st.formula.maxVar := by
+  have hlt : lit.var < st.formula.isExistential.size :=
+    arrayGetD_true_imp_lt (a := st.formula.isExistential) (by
+      simpa [DQBF.isVarExistential] using hexi)
+  rw [hfull.toCorrect.toSound.isExistential_size] at hlt
+  exact Nat.lt_succ_iff.mp hlt
+
+private theorem isVarExistential_literal_x_lt_numLits_of_fullCorrect
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {lit : Literal}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hexi : st.formula.isVarExistential lit.var = true) :
+    lit.x < st.formula.maxVar * 2 + 2 :=
+  literal_x_lt_numLits_of_var_le_maxVar lit
+    (isVarExistential_literal_var_le_maxVar_of_fullCorrect hfull hexi)
+
+private theorem isVarExistential_literal_negate_x_lt_numLits_of_fullCorrect
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {lit : Literal}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hexi : st.formula.isVarExistential lit.var = true) :
+    lit.negate.x < st.formula.maxVar * 2 + 2 :=
+  literal_negate_x_lt_numLits_of_var_le_maxVar lit
+    (isVarExistential_literal_var_le_maxVar_of_fullCorrect hfull hexi)
+
+private theorem literal_negate_negate_local (l : Literal) :
+    l.negate.negate = l := by
+  cases l
+  simp [Literal.negate, Nat.xor_assoc]
+
+private theorem literal_eq_of_x_eq
+    {a b : Literal} (h : a.x = b.x) : a = b := by
+  cases a
+  cases b
+  simp at h ⊢
+  exact h
+
+private theorem literal_eq_negate_of_negate_x_eq
+    {a b : Literal} (h : a.negate.x = b.x) :
+    a = b.negate := by
+  cases a with
+  | mk ax =>
+      cases b with
+      | mk bx =>
+          simp [Literal.negate] at h ⊢
+          rw [← h]
+          simp [Nat.xor_assoc]
+
+private theorem array_toList_getLast_eq_getD_last
+    {α : Type} {xs : Array α} (fallback : α) (h : xs.toList ≠ []) :
+    xs.toList.getLast h = xs.getD (xs.size - 1) fallback := by
+  rw [List.getLast_eq_getElem]
+  have hsize_pos : 0 < xs.size := by
+    cases hs : xs.size with
+    | zero =>
+        have hnil : xs.toList = [] := by
+          apply List.eq_nil_of_length_eq_zero
+          simp [hs]
+        exact (h hnil).elim
+    | succ _ => omega
+  have hidx : xs.size - 1 < xs.size := by omega
+  rw [← Array.getElem_eq_getD (xs := xs) (i := xs.size - 1) (h := hidx) fallback]
+  exact Array.getElem_toList (xs := xs) (i := xs.size - 1) hidx
+
+private theorem List.mem_dropLast_of_mem_ne_getLast'
+    {α : Type} [DecidableEq α] {xs : List α} {x : α}
+    (hne : xs ≠ []) (hmem : x ∈ xs) (hneLast : x ≠ xs.getLast hne) :
+    x ∈ xs.dropLast := by
+  rw [← List.dropLast_concat_getLast hne] at hmem
+  simp at hmem
+  exact hmem.resolve_right hneLast
+
+private theorem array_mem_pop_of_mem_ne_getD_last
+    {α : Type} [DecidableEq α] {xs : Array α} {x : α} (fallback : α)
+    (hmem : x ∈ xs.toList)
+    (hneLast : x ≠ xs.getD (xs.size - 1) fallback) :
+    x ∈ xs.pop.toList := by
+  have hlist_ne : xs.toList ≠ [] := by
+    intro hnil
+    simp [hnil] at hmem
+  rw [Array.toList_pop]
+  exact List.mem_dropLast_of_mem_ne_getLast' hlist_ne hmem (by
+    intro hx
+    exact hneLast (by
+      rw [← array_toList_getLast_eq_getD_last (xs := xs) fallback hlist_ne]
+      exact hx))
+
+private theorem array_getD_last_mem_toList
+    {α : Type} {xs : Array α} (fallback : α)
+    (hlist_ne : xs.toList ≠ []) :
+    xs.getD (xs.size - 1) fallback ∈ xs.toList := by
+  have hlast : xs.toList.getLast hlist_ne ∈ xs.toList :=
+    List.getLast_mem hlist_ne
+  rwa [array_toList_getLast_eq_getD_last fallback hlist_ne] at hlast
+
+private theorem false_replicate_array_getD
+    (n i : Nat) :
+    ((List.replicate n false).toArray).getD i false = false := by
+  by_cases hi : i < ((List.replicate n false).toArray).size
+  · simp [Array.getD]
+  · simp [Array.getD]
+
+private theorem false_replicate_array_setIfInBounds_getD_of_ne
+    (n i j : Nat) (hne : i ≠ j) :
+    (((List.replicate n false).toArray).setIfInBounds i true).getD j false = false := by
+  rw [arraySetIfInBounds_getD_ne _ i j true false hne]
+  exact false_replicate_array_getD n j
+
+private theorem array_set_getD_ne
+    {α : Type} (a : Array α) (i j : Nat) (v fallback : α)
+    (hi : i < a.size) (hne : i ≠ j) :
+    (a.set i v hi).getD j fallback = a.getD j fallback := by
+  have hsize : (a.set i v hi).size = a.size := Array.size_set hi
+  simp only [Array.getD]
+  by_cases hj : j < a.size
+  · rw [dif_pos (hsize ▸ hj), dif_pos hj]
+    simp [Array.getElem_set, hne]
+  · have hj' : ¬ j < (a.set i v hi).size := by
+      simpa [hsize] using hj
+    rw [dif_neg hj', dif_neg hj]
+
+private theorem array_set_true_preserves_getD
+    (a : Array Bool) (i target : Nat) (hi : i < a.size)
+    (h : a.getD target false = true) :
+    (a.set i true hi).getD target false = true := by
+  by_cases heq : i = target
+  · subst target
+    have hidx : i < (a.set i true hi).size := by
+      simpa [Array.size_set hi] using hi
+    have hself : (a.set i true hi)[i]'hidx = true :=
+      Array.getElem_set_self (xs := a) (i := i) hi (v := true)
+    rw [Array.getElem_eq_getD (xs := a.set i true hi) (i := i) (h := hidx) false] at hself
+    exact hself
+  · rw [array_set_getD_ne a i target true false hi heq]
+    exact h
+
+private theorem false_replicate_array_set_getD_of_ne
+    (n i j : Nat) (hi : i < ((List.replicate n false).toArray).size) (hne : i ≠ j) :
+    (((List.replicate n false).toArray).set i true hi).getD j false = false := by
+  rw [array_set_getD_ne _ i j true false hi hne]
+  exact false_replicate_array_getD n j
+
+private theorem arraySetIfInBounds_true_preserves_getD
+    (a : Array Bool) (i target : Nat)
+    (h : a.getD target false = true) :
+    (a.setIfInBounds i true).getD target false = true := by
+  by_cases hit : i = target
+  · subst target
+    by_cases hlt : i < a.size
+    · exact arraySetIfInBounds_getD_eq a i true false hlt
+    · simp [Array.getD, hlt] at h
+  · rw [arraySetIfInBounds_getD_ne a i target true false hit]
+    exact h
+
+private theorem array_getElem?_getD_eq_getD
+    {α : Type} (a : Array α) (i : Nat) (fallback : α) :
+    a[i]?.getD fallback = a.getD i fallback := by
+  by_cases h : i < a.size
+  · simp [Array.getD, h]
+  · simp [Array.getD, h]
+
+private theorem getReachableLitStep_marks_reach_true
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur lit : Literal}
+    {state : Array Literal × Array Bool}
+    (hcur : lit ≠ cur)
+    (hexpl : explored.getD lit.negate.x false = false)
+    (hexi : st.formula.isVarExistential lit.var = true)
+    (hdep : (st.formula.depset.getD lit.var #[]).contains lvar = true)
+    (hlt : lit.x < state.2.size) :
+    ((getReachableLitStep st lvar explored cur state lit).2).getD lit.x false = true := by
+  rcases state with ⟨wl, rch⟩
+  have hmem : lvar ∈ st.formula.depset.getD lit.var #[] :=
+    Array.contains_iff_mem.mp hdep
+  have hmem' : lvar ∈ st.formula.depset[lit.var]?.getD #[] := by
+    by_cases hlt_dep : lit.var < st.formula.depset.size
+    · simpa [Array.getD, hlt_dep] using hmem
+    · simp [Array.getD, hlt_dep] at hmem
+  simpa [getReachableLitStep, hcur, hexpl, hexi, hmem'] using hlt
+
+private theorem getReachableLitStep_pushes_negate
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur lit : Literal}
+    {state : Array Literal × Array Bool}
+    (hcur : lit ≠ cur)
+    (hexpl : explored.getD lit.negate.x false = false)
+    (hexi : st.formula.isVarExistential lit.var = true)
+    (hdep : (st.formula.depset.getD lit.var #[]).contains lvar = true) :
+    lit.negate ∈ ((getReachableLitStep st lvar explored cur state lit).1).toList := by
+  rcases state with ⟨wl, rch⟩
+  have hmem : lvar ∈ st.formula.depset.getD lit.var #[] :=
+    Array.contains_iff_mem.mp hdep
+  have hmem' : lvar ∈ st.formula.depset[lit.var]?.getD #[] := by
+    by_cases hlt_dep : lit.var < st.formula.depset.size
+    · simpa [Array.getD, hlt_dep] using hmem
+    · simp [Array.getD, hlt_dep] at hmem
+  simp [getReachableLitStep, hcur, hexpl, hexi, hmem']
+
+private theorem getReachableLitStep_reach_size
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
+    {state : Array Literal × Array Bool} {lit : Literal} :
+    ((getReachableLitStep st lvar explored cur state lit).2).size = state.2.size := by
+  rcases state with ⟨wl, rch⟩
+  by_cases hcur : lit = cur
+  · simp [getReachableLitStep, hcur]
+  · by_cases hexpl : explored.getD lit.negate.x false = true
+    · simp [getReachableLitStep, hcur, hexpl]
+    · by_cases hguard :
+        st.formula.isVarExistential lit.var = true ∧
+          lvar ∈ st.formula.depset[lit.var]?.getD #[]
+      · simp [getReachableLitStep, hcur, hexpl, hguard]
+      · simp [getReachableLitStep, hcur, hexpl, hguard]
+
+private theorem getReachableLitStep_preserves_reach_true
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
+    {state : Array Literal × Array Bool} {lit : Literal} {target : Nat}
+    (h : state.2.getD target false = true) :
+    ((getReachableLitStep st lvar explored cur state lit).2).getD target false = true := by
+  rcases state with ⟨wl, rch⟩
+  by_cases hcur : lit = cur
+  · simp [getReachableLitStep, hcur, h]
+  · by_cases hexpl : explored.getD lit.negate.x false = true
+    · simp [getReachableLitStep, hcur, hexpl, h]
+    · by_cases hexi : st.formula.isVarExistential lit.var = true
+      · by_cases hmem : lvar ∈ st.formula.depset.getD lit.var #[]
+        · have hmem' :
+              lvar ∈ st.formula.depset[lit.var]?.getD #[] := by
+            by_cases hlt : lit.var < st.formula.depset.size
+            · simpa [Array.getD, hlt] using hmem
+            · simp [Array.getD, hlt] at hmem
+          simp [getReachableLitStep, hcur, hexpl, hexi, hmem']
+          rw [array_getElem?_getD_eq_getD]
+          exact arraySetIfInBounds_true_preserves_getD rch lit.x target h
+        · have hmem' :
+              ¬ lvar ∈ st.formula.depset[lit.var]?.getD #[] := by
+            by_cases hlt : lit.var < st.formula.depset.size
+            · simpa [Array.getD, hlt] using hmem
+            · simp [hlt]
+          simp [getReachableLitStep, hcur, hexpl, hexi, hmem', h]
+      · simp [getReachableLitStep, hcur, hexpl, hexi, h]
+
+private theorem getReachableLitStep_marks_reach_true_of_pre
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
+    {state : Array Literal × Array Bool}
+    (hcur : target ≠ cur)
+    (hpre :
+      explored.getD target.negate.x false = true →
+        state.2.getD target.x false = true)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((getReachableLitStep st lvar explored cur state target).2).getD
+      target.x false = true := by
+  by_cases hexpl : explored.getD target.negate.x false = true
+  · exact getReachableLitStep_preserves_reach_true (hpre hexpl)
+  · have hexplFalse : explored.getD target.negate.x false = false := by
+      cases hval : explored.getD target.negate.x false <;> simp [hval] at hexpl ⊢
+    exact getReachableLitStep_marks_reach_true
+      (st := st) (lvar := lvar) (explored := explored)
+      (cur := cur) (lit := target) (state := state)
+      hcur hexplFalse hexi hdep hlt
+
+private theorem getReachableLitStep_preserves_worklist_mem
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur lit keep : Literal}
+    {state : Array Literal × Array Bool}
+    (h : keep ∈ state.1.toList) :
+    keep ∈ ((getReachableLitStep st lvar explored cur state lit).1).toList := by
+  rcases state with ⟨wl, rch⟩
+  by_cases hcur : lit = cur
+  · simp [getReachableLitStep, hcur, h]
+  · by_cases hexpl : explored.getD lit.negate.x false = true
+    · simp [getReachableLitStep, hcur, hexpl, h]
+    · by_cases hexi : st.formula.isVarExistential lit.var = true
+      · by_cases hmem : lvar ∈ st.formula.depset.getD lit.var #[]
+        · have hmem' :
+              lvar ∈ st.formula.depset[lit.var]?.getD #[] := by
+            by_cases hlt : lit.var < st.formula.depset.size
+            · simpa [Array.getD, hlt] using hmem
+            · simp [Array.getD, hlt] at hmem
+          simp [getReachableLitStep, hcur, hexpl, hexi, hmem', h]
+        · have hmem' :
+              ¬ lvar ∈ st.formula.depset[lit.var]?.getD #[] := by
+            by_cases hlt : lit.var < st.formula.depset.size
+            · simpa [Array.getD, hlt] using hmem
+            · simp [hlt]
+          simp [getReachableLitStep, hcur, hexpl, hexi, hmem', h]
+      · simp [getReachableLitStep, hcur, hexpl, hexi, h]
+
+private def ReachFrontierInvariant
+    (start : Literal) (worklist : Array Literal) (reach expl : Array Bool) : Prop :=
+  (∀ l, l ∈ worklist.toList → l ≠ start →
+      reach.getD l.negate.x false = true) ∧
+  (∀ l, expl.getD l.x false = true → l ≠ start →
+      reach.getD l.negate.x false = true)
+
+private theorem ReachFrontierInvariant_initial
+    (start : Literal) (numLits : Nat) :
+    ReachFrontierInvariant start #[start]
+      (List.replicate numLits false).toArray
+      (List.replicate numLits false).toArray := by
+  constructor
+  · intro l hmem hne
+    simp at hmem
+    exact (hne hmem).elim
+  · intro l hexpl _
+    have hfalse :
+        ((List.replicate numLits false).toArray).getD l.x false = false :=
+      false_replicate_array_getD numLits l.x
+    rw [hfalse] at hexpl
+    cases hexpl
+
+private def ReachProcessedInvariant
+    (st : CheckState) (lvar : Var) (negL : Literal)
+    (reach expl : Array Bool) : Prop :=
+  ∀ cur, expl.getD cur.x false = true →
+    ∀ cref clause target,
+      cref ∈ (st.clauses.getOcc cur).toList →
+      st.clauses.getClauseRaw cref = some clause →
+      clause.deleted = false →
+      negL ∉ clause.lits →
+      target ∈ clause.lits.toList →
+      target ≠ cur →
+      st.formula.isVarExistential target.var = true →
+      (st.formula.depset.getD target.var #[]).contains lvar = true →
+      target.x < reach.size →
+      reach.getD target.x false = true
+
+private theorem ReachProcessedInvariant_initial
+    (st : CheckState) (lvar : Var) (negL : Literal) (numLits : Nat) :
+    ReachProcessedInvariant st lvar negL
+      (List.replicate numLits false).toArray
+      (List.replicate numLits false).toArray := by
+  intro cur hexpl
+  have hfalse :
+      ((List.replicate numLits false).toArray).getD cur.x false = false :=
+    false_replicate_array_getD numLits cur.x
+  rw [hfalse] at hexpl
+  cases hexpl
+
+private def ReachBackpointerInvariant
+    (worklist : Array Literal) (reach expl : Array Bool) : Prop :=
+  ∀ (lit : Literal), lit.negate.x < expl.size →
+    reach.getD lit.x false = true →
+      lit.negate ∈ worklist.toList ∨ expl.getD lit.negate.x false = true
+
+private theorem ReachBackpointerInvariant_initial
+    (start : Literal) (numLits : Nat) :
+    ReachBackpointerInvariant #[start]
+      (List.replicate numLits false).toArray
+      (List.replicate numLits false).toArray := by
+  unfold ReachBackpointerInvariant
+  intro lit _ hreach
+  have hfalse :
+      ((List.replicate numLits false).toArray).getD lit.x false = false :=
+    false_replicate_array_getD numLits lit.x
+  rw [hfalse] at hreach
+  cases hreach
+
+private theorem getReachableLitStep_preserves_frontierInvariant
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {start cur lit : Literal}
+    {state : Array Literal × Array Bool}
+    (hinv : ReachFrontierInvariant start state.1 state.2 explored)
+    (hlt : lit.x < state.2.size) :
+    ReachFrontierInvariant start
+      (getReachableLitStep st lvar explored cur state lit).1
+      (getReachableLitStep st lvar explored cur state lit).2
+      explored := by
+  rcases state with ⟨wl, rch⟩
+  rcases hinv with ⟨hwl, hexplInv⟩
+  constructor
+  · intro keep hkeep hkeep_ne_start
+    by_cases hcur : lit = cur
+    · simp [getReachableLitStep, hcur] at hkeep ⊢
+      rw [array_getElem?_getD_eq_getD]
+      simpa using hwl keep (Array.mem_toList_iff.mpr hkeep) hkeep_ne_start
+    · by_cases hexpl : explored.getD lit.negate.x false = true
+      · simp [getReachableLitStep, hcur, hexpl] at hkeep ⊢
+        rw [array_getElem?_getD_eq_getD]
+        simpa using hwl keep (Array.mem_toList_iff.mpr hkeep) hkeep_ne_start
+      · have hexplFalse : explored.getD lit.negate.x false = false := by
+          cases hval : explored.getD lit.negate.x false <;> simp [hval] at hexpl ⊢
+        by_cases hexi : st.formula.isVarExistential lit.var = true
+        · by_cases hdep : lvar ∈ st.formula.depset.getD lit.var #[]
+          · have hdep' :
+                lvar ∈ st.formula.depset[lit.var]?.getD #[] := by
+              by_cases hlt_dep : lit.var < st.formula.depset.size
+              · simpa [Array.getD, hlt_dep] using hdep
+              · simp [Array.getD, hlt_dep] at hdep
+            simp [getReachableLitStep, hcur, hexplFalse, hexi, hdep'] at hkeep ⊢
+            rcases hkeep with hkeep_old | hkeep_new
+            · rw [array_getElem?_getD_eq_getD]
+              exact arraySetIfInBounds_true_preserves_getD rch lit.x keep.negate.x
+                (hwl keep (Array.mem_toList_iff.mpr hkeep_old) hkeep_ne_start)
+            · subst keep
+              have hmark :
+                  (rch.setIfInBounds lit.x true).getD lit.x false = true :=
+                arraySetIfInBounds_getD_eq rch lit.x true false hlt
+              simpa [literal_negate_negate_local] using hmark
+          · have hdep' :
+                ¬ lvar ∈ st.formula.depset[lit.var]?.getD #[] := by
+              by_cases hlt_dep : lit.var < st.formula.depset.size
+              · simpa [Array.getD, hlt_dep] using hdep
+              · simp [hlt_dep]
+            simp [getReachableLitStep, hcur, hexplFalse, hexi, hdep'] at hkeep ⊢
+            rw [array_getElem?_getD_eq_getD]
+            simpa using hwl keep (Array.mem_toList_iff.mpr hkeep) hkeep_ne_start
+        · simp [getReachableLitStep, hcur, hexplFalse, hexi] at hkeep ⊢
+          rw [array_getElem?_getD_eq_getD]
+          simpa using hwl keep (Array.mem_toList_iff.mpr hkeep) hkeep_ne_start
+  · intro keep hkeep hkeep_ne_start
+    exact getReachableLitStep_preserves_reach_true
+      (hexplInv keep hkeep hkeep_ne_start)
+
+private theorem getReachableLitFold_preserves_reach_true
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
+    (lits : List Literal) {state : Array Literal × Array Bool} {target : Nat}
+    (h : state.2.getD target false = true) :
+    ((lits.foldl (getReachableLitStep st lvar explored cur) state).2).getD target false = true := by
+  induction lits generalizing state with
+  | nil =>
+      simpa using h
+  | cons lit rest ih =>
+      rw [List.foldl_cons]
+      exact ih (getReachableLitStep_preserves_reach_true h)
+
+private theorem getReachableLitFold_preserves_worklist_mem
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur keep : Literal}
+    (lits : List Literal) {state : Array Literal × Array Bool}
+    (h : keep ∈ state.1.toList) :
+    keep ∈ ((lits.foldl (getReachableLitStep st lvar explored cur) state).1).toList := by
+  induction lits generalizing state with
+  | nil =>
+      simpa using h
+  | cons lit rest ih =>
+      rw [List.foldl_cons]
+      exact ih (getReachableLitStep_preserves_worklist_mem h)
+
+private theorem getReachableLitFold_reach_size
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
+    (lits : List Literal) {state : Array Literal × Array Bool} :
+    ((lits.foldl (getReachableLitStep st lvar explored cur) state).2).size = state.2.size := by
+  induction lits generalizing state with
+  | nil =>
+      rfl
+  | cons lit rest ih =>
+      rw [List.foldl_cons]
+      rw [ih]
+      exact getReachableLitStep_reach_size
+        (st := st) (lvar := lvar) (explored := explored)
+        (cur := cur) (state := state) (lit := lit)
+
+private theorem getReachableLitFold_preserves_frontierInvariant
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {start cur : Literal}
+    (lits : List Literal) {state : Array Literal × Array Bool}
+    (hinv : ReachFrontierInvariant start state.1 state.2 explored)
+    (hbounds : ∀ lit ∈ lits, lit.x < state.2.size) :
+    ReachFrontierInvariant start
+      ((lits.foldl (getReachableLitStep st lvar explored cur) state).1)
+      ((lits.foldl (getReachableLitStep st lvar explored cur) state).2)
+      explored := by
+  induction lits generalizing state with
+  | nil =>
+      simpa using hinv
+  | cons lit rest ih =>
+      rw [List.foldl_cons]
+      have hinv' :
+          ReachFrontierInvariant start
+            (getReachableLitStep st lvar explored cur state lit).1
+            (getReachableLitStep st lvar explored cur state lit).2
+            explored :=
+        getReachableLitStep_preserves_frontierInvariant hinv
+          (hbounds lit (by simp))
+      have hsize :
+          ((getReachableLitStep st lvar explored cur state lit).2).size = state.2.size :=
+        getReachableLitStep_reach_size
+          (st := st) (lvar := lvar) (explored := explored)
+          (cur := cur) (state := state) (lit := lit)
+      exact ih
+        (state := getReachableLitStep st lvar explored cur state lit)
+        hinv'
+        (fun target htarget =>
+          by
+            have htarget' : target ∈ lit :: rest := List.mem_cons_of_mem lit htarget
+            simpa [hsize] using hbounds target htarget')
+
+private theorem getReachableLitFold_marks_reach_true
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
+    (lits : List Literal) {state : Array Literal × Array Bool}
+    (hmem : target ∈ lits)
+    (hcur : target ≠ cur)
+    (hexpl : explored.getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((lits.foldl (getReachableLitStep st lvar explored cur) state).2).getD target.x false = true := by
+  induction lits generalizing state with
+  | nil =>
+      simp at hmem
+  | cons lit rest ih =>
+      rw [List.foldl_cons]
+      cases hmem with
+      | head =>
+        exact getReachableLitFold_preserves_reach_true rest
+          (getReachableLitStep_marks_reach_true
+            (st := st) (lvar := lvar) (explored := explored)
+            (cur := cur) (lit := target) (state := state)
+            hcur hexpl hexi hdep hlt)
+      | tail _ hrest =>
+        have hsize :
+            ((getReachableLitStep st lvar explored cur state lit).2).size = state.2.size :=
+          getReachableLitStep_reach_size
+            (st := st) (lvar := lvar) (explored := explored)
+            (cur := cur) (state := state) (lit := lit)
+        exact ih (state := getReachableLitStep st lvar explored cur state lit)
+          hrest (by simpa [hsize] using hlt)
+
+private theorem getReachableLitFold_marks_reach_true_of_pre
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
+    (lits : List Literal) {state : Array Literal × Array Bool}
+    (hmem : target ∈ lits)
+    (hcur : target ≠ cur)
+    (hpre :
+      explored.getD target.negate.x false = true →
+        state.2.getD target.x false = true)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((lits.foldl (getReachableLitStep st lvar explored cur) state).2).getD
+      target.x false = true := by
+  induction lits generalizing state with
+  | nil =>
+      simp at hmem
+  | cons lit rest ih =>
+      rw [List.foldl_cons]
+      cases hmem with
+      | head =>
+          exact getReachableLitFold_preserves_reach_true rest
+            (getReachableLitStep_marks_reach_true_of_pre
+              (st := st) (lvar := lvar) (explored := explored)
+              (cur := cur) (target := target) (state := state)
+              hcur hpre hexi hdep hlt)
+      | tail _ hrest =>
+          have hsize :
+              ((getReachableLitStep st lvar explored cur state lit).2).size = state.2.size :=
+            getReachableLitStep_reach_size
+              (st := st) (lvar := lvar) (explored := explored)
+              (cur := cur) (state := state) (lit := lit)
+          exact ih (state := getReachableLitStep st lvar explored cur state lit)
+            hrest
+            (fun hexpl =>
+              getReachableLitStep_preserves_reach_true (hpre hexpl))
+            (by simpa [hsize] using hlt)
+
+private theorem getReachableLitStep_preserves_backpointerInvariant
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur lit : Literal}
+    {state : Array Literal × Array Bool}
+    (hback : ReachBackpointerInvariant state.1 state.2 explored) :
+    ReachBackpointerInvariant
+      (getReachableLitStep st lvar explored cur state lit).1
+      (getReachableLitStep st lvar explored cur state lit).2
+      explored := by
+  rcases state with ⟨wl, rch⟩
+  unfold ReachBackpointerInvariant at hback ⊢
+  intro target htarget_bound hreach
+  by_cases hcur : lit = cur
+  · simp [getReachableLitStep, hcur] at hreach ⊢
+    rw [array_getElem?_getD_eq_getD] at hreach ⊢
+    rcases hback target htarget_bound hreach with hqueued | hexplored
+    · left
+      exact Array.mem_toList_iff.mp hqueued
+    · right
+      exact hexplored
+  · by_cases hexpl : explored.getD lit.negate.x false = true
+    · simp [getReachableLitStep, hcur, hexpl] at hreach ⊢
+      rw [array_getElem?_getD_eq_getD] at hreach ⊢
+      rcases hback target htarget_bound hreach with hqueued | hexplored
+      · left
+        exact Array.mem_toList_iff.mp hqueued
+      · right
+        exact hexplored
+    · have hexplFalse : explored.getD lit.negate.x false = false := by
+        cases hval : explored.getD lit.negate.x false <;> simp [hval] at hexpl ⊢
+      by_cases hexi : st.formula.isVarExistential lit.var = true
+      · by_cases hdep : lvar ∈ st.formula.depset.getD lit.var #[]
+        · have hdep' :
+              lvar ∈ st.formula.depset[lit.var]?.getD #[] := by
+            by_cases hlt_dep : lit.var < st.formula.depset.size
+            · simpa [Array.getD, hlt_dep] using hdep
+            · simp [Array.getD, hlt_dep] at hdep
+          simp [getReachableLitStep, hcur, hexplFalse, hexi, hdep'] at hreach ⊢
+          rw [array_getElem?_getD_eq_getD] at hreach ⊢
+          by_cases hx : target.x = lit.x
+          · have htarget_eq : target = lit := literal_eq_of_x_eq hx
+            subst target
+            left
+            right
+            rfl
+          · have hreach_old : rch.getD target.x false = true := by
+              rw [arraySetIfInBounds_getD_ne rch lit.x target.x true false
+                (fun h => hx h.symm)] at hreach
+              exact hreach
+            rcases hback target htarget_bound hreach_old with hqueued | hexplored
+            · left
+              left
+              simpa using Array.mem_toList_iff.mp hqueued
+            · right
+              exact hexplored
+        · have hdep' :
+              ¬ lvar ∈ st.formula.depset[lit.var]?.getD #[] := by
+            by_cases hlt_dep : lit.var < st.formula.depset.size
+            · simpa [Array.getD, hlt_dep] using hdep
+            · simp [hlt_dep]
+          simp [getReachableLitStep, hcur, hexplFalse, hexi, hdep'] at hreach ⊢
+          rw [array_getElem?_getD_eq_getD] at hreach ⊢
+          rcases hback target htarget_bound hreach with hqueued | hexplored
+          · left
+            exact Array.mem_toList_iff.mp hqueued
+          · right
+            exact hexplored
+      · simp [getReachableLitStep, hcur, hexplFalse, hexi] at hreach ⊢
+        rw [array_getElem?_getD_eq_getD] at hreach ⊢
+        rcases hback target htarget_bound hreach with hqueued | hexplored
+        · left
+          exact Array.mem_toList_iff.mp hqueued
+        · right
+          exact hexplored
+
+private theorem getReachableLitFold_preserves_backpointerInvariant
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
+    (lits : List Literal) {state : Array Literal × Array Bool}
+    (hback : ReachBackpointerInvariant state.1 state.2 explored) :
+    ReachBackpointerInvariant
+      ((lits.foldl (getReachableLitStep st lvar explored cur) state).1)
+      ((lits.foldl (getReachableLitStep st lvar explored cur) state).2)
+      explored := by
+  induction lits generalizing state with
+  | nil =>
+      simpa using hback
+  | cons lit rest ih =>
+      rw [List.foldl_cons]
+      exact ih
+        (state := getReachableLitStep st lvar explored cur state lit)
+        (getReachableLitStep_preserves_backpointerInvariant
+          (st := st) (lvar := lvar) (explored := explored)
+          (cur := cur) (lit := lit) (state := state) hback)
+
+private theorem getReachableLitFold_pushes_negate
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
+    (lits : List Literal) {state : Array Literal × Array Bool}
+    (hmem : target ∈ lits)
+    (hcur : target ≠ cur)
+    (hexpl : explored.getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true) :
+    target.negate ∈ ((lits.foldl (getReachableLitStep st lvar explored cur) state).1).toList := by
+  induction lits generalizing state with
+  | nil =>
+      simp at hmem
+  | cons lit rest ih =>
+      rw [List.foldl_cons]
+      cases hmem with
+      | head =>
+          exact getReachableLitFold_preserves_worklist_mem rest
+            (getReachableLitStep_pushes_negate
+              (st := st) (lvar := lvar) (explored := explored)
+              (cur := cur) (lit := target) (state := state)
+              hcur hexpl hexi hdep)
+      | tail _ hrest =>
+          exact ih (state := getReachableLitStep st lvar explored cur state lit)
+            hrest
+
+private theorem getReachableLitArrayFold_preserves_reach_true
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
+    (lits : Array Literal) {state : Array Literal × Array Bool} {target : Nat}
+    (h : state.2.getD target false = true) :
+    ((lits.foldl (getReachableLitStep st lvar explored cur) state).2).getD target false = true := by
+  rw [← Array.foldl_toList]
+  exact getReachableLitFold_preserves_reach_true lits.toList h
+
+private theorem getReachableLitArrayFold_preserves_worklist_mem
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur keep : Literal}
+    (lits : Array Literal) {state : Array Literal × Array Bool}
+    (h : keep ∈ state.1.toList) :
+    keep ∈ ((lits.foldl (getReachableLitStep st lvar explored cur) state).1).toList := by
+  rw [← Array.foldl_toList]
+  exact getReachableLitFold_preserves_worklist_mem lits.toList h
+
+private theorem getReachableLitArrayFold_reach_size
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
+    (lits : Array Literal) {state : Array Literal × Array Bool} :
+    ((lits.foldl (getReachableLitStep st lvar explored cur) state).2).size = state.2.size := by
+  rw [← Array.foldl_toList]
+  exact getReachableLitFold_reach_size lits.toList
+
+private theorem getReachableLitArrayFold_preserves_frontierInvariant
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {start cur : Literal}
+    (lits : Array Literal) {state : Array Literal × Array Bool}
+    (hinv : ReachFrontierInvariant start state.1 state.2 explored)
+    (hbounds : ∀ lit ∈ lits.toList, lit.x < state.2.size) :
+    ReachFrontierInvariant start
+      ((lits.foldl (getReachableLitStep st lvar explored cur) state).1)
+      ((lits.foldl (getReachableLitStep st lvar explored cur) state).2)
+      explored := by
+  rw [← Array.foldl_toList]
+  exact getReachableLitFold_preserves_frontierInvariant lits.toList hinv hbounds
+
+private theorem getReachableLitArrayFold_preserves_backpointerInvariant
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
+    (lits : Array Literal) {state : Array Literal × Array Bool}
+    (hback : ReachBackpointerInvariant state.1 state.2 explored) :
+    ReachBackpointerInvariant
+      ((lits.foldl (getReachableLitStep st lvar explored cur) state).1)
+      ((lits.foldl (getReachableLitStep st lvar explored cur) state).2)
+      explored := by
+  rw [← Array.foldl_toList]
+  exact getReachableLitFold_preserves_backpointerInvariant lits.toList hback
+
+private theorem getReachableLitStep_preserves_processedInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur lit : Literal}
+    {state : Array Literal × Array Bool}
+    (hproc : ReachProcessedInvariant st lvar negL state.2 explored) :
+    ReachProcessedInvariant st lvar negL
+      (getReachableLitStep st lvar explored cur state lit).2 explored := by
+  intro seen hseen cref clause target hocc hraw hdel hnoNeg hmem hne hexi hdep hlt
+  have hsize :
+      ((getReachableLitStep st lvar explored cur state lit).2).size =
+        state.2.size :=
+    getReachableLitStep_reach_size
+      (st := st) (lvar := lvar) (explored := explored)
+      (cur := cur) (state := state) (lit := lit)
+  exact getReachableLitStep_preserves_reach_true
+    (st := st) (lvar := lvar) (explored := explored)
+    (cur := cur) (state := state) (lit := lit)
+    (hproc seen hseen cref clause target hocc hraw hdel hnoNeg hmem hne hexi hdep
+      (by simpa [hsize] using hlt))
+
+private theorem getReachableLitFold_preserves_processedInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    (lits : List Literal) {state : Array Literal × Array Bool}
+    (hproc : ReachProcessedInvariant st lvar negL state.2 explored) :
+    ReachProcessedInvariant st lvar negL
+      ((lits.foldl (getReachableLitStep st lvar explored cur) state).2)
+      explored := by
+  induction lits generalizing state with
+  | nil =>
+      simpa using hproc
+  | cons lit rest ih =>
+      rw [List.foldl_cons]
+      exact ih
+        (state := getReachableLitStep st lvar explored cur state lit)
+        (getReachableLitStep_preserves_processedInvariant
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := explored) (cur := cur) (lit := lit)
+          (state := state) hproc)
+
+private theorem getReachableLitArrayFold_preserves_processedInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    (lits : Array Literal) {state : Array Literal × Array Bool}
+    (hproc : ReachProcessedInvariant st lvar negL state.2 explored) :
+    ReachProcessedInvariant st lvar negL
+      ((lits.foldl (getReachableLitStep st lvar explored cur) state).2)
+      explored := by
+  rw [← Array.foldl_toList]
+  exact getReachableLitFold_preserves_processedInvariant lits.toList hproc
+
+private theorem getReachableLitArrayFold_marks_reach_true
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
+    (lits : Array Literal) {state : Array Literal × Array Bool}
+    (hmem : target ∈ lits.toList)
+    (hcur : target ≠ cur)
+    (hexpl : explored.getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((lits.foldl (getReachableLitStep st lvar explored cur) state).2).getD target.x false = true := by
+  rw [← Array.foldl_toList]
+  exact getReachableLitFold_marks_reach_true lits.toList hmem hcur hexpl hexi hdep hlt
+
+private theorem getReachableLitArrayFold_marks_reach_true_of_pre
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
+    (lits : Array Literal) {state : Array Literal × Array Bool}
+    (hmem : target ∈ lits.toList)
+    (hcur : target ≠ cur)
+    (hpre :
+      explored.getD target.negate.x false = true →
+        state.2.getD target.x false = true)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((lits.foldl (getReachableLitStep st lvar explored cur) state).2).getD
+      target.x false = true := by
+  rw [← Array.foldl_toList]
+  exact getReachableLitFold_marks_reach_true_of_pre lits.toList
+    hmem hcur hpre hexi hdep hlt
+
+private theorem getReachableLitArrayFold_pushes_negate
+    {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
+    (lits : Array Literal) {state : Array Literal × Array Bool}
+    (hmem : target ∈ lits.toList)
+    (hcur : target ≠ cur)
+    (hexpl : explored.getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true) :
+    target.negate ∈ ((lits.foldl (getReachableLitStep st lvar explored cur) state).1).toList := by
+  rw [← Array.foldl_toList]
+  exact getReachableLitFold_pushes_negate lits.toList hmem hcur hexpl hexi hdep
+
+private theorem getReachableCRefStep_preserves_reach_true
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    {state : Array Literal × Array Bool} {cref : CRef} {target : Nat}
+    (h : state.2.getD target false = true) :
+    ((getReachableCRefStep st lvar negL explored cur state cref).2).getD target false = true := by
+  rcases state with ⟨wl, rch⟩
+  unfold getReachableCRefStep
+  cases hraw : st.clauses.getClauseRaw cref with
+  | none =>
+      simp [h]
+  | some clause =>
+      by_cases hdel : clause.deleted = true
+      · simp [hdel, h]
+      · by_cases hcontains : negL ∈ clause.lits
+        · simp [hdel, hcontains, h]
+        · simp [hdel, hcontains]
+          rw [array_getElem?_getD_eq_getD]
+          exact getReachableLitArrayFold_preserves_reach_true clause.lits h
+
+private theorem getReachableCRefStep_preserves_worklist_mem
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur keep : Literal}
+    {state : Array Literal × Array Bool} {cref : CRef}
+    (h : keep ∈ state.1.toList) :
+    keep ∈ ((getReachableCRefStep st lvar negL explored cur state cref).1).toList := by
+  rcases state with ⟨wl, rch⟩
+  unfold getReachableCRefStep
+  cases hraw : st.clauses.getClauseRaw cref with
+  | none =>
+      simpa using h
+  | some clause =>
+      by_cases hdel : clause.deleted = true
+      · simp [hdel, h]
+      · by_cases hcontains : negL ∈ clause.lits
+        · simp [hdel, hcontains, h]
+        · simp [hdel, hcontains]
+          exact Array.mem_toList_iff.mp
+            (getReachableLitArrayFold_preserves_worklist_mem clause.lits h)
+
+private theorem getReachableCRefStep_marks_reach_true
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal}
+    {state : Array Literal × Array Bool} {cref : CRef} {clause : Clause}
+    (hraw : st.clauses.getClauseRaw cref = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hexpl : explored.getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((getReachableCRefStep st lvar negL explored cur state cref).2).getD target.x false = true := by
+  rcases state with ⟨wl, rch⟩
+  unfold getReachableCRefStep
+  rw [hraw]
+  simp [hdel, hnoNeg]
+  rw [array_getElem?_getD_eq_getD]
+  exact getReachableLitArrayFold_marks_reach_true clause.lits hmem hcur hexpl hexi hdep hlt
+
+private theorem getReachableCRefStep_marks_reach_true_of_pre
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal}
+    {state : Array Literal × Array Bool} {cref : CRef} {clause : Clause}
+    (hraw : st.clauses.getClauseRaw cref = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hpre :
+      explored.getD target.negate.x false = true →
+        state.2.getD target.x false = true)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((getReachableCRefStep st lvar negL explored cur state cref).2).getD
+      target.x false = true := by
+  rcases state with ⟨wl, rch⟩
+  unfold getReachableCRefStep
+  rw [hraw]
+  simp [hdel, hnoNeg]
+  rw [array_getElem?_getD_eq_getD]
+  exact getReachableLitArrayFold_marks_reach_true_of_pre clause.lits
+    hmem hcur hpre hexi hdep hlt
+
+private theorem getReachableCRefStep_pushes_negate
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal}
+    {state : Array Literal × Array Bool} {cref : CRef} {clause : Clause}
+    (hraw : st.clauses.getClauseRaw cref = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hexpl : explored.getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true) :
+    target.negate ∈ ((getReachableCRefStep st lvar negL explored cur state cref).1).toList := by
+  rcases state with ⟨wl, rch⟩
+  unfold getReachableCRefStep
+  rw [hraw]
+  simp [hdel, hnoNeg]
+  exact Array.mem_toList_iff.mp
+    (getReachableLitArrayFold_pushes_negate clause.lits hmem hcur hexpl hexi hdep)
+
+private theorem getReachableCRefStep_reach_size
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    {state : Array Literal × Array Bool} {cref : CRef} :
+    ((getReachableCRefStep st lvar negL explored cur state cref).2).size = state.2.size := by
+  rcases state with ⟨wl, rch⟩
+  unfold getReachableCRefStep
+  cases hraw : st.clauses.getClauseRaw cref with
+  | none =>
+      rfl
+  | some clause =>
+      by_cases hdel : clause.deleted = true
+      · simp [hdel]
+      · by_cases hcontains : negL ∈ clause.lits
+        · simp [hdel, hcontains]
+        · simp [hdel, hcontains]
+          exact getReachableLitArrayFold_reach_size clause.lits
+
+private theorem getReachableCRefStep_preserves_frontierInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {start cur : Literal}
+    {state : Array Literal × Array Bool} {cref : CRef}
+    (hinv : ReachFrontierInvariant start state.1 state.2 explored)
+    (hbounds :
+      ∀ clause,
+        st.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        negL ∉ clause.lits →
+        ∀ lit ∈ clause.lits.toList, lit.x < state.2.size) :
+    ReachFrontierInvariant start
+      ((getReachableCRefStep st lvar negL explored cur state cref).1)
+      ((getReachableCRefStep st lvar negL explored cur state cref).2)
+      explored := by
+  rcases state with ⟨wl, rch⟩
+  unfold getReachableCRefStep
+  cases hraw : st.clauses.getClauseRaw cref with
+  | none =>
+      simpa using hinv
+  | some clause =>
+      by_cases hdel : clause.deleted = true
+      · simp [hdel]
+        exact hinv
+      · have hdelFalse : clause.deleted = false := by
+          cases h : clause.deleted <;> simp [h] at hdel ⊢
+        by_cases hcontains : negL ∈ clause.lits
+        · simp [hdelFalse, hcontains]
+          exact hinv
+        · simp [hdelFalse, hcontains]
+          exact getReachableLitArrayFold_preserves_frontierInvariant
+            (st := st) (lvar := lvar) (explored := explored)
+            (start := start) (cur := cur) (lits := clause.lits)
+            (state := (wl, rch)) hinv
+            (hbounds clause hraw hdelFalse hcontains)
+
+private theorem getReachableCRefStep_preserves_backpointerInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    {state : Array Literal × Array Bool} {cref : CRef}
+    (hback : ReachBackpointerInvariant state.1 state.2 explored) :
+    ReachBackpointerInvariant
+      ((getReachableCRefStep st lvar negL explored cur state cref).1)
+      ((getReachableCRefStep st lvar negL explored cur state cref).2)
+      explored := by
+  rcases state with ⟨wl, rch⟩
+  unfold getReachableCRefStep
+  cases hraw : st.clauses.getClauseRaw cref with
+  | none =>
+      simpa using hback
+  | some clause =>
+      by_cases hdel : clause.deleted = true
+      · simp [hdel]
+        exact hback
+      · by_cases hcontains : negL ∈ clause.lits
+        · simp [hdel, hcontains]
+          exact hback
+        · simp [hdel, hcontains]
+          exact getReachableLitArrayFold_preserves_backpointerInvariant
+            (st := st) (lvar := lvar) (explored := explored)
+            (cur := cur) (lits := clause.lits) (state := (wl, rch)) hback
+
+private theorem getReachableCRefFold_preserves_reach_true
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    (crefs : List CRef) {state : Array Literal × Array Bool} {target : Nat}
+    (h : state.2.getD target false = true) :
+    ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).getD target false = true := by
+  induction crefs generalizing state with
+  | nil =>
+      simpa using h
+  | cons cref rest ih =>
+      rw [List.foldl_cons]
+      exact ih (getReachableCRefStep_preserves_reach_true h)
+
+private theorem getReachableCRefFold_preserves_worklist_mem
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur keep : Literal}
+    (crefs : List CRef) {state : Array Literal × Array Bool}
+    (h : keep ∈ state.1.toList) :
+    keep ∈ ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).1).toList := by
+  induction crefs generalizing state with
+  | nil =>
+      simpa using h
+  | cons cref rest ih =>
+      rw [List.foldl_cons]
+      exact ih (getReachableCRefStep_preserves_worklist_mem h)
+
+private theorem getReachableCRefFold_reach_size
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    (crefs : List CRef) {state : Array Literal × Array Bool} :
+    ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).size = state.2.size := by
+  induction crefs generalizing state with
+  | nil =>
+      rfl
+  | cons cref rest ih =>
+      rw [List.foldl_cons]
+      rw [ih]
+      exact getReachableCRefStep_reach_size
+        (st := st) (lvar := lvar) (negL := negL)
+        (explored := explored) (cur := cur) (state := state) (cref := cref)
+
+private theorem getReachableCRefFold_preserves_frontierInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {start cur : Literal}
+    (crefs : List CRef) {state : Array Literal × Array Bool}
+    (hinv : ReachFrontierInvariant start state.1 state.2 explored)
+    (hbounds :
+      ∀ cref ∈ crefs,
+        ∀ clause,
+          st.clauses.getClauseRaw cref = some clause →
+          clause.deleted = false →
+          negL ∉ clause.lits →
+          ∀ lit ∈ clause.lits.toList, lit.x < state.2.size) :
+    ReachFrontierInvariant start
+      ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).1)
+      ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2)
+      explored := by
+  induction crefs generalizing state with
+  | nil =>
+      simpa using hinv
+  | cons cref rest ih =>
+      rw [List.foldl_cons]
+      have hinv' :
+          ReachFrontierInvariant start
+            (getReachableCRefStep st lvar negL explored cur state cref).1
+            (getReachableCRefStep st lvar negL explored cur state cref).2
+            explored :=
+        getReachableCRefStep_preserves_frontierInvariant
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := explored) (start := start) (cur := cur)
+          (state := state) (cref := cref) hinv
+          (fun clause hraw hdel hnoNeg =>
+            hbounds cref (by simp) clause hraw hdel hnoNeg)
+      have hsize :
+          ((getReachableCRefStep st lvar negL explored cur state cref).2).size =
+            state.2.size :=
+        getReachableCRefStep_reach_size
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := explored) (cur := cur) (state := state) (cref := cref)
+      exact ih
+        (state := getReachableCRefStep st lvar negL explored cur state cref)
+        hinv'
+        (fun hit hhit clause hraw hdel hnoNeg lit hlit =>
+          by
+            have hhit' : hit ∈ cref :: rest := List.mem_cons_of_mem cref hhit
+            simpa [hsize] using
+              hbounds hit hhit' clause hraw hdel hnoNeg lit hlit)
+
+private theorem getReachableCRefFold_preserves_backpointerInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    (crefs : List CRef) {state : Array Literal × Array Bool}
+    (hback : ReachBackpointerInvariant state.1 state.2 explored) :
+    ReachBackpointerInvariant
+      ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).1)
+      ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2)
+      explored := by
+  induction crefs generalizing state with
+  | nil =>
+      simpa using hback
+  | cons cref rest ih =>
+      rw [List.foldl_cons]
+      exact ih
+        (state := getReachableCRefStep st lvar negL explored cur state cref)
+        (getReachableCRefStep_preserves_backpointerInvariant
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := explored) (cur := cur)
+          (state := state) (cref := cref) hback)
+
+private theorem getReachableCRefFold_marks_reach_true
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal}
+    (crefs : List CRef) {state : Array Literal × Array Bool} {hit : CRef} {clause : Clause}
+    (hhit : hit ∈ crefs)
+    (hraw : st.clauses.getClauseRaw hit = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hexpl : explored.getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).getD target.x false = true := by
+  induction crefs generalizing state with
+  | nil =>
+      simp at hhit
+  | cons cref rest ih =>
+      rw [List.foldl_cons]
+      cases hhit with
+      | head =>
+          exact getReachableCRefFold_preserves_reach_true rest
+            (getReachableCRefStep_marks_reach_true
+              (st := st) (lvar := lvar) (negL := negL)
+              (explored := explored) (cur := cur) (target := target)
+              (state := state) (cref := hit) (clause := clause)
+              hraw hdel hnoNeg hmem hcur hexpl hexi hdep hlt)
+      | tail _ hrest =>
+          have hsize :
+              ((getReachableCRefStep st lvar negL explored cur state cref).2).size = state.2.size :=
+            getReachableCRefStep_reach_size
+              (st := st) (lvar := lvar) (negL := negL)
+              (explored := explored) (cur := cur) (state := state) (cref := cref)
+          exact ih (state := getReachableCRefStep st lvar negL explored cur state cref)
+            hrest (by simpa [hsize] using hlt)
+
+private theorem getReachableCRefFold_marks_reach_true_of_pre
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal}
+    (crefs : List CRef) {state : Array Literal × Array Bool} {hit : CRef} {clause : Clause}
+    (hhit : hit ∈ crefs)
+    (hraw : st.clauses.getClauseRaw hit = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hpre :
+      explored.getD target.negate.x false = true →
+        state.2.getD target.x false = true)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).getD
+      target.x false = true := by
+  induction crefs generalizing state with
+  | nil =>
+      simp at hhit
+  | cons cref rest ih =>
+      rw [List.foldl_cons]
+      cases hhit with
+      | head =>
+          exact getReachableCRefFold_preserves_reach_true rest
+            (getReachableCRefStep_marks_reach_true_of_pre
+              (st := st) (lvar := lvar) (negL := negL)
+              (explored := explored) (cur := cur) (target := target)
+              (state := state) (cref := hit) (clause := clause)
+              hraw hdel hnoNeg hmem hcur hpre hexi hdep hlt)
+      | tail _ hrest =>
+          have hsize :
+              ((getReachableCRefStep st lvar negL explored cur state cref).2).size = state.2.size :=
+            getReachableCRefStep_reach_size
+              (st := st) (lvar := lvar) (negL := negL)
+              (explored := explored) (cur := cur) (state := state) (cref := cref)
+          exact ih (state := getReachableCRefStep st lvar negL explored cur state cref)
+            hrest
+            (fun hexpl =>
+              getReachableCRefStep_preserves_reach_true (hpre hexpl))
+            (by simpa [hsize] using hlt)
+
+private theorem getReachableCRefFold_pushes_negate
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal}
+    (crefs : List CRef) {state : Array Literal × Array Bool} {hit : CRef} {clause : Clause}
+    (hhit : hit ∈ crefs)
+    (hraw : st.clauses.getClauseRaw hit = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hexpl : explored.getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true) :
+    target.negate ∈ ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).1).toList := by
+  induction crefs generalizing state with
+  | nil =>
+      simp at hhit
+  | cons cref rest ih =>
+      rw [List.foldl_cons]
+      cases hhit with
+      | head =>
+          exact getReachableCRefFold_preserves_worklist_mem rest
+            (getReachableCRefStep_pushes_negate
+              (st := st) (lvar := lvar) (negL := negL)
+              (explored := explored) (cur := cur) (target := target)
+              (state := state) (cref := hit) (clause := clause)
+              hraw hdel hnoNeg hmem hcur hexpl hexi hdep)
+      | tail _ hrest =>
+          exact ih (state := getReachableCRefStep st lvar negL explored cur state cref)
+            hrest
+
+private theorem getReachableCRefArrayFold_preserves_reach_true
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    (crefs : Array CRef) {state : Array Literal × Array Bool} {target : Nat}
+    (h : state.2.getD target false = true) :
+    ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).getD target false = true := by
+  rw [← Array.foldl_toList]
+  exact getReachableCRefFold_preserves_reach_true crefs.toList h
+
+private theorem getReachableCRefArrayFold_preserves_worklist_mem
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur keep : Literal}
+    (crefs : Array CRef) {state : Array Literal × Array Bool}
+    (h : keep ∈ state.1.toList) :
+    keep ∈ ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).1).toList := by
+  rw [← Array.foldl_toList]
+  exact getReachableCRefFold_preserves_worklist_mem crefs.toList h
+
+private theorem getReachableCRefArrayFold_reach_size
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    (crefs : Array CRef) {state : Array Literal × Array Bool} :
+    ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).size = state.2.size := by
+  rw [← Array.foldl_toList]
+  exact getReachableCRefFold_reach_size crefs.toList
+
+private theorem getReachableCRefArrayFold_preserves_frontierInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {start cur : Literal}
+    (crefs : Array CRef) {state : Array Literal × Array Bool}
+    (hinv : ReachFrontierInvariant start state.1 state.2 explored)
+    (hbounds :
+      ∀ cref ∈ crefs.toList,
+        ∀ clause,
+          st.clauses.getClauseRaw cref = some clause →
+          clause.deleted = false →
+          negL ∉ clause.lits →
+          ∀ lit ∈ clause.lits.toList, lit.x < state.2.size) :
+    ReachFrontierInvariant start
+      ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).1)
+      ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2)
+      explored := by
+  rw [← Array.foldl_toList]
+  exact getReachableCRefFold_preserves_frontierInvariant crefs.toList hinv hbounds
+
+private theorem getReachableCRefArrayFold_preserves_backpointerInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    (crefs : Array CRef) {state : Array Literal × Array Bool}
+    (hback : ReachBackpointerInvariant state.1 state.2 explored) :
+    ReachBackpointerInvariant
+      ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).1)
+      ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2)
+      explored := by
+  rw [← Array.foldl_toList]
+  exact getReachableCRefFold_preserves_backpointerInvariant crefs.toList hback
+
+private theorem ReachBackpointerInvariant_pop_of_explored
+    {worklist wl' : Array Literal} {reach expl : Array Bool} {cur : Literal}
+    (hcur : cur = worklist.getD (worklist.size - 1) ⟨0⟩)
+    (hwl' : wl' = worklist.pop)
+    (hexplCur : expl.getD cur.x false = true)
+    (hback : ReachBackpointerInvariant worklist reach expl) :
+    ReachBackpointerInvariant wl' reach expl := by
+  subst wl'
+  unfold ReachBackpointerInvariant at hback ⊢
+  intro lit hbound hreach
+  rcases hback lit hbound hreach with hqueued | hexplored
+  · by_cases hlit_cur : lit.negate = cur
+    · right
+      simpa [hlit_cur] using hexplCur
+    · left
+      exact array_mem_pop_of_mem_ne_getD_last
+        (xs := worklist) (x := lit.negate) ⟨0⟩ hqueued
+        (by
+          intro heq
+          exact hlit_cur (by simpa [hcur] using heq))
+  · right
+    exact hexplored
+
+private theorem ReachBackpointerInvariant_pop_of_outOfBounds
+    {worklist wl' : Array Literal} {reach expl : Array Bool} {cur : Literal}
+    (hcur : cur = worklist.getD (worklist.size - 1) ⟨0⟩)
+    (hwl' : wl' = worklist.pop)
+    (hcur_oob : ¬ cur.x < expl.size)
+    (hback : ReachBackpointerInvariant worklist reach expl) :
+    ReachBackpointerInvariant wl' reach expl := by
+  subst wl'
+  unfold ReachBackpointerInvariant at hback ⊢
+  intro lit hbound hreach
+  rcases hback lit hbound hreach with hqueued | hexplored
+  · by_cases hlit_cur : lit.negate = cur
+    · exact False.elim (hcur_oob (by simpa [hlit_cur] using hbound))
+    · left
+      exact array_mem_pop_of_mem_ne_getD_last
+        (xs := worklist) (x := lit.negate) ⟨0⟩ hqueued
+        (by
+          intro heq
+          exact hlit_cur (by simpa [hcur] using heq))
+  · right
+    exact hexplored
+
+private theorem ReachBackpointerInvariant_pop_set_current
+    {worklist wl' : Array Literal} {reach expl : Array Bool} {cur : Literal}
+    {idx : Nat}
+    (hcur : cur = worklist.getD (worklist.size - 1) ⟨0⟩)
+    (hwl' : wl' = worklist.pop)
+    (hidx_eq : idx = cur.x)
+    (hidx : idx < expl.size)
+    (hback : ReachBackpointerInvariant worklist reach expl) :
+    ReachBackpointerInvariant wl' reach (expl.set idx true hidx) := by
+  subst wl'
+  subst idx
+  unfold ReachBackpointerInvariant at hback ⊢
+  intro lit hbound hreach
+  have hboundOld : lit.negate.x < expl.size := by
+    simpa [Array.size_set hidx] using hbound
+  rcases hback lit hboundOld hreach with hqueued | hexplored
+  · by_cases hlit_cur : lit.negate = cur
+    · right
+      have hself : (expl.set cur.x true hidx).getD cur.x false = true := by
+        have hidx' : cur.x < (expl.set cur.x true hidx).size := by
+          simpa [Array.size_set hidx] using hidx
+        have hget : (expl.set cur.x true hidx)[cur.x]'hidx' = true :=
+          Array.getElem_set_self (xs := expl) (i := cur.x) hidx (v := true)
+        rw [Array.getElem_eq_getD
+          (xs := expl.set cur.x true hidx) (i := cur.x) (h := hidx') false] at hget
+        exact hget
+      simp [hlit_cur, hself]
+    · left
+      exact array_mem_pop_of_mem_ne_getD_last
+        (xs := worklist) (x := lit.negate) ⟨0⟩ hqueued
+        (by
+          intro heq
+          exact hlit_cur (by simpa [hcur] using heq))
+  · right
+    exact array_set_true_preserves_getD expl cur.x lit.negate.x hidx hexplored
+
+private theorem getReachableCRefStep_preserves_processedInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    {state : Array Literal × Array Bool} {cref : CRef}
+    (hproc : ReachProcessedInvariant st lvar negL state.2 explored) :
+    ReachProcessedInvariant st lvar negL
+      (getReachableCRefStep st lvar negL explored cur state cref).2 explored := by
+  rcases state with ⟨wl, rch⟩
+  unfold getReachableCRefStep
+  cases hraw : st.clauses.getClauseRaw cref with
+  | none =>
+      simpa using hproc
+  | some clause =>
+      by_cases hdel : clause.deleted = true
+      · simp [hdel]
+        exact hproc
+      · by_cases hcontains : negL ∈ clause.lits
+        · simp [hdel, hcontains]
+          exact hproc
+        · simp [hdel, hcontains]
+          exact getReachableLitArrayFold_preserves_processedInvariant
+            (st := st) (lvar := lvar) (negL := negL)
+            (explored := explored) (cur := cur)
+            (lits := clause.lits) (state := (wl, rch)) hproc
+
+private theorem getReachableCRefFold_preserves_processedInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    (crefs : List CRef) {state : Array Literal × Array Bool}
+    (hproc : ReachProcessedInvariant st lvar negL state.2 explored) :
+    ReachProcessedInvariant st lvar negL
+      ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2)
+      explored := by
+  induction crefs generalizing state with
+  | nil =>
+      simpa using hproc
+  | cons cref rest ih =>
+      rw [List.foldl_cons]
+      exact ih
+        (state := getReachableCRefStep st lvar negL explored cur state cref)
+        (getReachableCRefStep_preserves_processedInvariant
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := explored) (cur := cur)
+          (state := state) (cref := cref) hproc)
+
+private theorem getReachableCRefArrayFold_preserves_processedInvariant
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal}
+    (crefs : Array CRef) {state : Array Literal × Array Bool}
+    (hproc : ReachProcessedInvariant st lvar negL state.2 explored) :
+    ReachProcessedInvariant st lvar negL
+      ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2)
+      explored := by
+  rw [← Array.foldl_toList]
+  exact getReachableCRefFold_preserves_processedInvariant crefs.toList hproc
+
+private theorem getReachableCRefArrayFold_marks_reach_true
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal}
+    (crefs : Array CRef) {state : Array Literal × Array Bool} {hit : CRef} {clause : Clause}
+    (hhit : hit ∈ crefs.toList)
+    (hraw : st.clauses.getClauseRaw hit = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hexpl : explored.getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).getD target.x false = true := by
+  rw [← Array.foldl_toList]
+  exact getReachableCRefFold_marks_reach_true crefs.toList hhit
+    hraw hdel hnoNeg hmem hcur hexpl hexi hdep hlt
+
+private theorem getReachableCRefArrayFold_marks_reach_true_of_pre
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal}
+    (crefs : Array CRef) {state : Array Literal × Array Bool} {hit : CRef} {clause : Clause}
+    (hhit : hit ∈ crefs.toList)
+    (hraw : st.clauses.getClauseRaw hit = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hpre :
+      explored.getD target.negate.x false = true →
+        state.2.getD target.x false = true)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < state.2.size) :
+    ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).getD
+      target.x false = true := by
+  rw [← Array.foldl_toList]
+  exact getReachableCRefFold_marks_reach_true_of_pre crefs.toList hhit
+    hraw hdel hnoNeg hmem hcur hpre hexi hdep hlt
+
+private theorem getReachableCRefArrayFold_processedInvariant_after_current
+    {st : CheckState} {lvar : Var} {negL start cur : Literal}
+    {worklist wl' : Array Literal} {reach expl : Array Bool}
+    (hnegL : negL = start.negate)
+    (hcur_lt : cur.x < expl.size)
+    (hfront : ReachFrontierInvariant start worklist reach expl)
+    (hproc : ReachProcessedInvariant st lvar negL reach expl)
+    (hcur_mem : cur ∈ worklist.toList) :
+    ReachProcessedInvariant st lvar negL
+      (((st.clauses.getOcc cur).foldl
+        (getReachableCRefStep st lvar negL (expl.set cur.x true hcur_lt) cur)
+        (wl', reach)).2)
+      (expl.set cur.x true hcur_lt) := by
+  intro seen hseen cref' clause' target' hocc' hraw' hdel' hnoNeg'
+    hmem' hne' hexi' hdep' hlt'
+  have hsize_fold :
+      (((st.clauses.getOcc cur).foldl
+        (getReachableCRefStep st lvar negL (expl.set cur.x true hcur_lt) cur)
+        (wl', reach)).2).size = reach.size :=
+    getReachableCRefArrayFold_reach_size
+      (st := st) (lvar := lvar) (negL := negL)
+      (explored := expl.set cur.x true hcur_lt) (cur := cur)
+      (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+  by_cases hx : seen.x = cur.x
+  · have hseen_cur : seen = cur := literal_eq_of_x_eq hx
+    subst seen
+    have hpre :
+        (expl.set cur.x true hcur_lt).getD target'.negate.x false = true →
+          reach.getD target'.x false = true := by
+      intro hexplTarget
+      by_cases htarget_cur : target'.negate.x = cur.x
+      · have htarget_eq : target' = cur.negate :=
+          literal_eq_negate_of_negate_x_eq
+            (a := target') (b := cur) htarget_cur
+        by_cases hcur_start : cur = start
+        · have hneg_mem : negL ∈ clause'.lits := by
+            have hmem_start : start.negate ∈ clause'.lits.toList := by
+              simpa [htarget_eq, hcur_start] using hmem'
+            have hmem_arr : start.negate ∈ clause'.lits :=
+              Array.mem_toList_iff.mp hmem_start
+            simpa [hnegL] using hmem_arr
+          exact False.elim (hnoNeg' hneg_mem)
+        · simpa [htarget_eq] using hfront.1 cur hcur_mem hcur_start
+      · have hcur_ne_target : cur.x ≠ target'.negate.x := by
+          intro hcur_eq
+          exact htarget_cur hcur_eq.symm
+        have hexplOld : expl.getD target'.negate.x false = true := by
+          rw [array_set_getD_ne expl cur.x target'.negate.x true false
+            hcur_lt hcur_ne_target] at hexplTarget
+          exact hexplTarget
+        have htarget_ne_start : target'.negate ≠ start := by
+          intro hstart
+          have htarget_eq_startNeg : target' = start.negate := by
+            rw [← literal_negate_negate_local target', hstart]
+          have hneg_mem : negL ∈ clause'.lits := by
+            have hmem_arr : start.negate ∈ clause'.lits :=
+              Array.mem_toList_iff.mp (by simpa [htarget_eq_startNeg] using hmem')
+            simpa [hnegL] using hmem_arr
+          exact hnoNeg' hneg_mem
+        simpa [literal_negate_negate_local] using
+          hfront.2 target'.negate hexplOld htarget_ne_start
+    exact getReachableCRefArrayFold_marks_reach_true_of_pre
+      (st := st) (lvar := lvar) (negL := negL)
+      (explored := expl.set cur.x true hcur_lt) (cur := cur) (target := target')
+      (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+      (hit := cref') (clause := clause')
+      hocc' hraw' hdel' hnoNeg' hmem' hne' hpre hexi' hdep'
+      (by simpa [hsize_fold] using hlt')
+  · have hcur_ne_seen : cur.x ≠ seen.x := by
+      intro hcur_eq
+      exact hx hcur_eq.symm
+    have hseenOld : expl.getD seen.x false = true := by
+      rw [array_set_getD_ne expl cur.x seen.x true false hcur_lt hcur_ne_seen] at hseen
+      exact hseen
+    exact getReachableCRefArrayFold_preserves_reach_true
+      (st := st) (lvar := lvar) (negL := negL)
+      (explored := expl.set cur.x true hcur_lt) (cur := cur)
+      (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+      (hproc seen hseenOld cref' clause' target' hocc' hraw' hdel'
+        hnoNeg' hmem' hne' hexi' hdep'
+        (by simpa [hsize_fold] using hlt'))
+
+private theorem getReachableCRefArrayFold_pushes_negate
+    {st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal}
+    (crefs : Array CRef) {state : Array Literal × Array Bool} {hit : CRef} {clause : Clause}
+    (hhit : hit ∈ crefs.toList)
+    (hraw : st.clauses.getClauseRaw hit = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hexpl : explored.getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true) :
+    target.negate ∈ ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).1).toList := by
+  rw [← Array.foldl_toList]
+  exact getReachableCRefFold_pushes_negate crefs.toList hhit
+    hraw hdel hnoNeg hmem hcur hexpl hexi hdep
+
+private theorem getReachable_go_preserves_reach_true
+    (st : CheckState) (lvar : Var) (negL : Literal)
+    (worklist : Array Literal) (reach expl : Array Bool) {target : Nat}
+    (h : reach.getD target false = true) :
+    (getReachable.go st lvar negL worklist reach expl).getD target false = true := by
+  let motive : Array Literal → Array Bool → Array Bool → Prop :=
+    fun worklist reach expl =>
+      ∀ {target : Nat}, reach.getD target false = true →
+        (getReachable.go st lvar negL worklist reach expl).getD target false = true
+  exact getReachable.go.induct st lvar negL motive
+    (by
+      intro worklist reach expl hempty target h
+      rw [getReachable.go.eq_1]
+      rw [if_pos hempty]
+      exact h)
+    (by
+      intro worklist reach expl hne cur wl' idx hexpl ih target h
+      rw [getReachable.go.eq_1]
+      rw [if_neg hne]
+      rw [if_pos hexpl]
+      exact ih h)
+    (by
+      intro worklist reach expl hne cur wl' idx hexpl hidx expl' occs wl2 rch2 hfold ih target h
+      rw [getReachable.go.eq_1]
+      rw [if_neg hne]
+      rw [if_neg hexpl]
+      rw [dif_pos hidx]
+      simp [cur, wl', idx, expl', occs] at hfold ⊢
+      have hfold_pres :=
+        (getReachableCRefArrayFold_preserves_reach_true
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := expl') (cur := cur) (state := (wl', reach)) occs h)
+      simp [cur, wl', idx, expl', occs] at hfold_pres
+      rw [hfold] at hfold_pres
+      have hrch2 : rch2.getD target false = true := by
+        simpa [Array.getD_eq_getD_getElem?] using hfold_pres
+      rw [hfold]
+      simpa [Array.getD_eq_getD_getElem?, cur, wl', idx, expl'] using ih hrch2)
+    (by
+      intro worklist reach expl hne cur wl' idx hexpl hidx ih target h
+      rw [getReachable.go.eq_1]
+      rw [if_neg hne]
+      rw [if_neg hexpl]
+      rw [dif_neg hidx]
+      exact ih h)
+    worklist reach expl h
+
+private theorem getReachable_go_preserves_frontier_explored
+    (st : CheckState) (lvar : Var) (negL start : Literal)
+    (worklist : Array Literal) (reach expl : Array Bool)
+    (hbound :
+      ∀ cref clause lit,
+        st.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        lit ∈ clause.lits.toList →
+        lit.x < reach.size)
+    (hinv : ReachFrontierInvariant start worklist reach expl)
+    {target : Literal}
+    (hexplTarget : expl.getD target.x false = true)
+    (htarget_ne_start : target ≠ start) :
+    (getReachable.go st lvar negL worklist reach expl).getD
+      target.negate.x false = true := by
+  let motive : Array Literal → Array Bool → Array Bool → Prop :=
+    fun worklist reach expl =>
+      (∀ cref clause lit,
+        st.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        lit ∈ clause.lits.toList →
+        lit.x < reach.size) →
+      ReachFrontierInvariant start worklist reach expl →
+      ∀ {target : Literal},
+        expl.getD target.x false = true →
+        target ≠ start →
+        (getReachable.go st lvar negL worklist reach expl).getD
+          target.negate.x false = true
+  exact getReachable.go.induct st lvar negL motive
+    (by
+      intro worklist reach expl hempty hbound hinv target hexplTarget htarget_ne_start
+      rw [getReachable.go.eq_1]
+      rw [if_pos hempty]
+      exact hinv.2 target hexplTarget htarget_ne_start)
+    (by
+      intro worklist reach expl hne cur wl' idx hexplCur ih
+        hbound hinv target hexplTarget htarget_ne_start
+      rw [getReachable.go.eq_1]
+      rw [if_neg hne]
+      rw [if_pos hexplCur]
+      have hinv' : ReachFrontierInvariant start wl' reach expl := by
+        rcases hinv with ⟨hwl, hexplInv⟩
+        constructor
+        · intro lit hlit hlit_ne_start
+          have hlit_old : lit ∈ worklist.toList := by
+            simp [wl'] at hlit
+            exact List.dropLast_subset _ hlit
+          exact hwl lit hlit_old hlit_ne_start
+        · exact hexplInv
+      exact ih hbound hinv' hexplTarget htarget_ne_start)
+    (by
+      intro worklist reach expl hne cur wl' idx hexplCur hidx expl' occs wl2 rch2 hfold ih
+        hbound hinv target hexplTarget htarget_ne_start
+      rw [getReachable.go.eq_1]
+      rw [if_neg hne]
+      rw [if_neg hexplCur]
+      rw [dif_pos hidx]
+      have hcur_mem : cur ∈ worklist.toList := by
+        have hlist_ne : worklist.toList ≠ [] := by
+          intro hnil
+          have hempty : worklist.isEmpty = true := by
+            have hsize : worklist.size = 0 := by
+              simp [← Array.length_toList, hnil]
+            simpa [Array.isEmpty_iff_size_eq_zero] using hsize
+          exact hne hempty
+        simpa [cur] using
+          (array_getD_last_mem_toList (xs := worklist) ⟨0⟩ hlist_ne :
+            worklist.getD (worklist.size - 1) ⟨0⟩ ∈ worklist.toList)
+      have hinv_expl : ReachFrontierInvariant start wl' reach expl' := by
+        rcases hinv with ⟨hwl, hexplInv⟩
+        constructor
+        · intro lit hlit hlit_ne_start
+          have hlit_old : lit ∈ worklist.toList := by
+            simp [wl'] at hlit
+            exact List.dropLast_subset _ hlit
+          exact hwl lit hlit_old hlit_ne_start
+        · intro lit hexplLit hlit_ne_start
+          by_cases hx : lit.x = cur.x
+          · have hlit_cur : lit = cur := literal_eq_of_x_eq hx
+            subst lit
+            exact hwl cur hcur_mem hlit_ne_start
+          · have hidx_ne : idx ≠ lit.x := by
+              intro hidx_eq
+              exact hx (by simpa [idx] using hidx_eq.symm)
+            have hexplOld : expl.getD lit.x false = true := by
+              rw [array_set_getD_ne expl idx lit.x true false hidx hidx_ne] at hexplLit
+              simpa [expl'] using hexplLit
+            exact hexplInv lit hexplOld hlit_ne_start
+      have hinv_fold₀ :
+          ReachFrontierInvariant start
+            (((st.clauses.getOcc cur).foldl
+              (getReachableCRefStep st lvar negL expl' cur)
+              (wl', reach)).1)
+            (((st.clauses.getOcc cur).foldl
+              (getReachableCRefStep st lvar negL expl' cur)
+              (wl', reach)).2)
+            expl' := by
+        exact getReachableCRefArrayFold_preserves_frontierInvariant
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := expl') (start := start) (cur := cur)
+          (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+          hinv_expl
+          (fun cref _hcref clause hraw hdel _hnoNeg lit hlit =>
+            hbound cref clause lit hraw hdel hlit)
+      have hinv_fold : ReachFrontierInvariant start wl2 rch2 expl' := by
+        rw [hfold] at hinv_fold₀
+        exact hinv_fold₀
+      have hsize_fold : rch2.size = reach.size := by
+        have hsize₀ :=
+          getReachableCRefArrayFold_reach_size
+            (st := st) (lvar := lvar) (negL := negL)
+            (explored := expl') (cur := cur)
+            (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+        rw [hfold] at hsize₀
+        exact hsize₀
+      simp [cur, wl', idx, expl', occs] at hfold ⊢
+      have hbound' :
+          ∀ cref clause lit,
+            st.clauses.getClauseRaw cref = some clause →
+            clause.deleted = false →
+            lit ∈ clause.lits.toList →
+            lit.x < rch2.size := by
+        intro cref clause lit hraw hdel hlit
+        simpa [hsize_fold] using hbound cref clause lit hraw hdel hlit
+      have hexplTarget' : expl'.getD target.x false = true := by
+        simpa [expl'] using
+          array_set_true_preserves_getD expl idx target.x hidx hexplTarget
+      rw [hfold]
+      simpa [cur, wl', idx, expl', occs] using
+        ih hbound' hinv_fold hexplTarget' htarget_ne_start)
+    (by
+      intro worklist reach expl hne cur wl' idx hexplCur hidx ih
+        hbound hinv target hexplTarget htarget_ne_start
+      rw [getReachable.go.eq_1]
+      rw [if_neg hne]
+      rw [if_neg hexplCur]
+      rw [dif_neg hidx]
+      have hinv' : ReachFrontierInvariant start wl' reach expl := by
+        rcases hinv with ⟨hwl, hexplInv⟩
+        constructor
+        · intro lit hlit hlit_ne_start
+          have hlit_old : lit ∈ worklist.toList := by
+            simp [wl'] at hlit
+            exact List.dropLast_subset _ hlit
+          exact hwl lit hlit_old hlit_ne_start
+        · exact hexplInv
+      exact ih hbound hinv' hexplTarget htarget_ne_start)
+    worklist reach expl hbound hinv hexplTarget htarget_ne_start
+
+private theorem getReachable_go_worklist_clause_marks_reach_true_of_invariants
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    {lvar : Var} {negL start prev target : Literal}
+    {worklist : Array Literal} {reach expl : Array Bool}
+    {cref : CRef} {clause : Clause}
+    (hnegL : negL = start.negate)
+    (hbound :
+      ∀ cref clause lit,
+        st.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        lit ∈ clause.lits.toList →
+        lit.x < reach.size)
+    (hfront : ReachFrontierInvariant start worklist reach expl)
+    (hproc : ReachProcessedInvariant st lvar negL reach expl)
+    (hprevIn : prev.negate ∈ worklist.toList)
+    (hprevNeg_lt : prev.negate.x < expl.size)
+    (hget : st.clauses.getClause cref = some clause)
+    (hprev : prev.negate ∈ clause.lits.toList)
+    (hnoNeg : negL ∉ clause.lits.toList)
+    (hmem : target ∈ clause.lits.toList)
+    (hne : target ≠ prev.negate)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < reach.size) :
+    (getReachable.go st lvar negL worklist reach expl).getD target.x false = true := by
+  rcases getClauseRaw_deleted_of_getClause hget with ⟨hraw, hdel⟩
+  have hoccArr : cref ∈ st.clauses.getOcc prev.negate :=
+    ClauseStore.mem_getOcc_of_liveOccurrencesComplete
+      hfull.liveOccurrencesComplete hget hprev
+  have hocc : cref ∈ (st.clauses.getOcc prev.negate).toList :=
+    Array.mem_toList_iff.mpr hoccArr
+  have hnoNegArr : negL ∉ clause.lits := by
+    intro hneg
+    exact hnoNeg (Array.mem_toList_iff.mpr hneg)
+  let motive : Array Literal → Array Bool → Array Bool → Prop :=
+    fun worklist reach expl =>
+      (∀ cref clause lit,
+        st.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        lit ∈ clause.lits.toList →
+        lit.x < reach.size) →
+      ReachFrontierInvariant start worklist reach expl →
+      ReachProcessedInvariant st lvar negL reach expl →
+      prev.negate.x < expl.size →
+      prev.negate ∈ worklist.toList →
+      target.x < reach.size →
+      (getReachable.go st lvar negL worklist reach expl).getD target.x false = true
+  exact getReachable.go.induct st lvar negL motive
+    (by
+      intro worklist reach expl hempty _hbound _hfront _hproc _hprevNeg_lt hprevIn _hlt
+      have hsize : worklist.size = 0 := by
+        simpa [Array.isEmpty_iff_size_eq_zero] using hempty
+      have hnil : worklist.toList = [] := by
+        apply List.eq_nil_of_length_eq_zero
+        simpa [Array.length_toList] using hsize
+      rw [hnil] at hprevIn
+      simp at hprevIn)
+    (by
+      intro worklist reach expl hneEmpty cur wl' idx hexplCur ih
+        hbound hfront hproc hprevNeg_lt hprevIn hlt
+      rw [getReachable.go.eq_1]
+      rw [if_neg hneEmpty]
+      rw [if_pos hexplCur]
+      by_cases hsame : prev.negate = cur
+      · have hreach : reach.getD target.x false = true := by
+          exact hproc cur hexplCur cref clause target
+            (by simpa [hsame] using hocc) hraw hdel hnoNegArr hmem
+            (by simpa [hsame] using hne) hexi hdep hlt
+        exact getReachable_go_preserves_reach_true
+          st lvar negL wl' reach expl hreach
+      · have hfront' : ReachFrontierInvariant start wl' reach expl := by
+          rcases hfront with ⟨hwl, hexplInv⟩
+          constructor
+          · intro lit hlit hlit_ne_start
+            have hlit_old : lit ∈ worklist.toList := by
+              simp [wl'] at hlit
+              exact List.dropLast_subset _ hlit
+            exact hwl lit hlit_old hlit_ne_start
+          · exact hexplInv
+        have hprevIn' : prev.negate ∈ wl'.toList := by
+          simpa [wl'] using
+            (array_mem_pop_of_mem_ne_getD_last
+              (xs := worklist) (x := prev.negate) ⟨0⟩ hprevIn
+              (by simpa [cur] using hsame))
+        exact ih hbound hfront' hproc hprevNeg_lt hprevIn' hlt)
+    (by
+      intro worklist reach expl hneEmpty cur wl' idx hexplCur hidx expl' occs wl2 rch2 hfold ih
+        hbound hfront hproc hprevNeg_lt hprevIn hlt
+      rw [getReachable.go.eq_1]
+      rw [if_neg hneEmpty]
+      rw [if_neg hexplCur]
+      rw [dif_pos hidx]
+      have hcur_mem : cur ∈ worklist.toList := by
+        have hlist_ne : worklist.toList ≠ [] := by
+          intro hnil
+          have hempty : worklist.isEmpty = true := by
+            have hsize : worklist.size = 0 := by
+              simp [← Array.length_toList, hnil]
+            simpa [Array.isEmpty_iff_size_eq_zero] using hsize
+          exact hneEmpty hempty
+        simpa [cur] using
+          (array_getD_last_mem_toList (xs := worklist) ⟨0⟩ hlist_ne :
+            worklist.getD (worklist.size - 1) ⟨0⟩ ∈ worklist.toList)
+      have hfront_expl : ReachFrontierInvariant start wl' reach expl' := by
+        rcases hfront with ⟨hwl, hexplInv⟩
+        constructor
+        · intro lit hlit hlit_ne_start
+          have hlit_old : lit ∈ worklist.toList := by
+            simp [wl'] at hlit
+            exact List.dropLast_subset _ hlit
+          exact hwl lit hlit_old hlit_ne_start
+        · intro lit hexplLit hlit_ne_start
+          by_cases hx : lit.x = cur.x
+          · have hlit_cur : lit = cur := literal_eq_of_x_eq hx
+            subst lit
+            exact hwl cur hcur_mem hlit_ne_start
+          · have hidx_ne : idx ≠ lit.x := by
+              intro hidx_eq
+              exact hx (by simpa [idx] using hidx_eq.symm)
+            have hexplOld : expl.getD lit.x false = true := by
+              rw [array_set_getD_ne expl idx lit.x true false hidx hidx_ne] at hexplLit
+              simpa [expl'] using hexplLit
+            exact hexplInv lit hexplOld hlit_ne_start
+      have hsize_fold₀ :
+          (((st.clauses.getOcc cur).foldl
+            (getReachableCRefStep st lvar negL expl' cur)
+            (wl', reach)).2).size = reach.size :=
+        getReachableCRefArrayFold_reach_size
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := expl') (cur := cur)
+          (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+      have hfront_fold₀ :
+          ReachFrontierInvariant start
+            (((st.clauses.getOcc cur).foldl
+              (getReachableCRefStep st lvar negL expl' cur)
+              (wl', reach)).1)
+            (((st.clauses.getOcc cur).foldl
+              (getReachableCRefStep st lvar negL expl' cur)
+              (wl', reach)).2)
+            expl' := by
+        exact getReachableCRefArrayFold_preserves_frontierInvariant
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := expl') (start := start) (cur := cur)
+          (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+          hfront_expl
+          (fun cref _hcref clause hraw hdel _hnoNeg lit hlit =>
+            hbound cref clause lit hraw hdel hlit)
+      have hproc_fold₀ :
+          ReachProcessedInvariant st lvar negL
+            (((st.clauses.getOcc cur).foldl
+              (getReachableCRefStep st lvar negL expl' cur)
+              (wl', reach)).2)
+            expl' := by
+        intro seen hseen cref' clause' target' hocc' hraw' hdel' hnoNeg'
+          hmem' hne' hexi' hdep' hlt'
+        by_cases hx : seen.x = cur.x
+        · have hseen_cur : seen = cur := literal_eq_of_x_eq hx
+          subst seen
+          have hpre :
+              expl'.getD target'.negate.x false = true →
+                reach.getD target'.x false = true := by
+            intro hexplTarget
+            by_cases htarget_cur : target'.negate.x = cur.x
+            · have htarget_eq : target' = cur.negate :=
+                literal_eq_negate_of_negate_x_eq
+                  (a := target') (b := cur) htarget_cur
+              by_cases hcur_start : cur = start
+              · have hneg_mem : negL ∈ clause'.lits := by
+                  have hmem_start : start.negate ∈ clause'.lits.toList := by
+                    simpa [htarget_eq, hcur_start] using hmem'
+                  have hmem_arr : start.negate ∈ clause'.lits :=
+                    Array.mem_toList_iff.mp hmem_start
+                  simpa [hnegL] using hmem_arr
+                exact False.elim (hnoNeg' hneg_mem)
+              · simpa [htarget_eq] using hfront.1 cur hcur_mem hcur_start
+            · have hidx_ne : idx ≠ target'.negate.x := by
+                intro hidx_eq
+                exact htarget_cur (by simpa [idx] using hidx_eq.symm)
+              have hexplOld : expl.getD target'.negate.x false = true := by
+                rw [array_set_getD_ne expl idx target'.negate.x true false hidx hidx_ne]
+                  at hexplTarget
+                simpa [expl'] using hexplTarget
+              have htarget_ne_start : target'.negate ≠ start := by
+                intro hstart
+                have htarget_eq_startNeg : target' = start.negate := by
+                  rw [← literal_negate_negate_local target', hstart]
+                have hneg_mem : negL ∈ clause'.lits := by
+                  have hmem_arr : start.negate ∈ clause'.lits :=
+                    Array.mem_toList_iff.mp (by simpa [htarget_eq_startNeg] using hmem')
+                  simpa [hnegL] using hmem_arr
+                exact hnoNeg' hneg_mem
+              simpa [literal_negate_negate_local] using
+                hfront.2 target'.negate hexplOld htarget_ne_start
+          exact getReachableCRefArrayFold_marks_reach_true_of_pre
+            (st := st) (lvar := lvar) (negL := negL)
+            (explored := expl') (cur := cur) (target := target')
+            (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+            (hit := cref') (clause := clause')
+            hocc' hraw' hdel' hnoNeg' hmem' hne' hpre hexi' hdep'
+            (by simpa [hsize_fold₀] using hlt')
+        · have hidx_ne : idx ≠ seen.x := by
+            intro hidx_eq
+            exact hx (by simpa [idx] using hidx_eq.symm)
+          have hseenOld : expl.getD seen.x false = true := by
+            rw [array_set_getD_ne expl idx seen.x true false hidx hidx_ne] at hseen
+            simpa [expl'] using hseen
+          exact getReachableCRefArrayFold_preserves_reach_true
+            (st := st) (lvar := lvar) (negL := negL)
+            (explored := expl') (cur := cur)
+            (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+            (hproc seen hseenOld cref' clause' target' hocc' hraw' hdel'
+              hnoNeg' hmem' hne' hexi' hdep'
+              (by simpa [hsize_fold₀] using hlt'))
+      have hfront_fold : ReachFrontierInvariant start wl2 rch2 expl' := by
+        rw [hfold] at hfront_fold₀
+        exact hfront_fold₀
+      have hproc_fold : ReachProcessedInvariant st lvar negL rch2 expl' := by
+        rw [hfold] at hproc_fold₀
+        exact hproc_fold₀
+      have hsize_fold : rch2.size = reach.size := by
+        rw [hfold] at hsize_fold₀
+        exact hsize_fold₀
+      have hbound' :
+          ∀ cref clause lit,
+            st.clauses.getClauseRaw cref = some clause →
+            clause.deleted = false →
+            lit ∈ clause.lits.toList →
+            lit.x < rch2.size := by
+        intro cref clause lit hraw hdel hlit
+        simpa [hsize_fold] using hbound cref clause lit hraw hdel hlit
+      have hcurExpl : expl'.getD cur.x false = true := by
+        simp [expl', idx]
+      by_cases hsame : prev.negate = cur
+      · have hreach : rch2.getD target.x false = true := by
+          exact hproc_fold cur hcurExpl cref clause target
+            (by simpa [hsame] using hocc) hraw hdel hnoNegArr hmem
+            (by simpa [hsame] using hne) hexi hdep
+            (by simpa [hsize_fold] using hlt)
+        simp [cur, wl', idx, expl', occs] at hfold ⊢
+        rw [hfold]
+        simpa [cur, wl', idx, expl', occs] using
+          getReachable_go_preserves_reach_true
+            st lvar negL wl2 rch2 expl' hreach
+      · have hprevIn_wl' : prev.negate ∈ wl'.toList := by
+          simpa [wl'] using
+            (array_mem_pop_of_mem_ne_getD_last
+              (xs := worklist) (x := prev.negate) ⟨0⟩ hprevIn
+              (by simpa [cur] using hsame))
+        have hprevIn_fold₀ :
+            prev.negate ∈
+              (((st.clauses.getOcc cur).foldl
+                (getReachableCRefStep st lvar negL expl' cur)
+                (wl', reach)).1).toList :=
+          getReachableCRefArrayFold_preserves_worklist_mem
+            (st := st) (lvar := lvar) (negL := negL)
+            (explored := expl') (cur := cur)
+            (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+            hprevIn_wl'
+        have hprevIn_fold : prev.negate ∈ wl2.toList := by
+          rw [hfold] at hprevIn_fold₀
+          exact hprevIn_fold₀
+        simp [cur, wl', idx, expl', occs] at hfold ⊢
+        rw [hfold]
+        simpa [cur, wl', idx, expl', occs] using
+          ih hbound' hfront_fold hproc_fold
+            (by simpa [expl'] using hprevNeg_lt) hprevIn_fold
+            (by simpa [hsize_fold] using hlt))
+    (by
+      intro worklist reach expl hneEmpty cur wl' idx hexplCur hidx ih
+        hbound hfront hproc hprevNeg_lt hprevIn hlt
+      rw [getReachable.go.eq_1]
+      rw [if_neg hneEmpty]
+      rw [if_neg hexplCur]
+      rw [dif_neg hidx]
+      by_cases hsame : prev.negate = cur
+      · exact False.elim (hidx (by simpa [idx, hsame] using hprevNeg_lt))
+      · have hfront' : ReachFrontierInvariant start wl' reach expl := by
+          rcases hfront with ⟨hwl, hexplInv⟩
+          constructor
+          · intro lit hlit hlit_ne_start
+            have hlit_old : lit ∈ worklist.toList := by
+              simp [wl'] at hlit
+              exact List.dropLast_subset _ hlit
+            exact hwl lit hlit_old hlit_ne_start
+          · exact hexplInv
+        have hprevIn' : prev.negate ∈ wl'.toList := by
+          simpa [wl'] using
+            (array_mem_pop_of_mem_ne_getD_last
+              (xs := worklist) (x := prev.negate) ⟨0⟩ hprevIn
+              (by simpa [cur] using hsame))
+        exact ih hbound hfront' hproc hprevNeg_lt hprevIn' hlt)
+    worklist reach expl hbound hfront hproc hprevNeg_lt hprevIn hlt
+
+private theorem getReachable_go_current_reachable_clause_marks_reach_true_of_invariants
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    {lvar : Var} {negL start prev target : Literal}
+    {worklist : Array Literal} {reach expl : Array Bool}
+    {cref : CRef} {clause : Clause}
+    (hnegL : negL = start.negate)
+    (hbound :
+      ∀ cref clause lit,
+        st.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        lit ∈ clause.lits.toList →
+        lit.x < reach.size)
+    (hfront : ReachFrontierInvariant start worklist reach expl)
+    (hproc : ReachProcessedInvariant st lvar negL reach expl)
+    (hback : ReachBackpointerInvariant worklist reach expl)
+    (hprevNeg_lt : prev.negate.x < expl.size)
+    (hprevReach : reach.getD prev.x false = true)
+    (hget : st.clauses.getClause cref = some clause)
+    (hprev : prev.negate ∈ clause.lits.toList)
+    (hnoNeg : negL ∉ clause.lits.toList)
+    (hmem : target ∈ clause.lits.toList)
+    (hne : target ≠ prev.negate)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < reach.size) :
+    (getReachable.go st lvar negL worklist reach expl).getD target.x false = true := by
+  rcases getClauseRaw_deleted_of_getClause hget with ⟨hraw, hdel⟩
+  have hoccArr : cref ∈ st.clauses.getOcc prev.negate :=
+    ClauseStore.mem_getOcc_of_liveOccurrencesComplete
+      hfull.liveOccurrencesComplete hget hprev
+  have hocc : cref ∈ (st.clauses.getOcc prev.negate).toList :=
+    Array.mem_toList_iff.mpr hoccArr
+  have hnoNegArr : negL ∉ clause.lits := by
+    intro hneg
+    exact hnoNeg (Array.mem_toList_iff.mpr hneg)
+  rcases hback prev hprevNeg_lt hprevReach with hqueued | hexplPrev
+  · exact getReachable_go_worklist_clause_marks_reach_true_of_invariants
+      (hfull := hfull)
+      (hnegL := hnegL)
+      (hbound := hbound)
+      (hfront := hfront)
+      (hproc := hproc)
+      (hprevIn := hqueued)
+      (hprevNeg_lt := hprevNeg_lt)
+      (hget := hget)
+      (hprev := hprev)
+      (hnoNeg := hnoNeg)
+      (hmem := hmem)
+      (hne := hne)
+      (hexi := hexi)
+      (hdep := hdep)
+      (hlt := hlt)
+  · have hreach : reach.getD target.x false = true :=
+      hproc prev.negate hexplPrev cref clause target
+        hocc hraw hdel hnoNegArr hmem hne hexi hdep hlt
+    exact getReachable_go_preserves_reach_true st lvar negL worklist reach expl hreach
+
+private theorem getReachable_go_final_reachable_clause_marks_reach_true_of_invariants
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    {lvar : Var} {negL start prev target : Literal}
+    {worklist : Array Literal} {reach expl : Array Bool}
+    {cref : CRef} {clause : Clause}
+    (hnegL : negL = start.negate)
+    (hbound :
+      ∀ cref clause lit,
+        st.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        lit ∈ clause.lits.toList →
+        lit.x < reach.size)
+    (hfront : ReachFrontierInvariant start worklist reach expl)
+    (hproc : ReachProcessedInvariant st lvar negL reach expl)
+    (hback : ReachBackpointerInvariant worklist reach expl)
+    (hprevNeg_lt : prev.negate.x < expl.size)
+    (hfinalPrev :
+      (getReachable.go st lvar negL worklist reach expl).getD prev.x false = true)
+    (hget : st.clauses.getClause cref = some clause)
+    (hprev : prev.negate ∈ clause.lits.toList)
+    (hnoNeg : negL ∉ clause.lits.toList)
+    (hmem : target ∈ clause.lits.toList)
+    (hne : target ≠ prev.negate)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < reach.size) :
+    (getReachable.go st lvar negL worklist reach expl).getD target.x false = true := by
+  let motive : Array Literal → Array Bool → Array Bool → Prop :=
+    fun worklist reach expl =>
+      (∀ cref clause lit,
+        st.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        lit ∈ clause.lits.toList →
+        lit.x < reach.size) →
+      ReachFrontierInvariant start worklist reach expl →
+      ReachProcessedInvariant st lvar negL reach expl →
+      ReachBackpointerInvariant worklist reach expl →
+      prev.negate.x < expl.size →
+      (getReachable.go st lvar negL worklist reach expl).getD prev.x false = true →
+      target.x < reach.size →
+      (getReachable.go st lvar negL worklist reach expl).getD target.x false = true
+  exact getReachable.go.induct st lvar negL motive
+    (by
+      intro worklist reach expl hempty hbound hfront hproc hback hprevNeg_lt
+        hfinalPrev hlt
+      rw [getReachable.go.eq_1] at hfinalPrev ⊢
+      rw [if_pos hempty] at hfinalPrev ⊢
+      have hmark :=
+        getReachable_go_current_reachable_clause_marks_reach_true_of_invariants
+          (hfull := hfull)
+          (hnegL := hnegL)
+          (hbound := hbound)
+          (hfront := hfront)
+          (hproc := hproc)
+          (hback := hback)
+          (hprevNeg_lt := hprevNeg_lt)
+          (hprevReach := hfinalPrev)
+          (hget := hget)
+          (hprev := hprev)
+          (hnoNeg := hnoNeg)
+          (hmem := hmem)
+          (hne := hne)
+          (hexi := hexi)
+          (hdep := hdep)
+          (hlt := hlt)
+      simpa [getReachable.go.eq_1, hempty] using hmark)
+    (by
+      intro worklist reach expl hneEmpty cur wl' idx hexplCur ih
+        hbound hfront hproc hback hprevNeg_lt hfinalPrev hlt
+      rw [getReachable.go.eq_1] at hfinalPrev ⊢
+      rw [if_neg hneEmpty] at hfinalPrev ⊢
+      rw [if_pos hexplCur] at hfinalPrev ⊢
+      have hfront' : ReachFrontierInvariant start wl' reach expl := by
+        rcases hfront with ⟨hwl, hexplInv⟩
+        constructor
+        · intro lit hlit hlit_ne_start
+          have hlit_old : lit ∈ worklist.toList := by
+            simp [wl'] at hlit
+            exact List.dropLast_subset _ hlit
+          exact hwl lit hlit_old hlit_ne_start
+        · exact hexplInv
+      have hback' : ReachBackpointerInvariant wl' reach expl :=
+        ReachBackpointerInvariant_pop_of_explored
+          (cur := cur) (hcur := rfl) (hwl' := rfl) hexplCur hback
+      exact ih hbound hfront' hproc hback' hprevNeg_lt hfinalPrev hlt)
+    (by
+      intro worklist reach expl hneEmpty cur wl' idx hexplCur hidx expl' occs wl2 rch2
+        hfold ih hbound hfront hproc hback hprevNeg_lt hfinalPrev hlt
+      rw [getReachable.go.eq_1] at hfinalPrev ⊢
+      rw [if_neg hneEmpty] at hfinalPrev ⊢
+      rw [if_neg hexplCur] at hfinalPrev ⊢
+      rw [dif_pos hidx] at hfinalPrev ⊢
+      have hcur_mem : cur ∈ worklist.toList := by
+        have hlist_ne : worklist.toList ≠ [] := by
+          intro hnil
+          have hempty : worklist.isEmpty = true := by
+            have hsize : worklist.size = 0 := by
+              simp [← Array.length_toList, hnil]
+            simpa [Array.isEmpty_iff_size_eq_zero] using hsize
+          exact hneEmpty hempty
+        simpa [cur] using
+          (array_getD_last_mem_toList (xs := worklist) ⟨0⟩ hlist_ne :
+            worklist.getD (worklist.size - 1) ⟨0⟩ ∈ worklist.toList)
+      have hfront_expl : ReachFrontierInvariant start wl' reach expl' := by
+        rcases hfront with ⟨hwl, hexplInv⟩
+        constructor
+        · intro lit hlit hlit_ne_start
+          have hlit_old : lit ∈ worklist.toList := by
+            simp [wl'] at hlit
+            exact List.dropLast_subset _ hlit
+          exact hwl lit hlit_old hlit_ne_start
+        · intro lit hexplLit hlit_ne_start
+          by_cases hx : lit.x = cur.x
+          · have hlit_cur : lit = cur := literal_eq_of_x_eq hx
+            subst lit
+            exact hwl cur hcur_mem hlit_ne_start
+          · have hidx_ne : idx ≠ lit.x := by
+              intro hidx_eq
+              exact hx (by simpa [idx] using hidx_eq.symm)
+            have hexplOld : expl.getD lit.x false = true := by
+              rw [array_set_getD_ne expl idx lit.x true false hidx hidx_ne] at hexplLit
+              simpa [expl'] using hexplLit
+            exact hexplInv lit hexplOld hlit_ne_start
+      have hback_expl : ReachBackpointerInvariant wl' reach expl' := by
+        simpa [expl'] using
+          (ReachBackpointerInvariant_pop_set_current
+            (cur := cur) (idx := idx) (hcur := rfl) (hwl' := rfl)
+            (hidx_eq := rfl) (hidx := hidx) hback)
+      have hsize_fold₀ :
+          (((st.clauses.getOcc cur).foldl
+            (getReachableCRefStep st lvar negL expl' cur)
+            (wl', reach)).2).size = reach.size :=
+        getReachableCRefArrayFold_reach_size
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := expl') (cur := cur)
+          (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+      have hfront_fold₀ :
+          ReachFrontierInvariant start
+            (((st.clauses.getOcc cur).foldl
+              (getReachableCRefStep st lvar negL expl' cur)
+              (wl', reach)).1)
+            (((st.clauses.getOcc cur).foldl
+              (getReachableCRefStep st lvar negL expl' cur)
+              (wl', reach)).2)
+            expl' := by
+        exact getReachableCRefArrayFold_preserves_frontierInvariant
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := expl') (start := start) (cur := cur)
+          (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+          hfront_expl
+          (fun cref _hcref clause hraw hdel _hnoNeg lit hlit =>
+            hbound cref clause lit hraw hdel hlit)
+      have hback_fold₀ :
+          ReachBackpointerInvariant
+            (((st.clauses.getOcc cur).foldl
+              (getReachableCRefStep st lvar negL expl' cur)
+              (wl', reach)).1)
+            (((st.clauses.getOcc cur).foldl
+              (getReachableCRefStep st lvar negL expl' cur)
+              (wl', reach)).2)
+            expl' :=
+        getReachableCRefArrayFold_preserves_backpointerInvariant
+          (st := st) (lvar := lvar) (negL := negL)
+          (explored := expl') (cur := cur)
+          (crefs := st.clauses.getOcc cur) (state := (wl', reach))
+          hback_expl
+      have hproc_fold₀ :
+          ReachProcessedInvariant st lvar negL
+            (((st.clauses.getOcc cur).foldl
+              (getReachableCRefStep st lvar negL expl' cur)
+              (wl', reach)).2)
+            expl' := by
+        simpa [expl'] using
+          (getReachableCRefArrayFold_processedInvariant_after_current
+            (st := st) (lvar := lvar) (negL := negL) (start := start)
+            (cur := cur) (worklist := worklist) (wl' := wl')
+            (reach := reach) (expl := expl)
+            hnegL (by simpa [idx] using hidx) hfront hproc hcur_mem)
+      have hfront_fold : ReachFrontierInvariant start wl2 rch2 expl' := by
+        rw [hfold] at hfront_fold₀
+        exact hfront_fold₀
+      have hback_fold : ReachBackpointerInvariant wl2 rch2 expl' := by
+        rw [hfold] at hback_fold₀
+        exact hback_fold₀
+      have hproc_fold : ReachProcessedInvariant st lvar negL rch2 expl' := by
+        rw [hfold] at hproc_fold₀
+        exact hproc_fold₀
+      have hsize_fold : rch2.size = reach.size := by
+        rw [hfold] at hsize_fold₀
+        exact hsize_fold₀
+      have hbound' :
+          ∀ cref clause lit,
+            st.clauses.getClauseRaw cref = some clause →
+            clause.deleted = false →
+            lit ∈ clause.lits.toList →
+            lit.x < rch2.size := by
+        intro cref clause lit hraw hdel hlit
+        simpa [hsize_fold] using hbound cref clause lit hraw hdel hlit
+      change
+        (getReachable.go st lvar negL
+          (((st.clauses.getOcc cur).foldl
+            (getReachableCRefStep st lvar negL expl' cur)
+            (wl', reach)).1)
+          (((st.clauses.getOcc cur).foldl
+            (getReachableCRefStep st lvar negL expl' cur)
+            (wl', reach)).2)
+          expl').getD prev.x false = true
+        at hfinalPrev
+      change
+        (getReachable.go st lvar negL
+          (((st.clauses.getOcc cur).foldl
+            (getReachableCRefStep st lvar negL expl' cur)
+            (wl', reach)).1)
+          (((st.clauses.getOcc cur).foldl
+            (getReachableCRefStep st lvar negL expl' cur)
+            (wl', reach)).2)
+          expl').getD target.x false = true
+      rw [hfold] at hfinalPrev ⊢
+      have hfinalPrev' :
+          (getReachable.go st lvar negL wl2 rch2 expl').getD prev.x false = true := by
+        simpa using hfinalPrev
+      simpa using
+        ih hbound' hfront_fold hproc_fold hback_fold
+          (by simpa [expl'] using hprevNeg_lt)
+          hfinalPrev'
+          (by simpa [hsize_fold] using hlt))
+    (by
+      intro worklist reach expl hneEmpty cur wl' idx hexplCur hidx ih
+        hbound hfront hproc hback hprevNeg_lt hfinalPrev hlt
+      rw [getReachable.go.eq_1] at hfinalPrev ⊢
+      rw [if_neg hneEmpty] at hfinalPrev ⊢
+      rw [if_neg hexplCur] at hfinalPrev ⊢
+      rw [dif_neg hidx] at hfinalPrev ⊢
+      have hfront' : ReachFrontierInvariant start wl' reach expl := by
+        rcases hfront with ⟨hwl, hexplInv⟩
+        constructor
+        · intro lit hlit hlit_ne_start
+          have hlit_old : lit ∈ worklist.toList := by
+            simp [wl'] at hlit
+            exact List.dropLast_subset _ hlit
+          exact hwl lit hlit_old hlit_ne_start
+        · exact hexplInv
+      have hback' : ReachBackpointerInvariant wl' reach expl :=
+        ReachBackpointerInvariant_pop_of_outOfBounds
+          (cur := cur) (hcur := rfl) (hwl' := rfl)
+          (hcur_oob := by simpa [idx] using hidx) hback
+      exact ih hbound hfront' hproc hback' hprevNeg_lt hfinalPrev hlt)
+    worklist reach expl hbound hfront hproc hback hprevNeg_lt hfinalPrev hlt
+
+private theorem getReachable_go_current_marks_reach_true
+    {st : CheckState} {lvar : Var} {negL cur target : Literal}
+    {worklist : Array Literal} {reach expl : Array Bool}
+    {hit : CRef} {clause : Clause}
+    (hidx : cur.x < expl.size)
+    (hnotExpl : expl.getD cur.x false = false)
+    (hhit : hit ∈ (st.clauses.getOcc cur).toList)
+    (hraw : st.clauses.getClauseRaw hit = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hexplTarget : (expl.set cur.x true hidx).getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < reach.size) :
+    (getReachable.go st lvar negL (worklist.push cur) reach expl).getD target.x false = true := by
+  rw [getReachable.go.eq_1]
+  have hnonempty : ¬ (worklist.push cur).isEmpty = true := by
+    simp
+  rw [if_neg hnonempty]
+  simp [hnotExpl, hidx]
+  generalize hfold :
+      (st.clauses.getOcc cur).foldl
+        (getReachableCRefStep st lvar negL (expl.set cur.x true hidx) cur)
+        (worklist, reach) = folded
+  rcases folded with ⟨wl2, rch2⟩
+  have hmark : rch2.getD target.x false = true := by
+    have hmark₀ :=
+      getReachableCRefArrayFold_marks_reach_true
+        (st := st) (lvar := lvar) (negL := negL)
+        (explored := expl.set cur.x true hidx)
+        (cur := cur) (target := target)
+        (crefs := st.clauses.getOcc cur) (state := (worklist, reach))
+        (hit := hit) (clause := clause)
+        hhit hraw hdel hnoNeg hmem hcur hexplTarget hexi hdep hlt
+    simpa [hfold] using hmark₀
+  rw [array_getElem?_getD_eq_getD]
+  exact getReachable_go_preserves_reach_true st lvar negL wl2 rch2
+    (expl.set cur.x true hidx) hmark
+
+private theorem getReachable_go_current_marks_reach_true_of_pre
+    {st : CheckState} {lvar : Var} {negL cur target : Literal}
+    {worklist : Array Literal} {reach expl : Array Bool}
+    {hit : CRef} {clause : Clause}
+    (hidx : cur.x < expl.size)
+    (hnotExpl : expl.getD cur.x false = false)
+    (hhit : hit ∈ (st.clauses.getOcc cur).toList)
+    (hraw : st.clauses.getClauseRaw hit = some clause)
+    (hdel : clause.deleted = false)
+    (hnoNeg : negL ∉ clause.lits)
+    (hmem : target ∈ clause.lits.toList)
+    (hcur : target ≠ cur)
+    (hpre :
+      (expl.set cur.x true hidx).getD target.negate.x false = true →
+        reach.getD target.x false = true)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < reach.size) :
+    (getReachable.go st lvar negL (worklist.push cur) reach expl).getD target.x false = true := by
+  rw [getReachable.go.eq_1]
+  have hnonempty : ¬ (worklist.push cur).isEmpty = true := by
+    simp
+  rw [if_neg hnonempty]
+  simp [hnotExpl, hidx]
+  generalize hfold :
+      (st.clauses.getOcc cur).foldl
+        (getReachableCRefStep st lvar negL (expl.set cur.x true hidx) cur)
+        (worklist, reach) = folded
+  rcases folded with ⟨wl2, rch2⟩
+  have hmark : rch2.getD target.x false = true := by
+    have hmark₀ :=
+      getReachableCRefArrayFold_marks_reach_true_of_pre
+        (st := st) (lvar := lvar) (negL := negL)
+        (explored := expl.set cur.x true hidx)
+        (cur := cur) (target := target)
+        (crefs := st.clauses.getOcc cur) (state := (worklist, reach))
+        (hit := hit) (clause := clause)
+        hhit hraw hdel hnoNeg hmem hcur hpre hexi hdep hlt
+    simpa [hfold] using hmark₀
+  rw [array_getElem?_getD_eq_getD]
+  exact getReachable_go_preserves_reach_true st lvar negL wl2 rch2
+    (expl.set cur.x true hidx) hmark
+
+private theorem getReachable_go_step_clause_marks_reach_true
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    {lvar : Var} {negL prev target : Literal}
+    {worklist : Array Literal} {reach expl : Array Bool}
+    {cref : CRef} {clause : Clause}
+    (hidx : prev.negate.x < expl.size)
+    (hnotExpl : expl.getD prev.negate.x false = false)
+    (hget : st.clauses.getClause cref = some clause)
+    (hcur : prev.negate ∈ clause.lits.toList)
+    (hnoNeg : negL ∉ clause.lits.toList)
+    (hmem : target ∈ clause.lits.toList)
+    (hne : target ≠ prev.negate)
+    (hexplTarget : (expl.set prev.negate.x true hidx).getD target.negate.x false = false)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < reach.size) :
+    (getReachable.go st lvar negL (worklist.push prev.negate) reach expl).getD
+      target.x false = true := by
+  rcases getClauseRaw_deleted_of_getClause hget with ⟨hraw, hdel⟩
+  have hoccArr : cref ∈ st.clauses.getOcc prev.negate :=
+    ClauseStore.mem_getOcc_of_liveOccurrencesComplete
+      hfull.liveOccurrencesComplete hget hcur
+  have hocc : cref ∈ (st.clauses.getOcc prev.negate).toList :=
+    Array.mem_toList_iff.mpr hoccArr
+  have hnoNegArr : negL ∉ clause.lits := by
+    intro hneg
+    exact hnoNeg (Array.mem_toList_iff.mpr hneg)
+  exact getReachable_go_current_marks_reach_true
+    (st := st) (lvar := lvar) (negL := negL)
+    (cur := prev.negate) (target := target)
+    (worklist := worklist) (reach := reach) (expl := expl)
+    (hit := cref) (clause := clause)
+    hidx hnotExpl hocc hraw hdel hnoNegArr hmem hne
+    hexplTarget hexi hdep hlt
+
+private theorem getReachable_go_step_clause_marks_reach_true_of_pre
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    {lvar : Var} {negL prev target : Literal}
+    {worklist : Array Literal} {reach expl : Array Bool}
+    {cref : CRef} {clause : Clause}
+    (hidx : prev.negate.x < expl.size)
+    (hnotExpl : expl.getD prev.negate.x false = false)
+    (hget : st.clauses.getClause cref = some clause)
+    (hcur : prev.negate ∈ clause.lits.toList)
+    (hnoNeg : negL ∉ clause.lits.toList)
+    (hmem : target ∈ clause.lits.toList)
+    (hne : target ≠ prev.negate)
+    (hpre :
+      (expl.set prev.negate.x true hidx).getD target.negate.x false = true →
+        reach.getD target.x false = true)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true)
+    (hlt : target.x < reach.size) :
+    (getReachable.go st lvar negL (worklist.push prev.negate) reach expl).getD
+      target.x false = true := by
+  rcases getClauseRaw_deleted_of_getClause hget with ⟨hraw, hdel⟩
+  have hoccArr : cref ∈ st.clauses.getOcc prev.negate :=
+    ClauseStore.mem_getOcc_of_liveOccurrencesComplete
+      hfull.liveOccurrencesComplete hget hcur
+  have hocc : cref ∈ (st.clauses.getOcc prev.negate).toList :=
+    Array.mem_toList_iff.mpr hoccArr
+  have hnoNegArr : negL ∉ clause.lits := by
+    intro hneg
+    exact hnoNeg (Array.mem_toList_iff.mpr hneg)
+  exact getReachable_go_current_marks_reach_true_of_pre
+    (st := st) (lvar := lvar) (negL := negL)
+    (cur := prev.negate) (target := target)
+    (worklist := worklist) (reach := reach) (expl := expl)
+    (hit := cref) (clause := clause)
+    hidx hnotExpl hocc hraw hdel hnoNegArr hmem hne
+    hpre hexi hdep hlt
+
+private theorem getReachable_first_marks_reach_true
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    {start target : Literal} {cref : CRef} {clause : Clause}
+    (hon_univ : st.formula.isVarExistential start.var = false)
+    (hstart_lt : start.x < st.formula.maxVar * 2 + 2)
+    (hget : st.clauses.getClause cref = some clause)
+    (hstart : start ∈ clause.lits.toList)
+    (hnoStartNeg : start.negate ∉ clause.lits.toList)
+    (hmem : target ∈ clause.lits.toList)
+    (hne : target ≠ start)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains start.var = true)
+    (htarget_lt : target.x < st.formula.maxVar * 2 + 2) :
+    (getReachable st start).getD target.x false = true := by
+  let numLits := st.formula.maxVar * 2 + 2
+  let reach0 : Array Bool := (List.replicate numLits false).toArray
+  let expl0 : Array Bool := (List.replicate numLits false).toArray
+  have hstart_lt_expl0 : start.x < expl0.size := by
+    simpa [expl0, numLits] using hstart_lt
+  have hnot_univ : ¬ st.formula.isVarExistential start.var = true := by
+    simp [hon_univ]
+  rcases getClauseRaw_deleted_of_getClause hget with ⟨hraw, hdel⟩
+  have hoccArr : cref ∈ st.clauses.getOcc start :=
+    ClauseStore.mem_getOcc_of_liveOccurrencesComplete
+      hfull.liveOccurrencesComplete hget hstart
+  have hocc : cref ∈ (st.clauses.getOcc start).toList :=
+    Array.mem_toList_iff.mpr hoccArr
+  have hnoNegArr : start.negate ∉ clause.lits := by
+    intro hneg
+    exact hnoStartNeg (Array.mem_toList_iff.mpr hneg)
+  have htarget_ne_startNeg : target ≠ start.negate := by
+    intro htarget
+    exact hnoStartNeg (by simpa [htarget] using hmem)
+  have hstart_x_ne_targetNeg : start.x ≠ target.negate.x := by
+    intro hx
+    have htarget_eq : target = start.negate :=
+      literal_eq_negate_of_negate_x_eq (a := target) (b := start) hx.symm
+    exact htarget_ne_startNeg htarget_eq
+  have hexplTarget :
+      (expl0.set start.x true hstart_lt_expl0).getD target.negate.x false = false := by
+    simpa [expl0, numLits] using
+      false_replicate_array_set_getD_of_ne numLits start.x target.negate.x
+        (by simpa [expl0] using hstart_lt_expl0)
+        hstart_x_ne_targetNeg
+  have hmark :
+      (((st.clauses.getOcc start).foldl
+        (getReachableCRefStep st start.var start.negate
+          (expl0.set start.x true hstart_lt_expl0) start)
+        (#[], reach0)).2).getD target.x false = true := by
+    exact getReachableCRefArrayFold_marks_reach_true
+      (st := st) (lvar := start.var) (negL := start.negate)
+      (explored := expl0.set start.x true hstart_lt_expl0)
+      (cur := start) (target := target)
+      (crefs := st.clauses.getOcc start) (state := (#[], reach0))
+      (hit := cref) (clause := clause)
+      hocc hraw hdel hnoNegArr hmem hne hexplTarget hexi hdep
+      (by simpa [reach0, numLits] using htarget_lt)
+  unfold getReachable
+  rw [if_neg hnot_univ]
+  change
+    (getReachable.go st start.var start.negate #[start] reach0 expl0).getD target.x false = true
+  rw [getReachable.go.eq_1]
+  have hnonempty : ¬ (#[start] : Array Literal).isEmpty = true := by
+    simp
+  rw [if_neg hnonempty]
+  have hexplStart : expl0.getD start.x false = false :=
+    false_replicate_array_getD numLits start.x
+  simp [hexplStart, hstart_lt_expl0]
+  generalize hfold :
+      (st.clauses.getOcc start).foldl
+        (getReachableCRefStep st start.var start.negate
+          (expl0.set start.x true hstart_lt_expl0) start)
+        (#[], reach0) = folded
+  rcases folded with ⟨wl2, rch2⟩
+  have hmark' : rch2.getD target.x false = true := by
+    simpa [hfold] using hmark
+  rw [array_getElem?_getD_eq_getD]
+  exact getReachable_go_preserves_reach_true st start.var start.negate wl2 rch2
+    (expl0.set start.x true hstart_lt_expl0) hmark'
+
+private theorem getReachable_complete_first_mkLit
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    {on_ : Var} {pos : Bool} {target : Literal} {cref : CRef} {clause : Clause}
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hget : st.clauses.getClause cref = some clause)
+    (hstart : mkLit on_ pos ∈ clause.lits.toList)
+    (hnoStartNeg : (mkLit on_ pos).negate ∉ clause.lits.toList)
+    (hmem : target ∈ clause.lits.toList)
+    (hne : target ≠ mkLit on_ pos)
+    (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains on_ = true) :
+    (getReachable st (mkLit on_ pos)).getD target.x false = true := by
+  have htarget_lt_isExi : target.var < st.formula.isExistential.size :=
+    arrayGetD_true_imp_lt (a := st.formula.isExistential) (by
+      simpa [DQBF.isVarExistential] using hexi)
+  have htarget_le : target.var ≤ st.formula.maxVar := by
+    rw [hfull.toCorrect.toSound.isExistential_size] at htarget_lt_isExi
+    exact Nat.lt_succ_iff.mp htarget_lt_isExi
+  exact getReachable_first_marks_reach_true
+    (hfull := hfull)
+    (start := mkLit on_ pos) (target := target) (cref := cref) (clause := clause)
+    (by simpa [mkLit_var_early] using hon_univ)
+    (mkLit_x_lt_numLits_of_var_le_maxVar hon_le)
+    hget hstart hnoStartNeg hmem hne hexi
+    (by simpa [mkLit_var_early] using hdep)
+    (literal_x_lt_numLits_of_var_le_maxVar target htarget_le)
+
+private theorem getReachable_complete_mkLit
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    {on_ : Var} {pos : Bool} {target : Literal}
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpath : DeletePurePath st on_ (mkLit on_ pos) target) :
+    (getReachable st (mkLit on_ pos)).getD target.x false = true := by
+  let numLits := st.formula.maxVar * 2 + 2
+  let reach0 : Array Bool := (List.replicate numLits false).toArray
+  let expl0 : Array Bool := (List.replicate numLits false).toArray
+  induction hpath with
+  | first hget hstart hnoStartNeg hlit hne hexi hdep =>
+      exact getReachable_complete_first_mkLit
+        (hfull := hfull) (on_ := on_) (pos := pos)
+        (hon_le := hon_le) (hon_univ := hon_univ)
+        hget hstart hnoStartNeg hlit hne hexi hdep
+  | step hprev hget hcur hnoStartNeg hlit hne hexi hdep ih =>
+      have hbound :
+          ∀ cref clause lit,
+            st.clauses.getClauseRaw cref = some clause →
+            clause.deleted = false →
+            lit ∈ clause.lits.toList →
+            lit.x < reach0.size := by
+        intro cref clause lit hraw hdel hlit'
+        simpa [reach0, numLits] using
+          clauseLit_x_lt_numLits_of_fullCorrect_raw_not_deleted
+            hfull hraw hdel hlit'
+      have hprev_exi :=
+        deletePurePath_target_isVarExistential hprev
+      have hprevNeg_lt_num :=
+        isVarExistential_literal_negate_x_lt_numLits_of_fullCorrect hfull hprev_exi
+      have htarget_lt_num :=
+        isVarExistential_literal_x_lt_numLits_of_fullCorrect hfull hexi
+      have hmark :=
+        getReachable_go_final_reachable_clause_marks_reach_true_of_invariants
+          (hfull := hfull)
+          (lvar := on_) (negL := (mkLit on_ pos).negate)
+          (start := mkLit on_ pos)
+          (worklist := #[mkLit on_ pos]) (reach := reach0) (expl := expl0)
+          (hnegL := rfl)
+          (hbound := hbound)
+          (hfront := ReachFrontierInvariant_initial (mkLit on_ pos) numLits)
+          (hproc := ReachProcessedInvariant_initial st on_ (mkLit on_ pos).negate numLits)
+          (hback := ReachBackpointerInvariant_initial (mkLit on_ pos) numLits)
+          (hprevNeg_lt := by
+            simpa [expl0, numLits] using hprevNeg_lt_num)
+          (hfinalPrev := by
+            simpa [getReachable, mkLit_var_early, hon_univ, reach0, expl0, numLits] using ih)
+          (hget := hget)
+          (hprev := hcur)
+          (hnoNeg := hnoStartNeg)
+          (hmem := hlit)
+          (hne := hne)
+          (hexi := hexi)
+          (hdep := hdep)
+          (hlt := by
+            simpa [reach0, numLits] using htarget_lt_num)
+      simpa [getReachable, mkLit_var_early, hon_univ, reach0, expl0, numLits] using hmark
+
+private def DeletePurePathComplete
+    (st : CheckState) (on_ : Var) (start : Literal) : Prop :=
+  ∀ target, DeletePurePath st on_ start target →
+    (getReachable st start).getD target.x false = true
+
+private theorem deletePurePathComplete_mkLit
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    {on_ : Var} {pos : Bool}
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false) :
+    DeletePurePathComplete st on_ (mkLit on_ pos) := by
+  intro target hpath
+  exact getReachable_complete_mkLit
+    (hfull := hfull) (hon_le := hon_le) (hon_univ := hon_univ) hpath
+
+private theorem noDeleteCrossPaths_not_deletePurePath_pair
+    {st : CheckState} {on_ of_ : Var} {pos : Bool}
+    (hpaths : NoDeleteCrossPaths st on_ of_)
+    (hcompletePos : DeletePurePathComplete st on_ (mkLit on_ true))
+    (hcompleteNeg : DeletePurePathComplete st on_ (mkLit on_ false))
+    (hposPath : DeletePurePath st on_ (mkLit on_ true) (mkLit of_ pos))
+    (hnegPath : DeletePurePath st on_ (mkLit on_ false) (mkLit of_ (!pos))) :
+    False := by
+  exact noDeleteCrossPaths_not_reachPos_lit_reachNeg_negate hpaths
+    ⟨hcompletePos (mkLit of_ pos) hposPath,
+      hcompleteNeg (mkLit of_ (!pos)) hnegPath⟩
+
+private theorem noDeleteCrossPaths_not_deletePurePath_pair_of_fullCorrect
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {on_ of_ : Var} {pos : Bool}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPaths st on_ of_)
+    (hposPath : DeletePurePath st on_ (mkLit on_ true) (mkLit of_ pos))
+    (hnegPath : DeletePurePath st on_ (mkLit on_ false) (mkLit of_ (!pos))) :
+    False :=
+  noDeleteCrossPaths_not_deletePurePath_pair hpaths
+    (deletePurePathComplete_mkLit
+      (hfull := hfull) (pos := true) hon_le hon_univ)
+    (deletePurePathComplete_mkLit
+      (hfull := hfull) (pos := false) hon_le hon_univ)
+    hposPath hnegPath
+
+private theorem noDeleteCrossPathsSet_not_deletePurePath_pair
+    {st : CheckState} {vars : Array Var} {on_ of_ : Var} {pos : Bool}
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList)
+    (hcompletePos : DeletePurePathComplete st on_ (mkLit on_ true))
+    (hcompleteNeg : DeletePurePathComplete st on_ (mkLit on_ false))
+    (hposPath : DeletePurePath st on_ (mkLit on_ true) (mkLit of_ pos))
+    (hnegPath : DeletePurePath st on_ (mkLit on_ false) (mkLit of_ (!pos))) :
+    False :=
+  noDeleteCrossPaths_not_deletePurePath_pair (hpaths of_ hof)
+    hcompletePos hcompleteNeg hposPath hnegPath
+
+private theorem noDeleteCrossPathsSet_not_deletePurePath_pair_of_fullCorrect
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {vars : Array Var} {on_ of_ : Var} {pos : Bool}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList)
+    (hposPath : DeletePurePath st on_ (mkLit on_ true) (mkLit of_ pos))
+    (hnegPath : DeletePurePath st on_ (mkLit on_ false) (mkLit of_ (!pos))) :
+    False :=
+  noDeleteCrossPaths_not_deletePurePath_pair_of_fullCorrect
+    hfull hon_le hon_univ (hpaths of_ hof) hposPath hnegPath
+
+theorem noDeleteCrossPathsSet_forbids_deletePurePath_pair
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {vars : Array Var} {on_ of_ : Var} {pos : Bool}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList)
+    (hposPath : DeletePurePath st on_ (mkLit on_ true) (mkLit of_ pos))
+    (hnegPath :
+      DeletePurePath st on_ (mkLit on_ false) (mkLit of_ (!pos))) :
+    False :=
+  noDeleteCrossPathsSet_not_deletePurePath_pair_of_fullCorrect
+    hfull hon_le hon_univ hpaths hof hposPath hnegPath
+
+private abbrev DeleteIndependenceDescentOutcome
+    (s : CheckState) (vars : Array Var) (on_ : Var)
+    (skBase : SkolemAssignment) : Prop :=
+  (∃ sk',
+    (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+    deleteWitnessFiberCountSet s.formula vars on_ sk' <
+      deleteWitnessFiberCountSet s.formula vars on_ skBase) ∨
+  (∃ badOf, badOf ∈ vars.toList ∧ ∃ pos : Bool,
+    DeletePurePath s on_ (mkLit on_ true) (mkLit badOf pos) ∧
+    DeletePurePath s on_ (mkLit on_ false) (mkLit badOf (!pos)))
+
+private theorem deleteWitness_descent_step_of_good_or_forbidden_paths
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    {sk : SkolemAssignment}
+    (hor : DeleteIndependenceDescentOutcome s vars on_ sk) :
+    ∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk := by
+  rcases hor with hgood | hbad
+  · exact hgood
+  · rcases hbad with ⟨badOf, hbadMem, pos, hposPath, hnegPath⟩
+    exact False.elim
+      (noDeleteCrossPathsSet_not_deletePurePath_pair_of_fullCorrect
+        (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
+        (on_ := on_) (of_ := badOf) (pos := pos)
+        hfull hon_le hon_univ hpaths hbadMem hposPath hnegPath)
+
+private theorem deleteIndependenceDescentOutcome_of_model_properSubset
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hallCand : ∀ τ, s.clauses.matrixValue s.formula τ skCand = true)
+    (hproper :
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase :=
+  Or.inl ⟨skCand, hallCand,
+    deleteWitnessFiberCountSet_lt_of_properSubset hproper⟩
+
+private abbrev DeleteWitnessProperSubsetFalseRestart
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev DeleteWitnessProgressFalseRestart
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    TargetRepairProgressCandidate s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    DeleteIndependenceDescentOutcome s vars on_ skBase
+
+private abbrev DeleteWitnessCurrentStrictRestart
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand skBase →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    DeleteIndependenceDescentOutcome s vars on_ skBase ∨
+      ∃ skNext,
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skNext skBase ∧
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skCand ∧
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+
+private abbrev DeleteWitnessProgressCurrentStrictRestart
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ {skBase skCand : SkolemAssignment} {σ : UnivAssignment},
+    (∀ τ, s.clauses.matrixValue s.formula τ skBase = true) →
+    TargetRepairProgressCandidate s vars on_ skBase skCand →
+    s.clauses.matrixValue s.formula σ skCand = false →
+    DeleteIndependenceDescentOutcome s vars on_ skBase ∨
+      ∃ skNext,
+        TargetRepairProgressCandidate s vars on_ skBase skNext ∧
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skCand ∧
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false
+
+private theorem deleteWitnessProperSubsetFalseRestart_of_currentStrictRestart
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hcurrent : DeleteWitnessCurrentStrictRestart s vars on_) :
+    DeleteWitnessProperSubsetFalseRestart s vars on_ := by
+  classical
+  intro skBase skCand σ hallBase hproperCand hfalseCand
+  let P : Nat → Prop := fun n =>
+    ∀ {skCur : SkolemAssignment} {τ : UnivAssignment},
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCur skBase →
+      s.clauses.matrixValue s.formula τ skCur = false →
+      DeleteIndependenceDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur τ hcount hproperCur hfalseCur
+      rcases hcurrent (skBase := skBase) (skCand := skCur) (σ := τ)
+          hallBase hproperCur hfalseCur with
+        houtcome | hnext
+      · exact houtcome
+      · rcases hnext with ⟨skNext, hproperNext, hltNext, ρ, hfalseNext⟩
+        have hlt_n :
+            deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+          simpa [hcount] using hltNext
+        exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+          hlt_n (skCur := skNext) (τ := ρ) rfl hproperNext hfalseNext)
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    (skCur := skCand) (τ := σ) rfl hproperCand hfalseCand
+
+private theorem deleteWitnessProgressFalseRestart_of_currentStrictRestart
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hcurrent : DeleteWitnessProgressCurrentStrictRestart s vars on_) :
+    DeleteWitnessProgressFalseRestart s vars on_ := by
+  intro skBase skCand σ hallBase hprogress hfalse
+  let P : Nat → Prop := fun n =>
+    ∀ {skCur : SkolemAssignment} {τ : UnivAssignment},
+      deleteWitnessFiberCountSet s.formula vars on_ skCur = n →
+      TargetRepairProgressCandidate s vars on_ skBase skCur →
+      s.clauses.matrixValue s.formula τ skCur = false →
+      DeleteIndependenceDescentOutcome s vars on_ skBase
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih skCur τ hcount hprogressCur hfalseCur
+      rcases hcurrent (skBase := skBase) (skCand := skCur) (σ := τ)
+          hallBase hprogressCur hfalseCur with
+        houtcome | hnext
+      · exact houtcome
+      · rcases hnext with ⟨skNext, hprogressNext, hltNext, ρ, hfalseNext⟩
+        have hlt_n :
+            deleteWitnessFiberCountSet s.formula vars on_ skNext < n := by
+          simpa [hcount] using hltNext
+        exact ih (deleteWitnessFiberCountSet s.formula vars on_ skNext)
+          hlt_n (skCur := skNext) (τ := ρ) rfl hprogressNext hfalseNext)
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ skCand)
+    (skCur := skCand) (τ := σ) rfl hprogress hfalse
+
+private theorem deleteIndependenceSetBridge_of_deleteWitness_descent_step
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hdescent :
+      ∀ {of_ : Var} {sk : SkolemAssignment} {σ₀ : UnivAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ sk = true) →
+        of_ ∈ vars.toList →
+        DeleteDepWitness s.formula of_ on_ sk σ₀ →
+        ∃ sk',
+          (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+          deleteWitnessFiberCountSet s.formula vars on_ sk' <
+            deleteWitnessFiberCountSet s.formula vars on_ sk) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  classical
+  intro htrue
+  rcases htrue with ⟨sk, hall⟩
+  let P : Nat → Prop := fun n =>
+    ∀ sk,
+      deleteWitnessFiberCountSet s.formula vars on_ sk = n →
+      (∀ σ, s.clauses.matrixValue s.formula σ sk = true) →
+      ∃ sk',
+        (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+        ExhibitsDeleteIndependenceSet s.formula vars on_ sk'
+  have hP : ∀ n, P n := by
+    intro n
+    exact Nat.strongRecOn (motive := P) n (by
+      intro n ih sk hcount hall
+      by_cases hcount0 :
+          deleteWitnessFiberCountSet s.formula vars on_ sk = 0
+      · have hexhibit : ExhibitsDeleteIndependenceSet s.formula vars on_ sk := by
+          exact (deleteWitnessFiberCountSet_zero_iff_exhibits
+            s.formula vars on_ sk hexi).1 hcount0
+        exact ⟨sk, hall, hexhibit⟩
+      · have hwitExists :
+            ∃ of_, of_ ∈ vars.toList ∧ ∃ σ,
+              DeleteDepWitness s.formula of_ on_ sk σ := by
+          exact (deleteWitnessFiberCountSet_ne_zero_iff_existsDeleteDepWitness
+            s.formula vars on_ sk).1 hcount0
+        rcases hwitExists with ⟨of_, hof, σ₀, hwit⟩
+        rcases hdescent (of_ := of_) (sk := sk) (σ₀ := σ₀) hall hof hwit with
+          ⟨sk', hall', hcount_lt⟩
+        have hlt_n :
+            deleteWitnessFiberCountSet s.formula vars on_ sk' < n := by
+          simpa [hcount] using hcount_lt
+        exact ih (deleteWitnessFiberCountSet s.formula vars on_ sk') hlt_n
+          sk' rfl hall')
+  exact hP (deleteWitnessFiberCountSet s.formula vars on_ sk) sk rfl hall
+
+private theorem deleteIndependenceSetBridge_of_deleteWitness_descent_outcome_step
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hdescent :
+      ∀ {of_ : Var} {sk : SkolemAssignment} {σ₀ : UnivAssignment},
+        (∀ σ, s.clauses.matrixValue s.formula σ sk = true) →
+        of_ ∈ vars.toList →
+        DeleteDepWitness s.formula of_ on_ sk σ₀ →
+        DeleteIndependenceDescentOutcome s vars on_ sk) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_deleteWitness_descent_step hexi
+  intro of_ sk σ₀ hall hof hwit
+  exact deleteWitness_descent_step_of_good_or_forbidden_paths
+    dqbf cs hfull hon_le hon_univ hpaths
+    (hdescent hall hof hwit)
+
+private theorem complementary_start_paths_to_forbidden_pair
+    {st : CheckState} {on_ badOf : Var} {startPos badPos : Bool}
+    (hpath : DeletePurePath st on_ (mkLit on_ startPos) (mkLit badOf badPos))
+    (hpathCompl :
+      DeletePurePath st on_ (mkLit on_ (!startPos)) (mkLit badOf (!badPos))) :
+    ∃ pos : Bool,
+      DeletePurePath st on_ (mkLit on_ true) (mkLit badOf pos) ∧
+      DeletePurePath st on_ (mkLit on_ false) (mkLit badOf (!pos)) := by
+  cases startPos
+  · refine ⟨!badPos, ?_, ?_⟩
+    · simpa using hpathCompl
+    · simpa using hpath
+  · refine ⟨badPos, ?_, ?_⟩
+    · simpa using hpath
+    · simpa using hpathCompl
+
+private theorem noDeleteCrossPathsSet_complement_start_path_forces_start_nonpath
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {vars : Array Var} {on_ of_ : Var} {startPos pos : Bool}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList)
+    (hpathCompl :
+      DeletePurePath st on_ (mkLit on_ (!startPos)) (mkLit of_ (!pos))) :
+    ¬ DeletePurePath st on_ (mkLit on_ startPos) (mkLit of_ pos) := by
+  intro hpath
+  rcases complementary_start_paths_to_forbidden_pair
+      (st := st) (on_ := on_) (badOf := of_)
+      (startPos := startPos) (badPos := pos) hpath hpathCompl with
+    ⟨badPos, hposPath, hnegPath⟩
+  exact noDeleteCrossPathsSet_not_deletePurePath_pair_of_fullCorrect
+    (dqbf := dqbf) (cs := cs) (st := st) (vars := vars)
+    (on_ := on_) (of_ := of_) (pos := badPos)
+    hfull hon_le hon_univ hpaths hof hposPath hnegPath
+
+private theorem noDeleteCrossPathsSet_orients_seed
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {vars : Array Var} {on_ of_ : Var} {σ : UnivAssignment} {pos : Bool}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList) :
+    (¬ DeletePurePath st on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos)) ∨
+      (¬ DeletePurePath st on_ (mkLit on_ (σ on_)) (mkLit of_ (!pos))) := by
+  classical
+  by_cases hleft :
+      DeletePurePath st on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos)
+  · right
+    intro hright
+    have hpathCompl :
+        DeletePurePath st on_ (mkLit on_ (!(!(σ on_)))) (mkLit of_ (!pos)) := by
+      simpa using hright
+    rcases complementary_start_paths_to_forbidden_pair
+        (st := st) (on_ := on_) (badOf := of_)
+        (startPos := !(σ on_)) (badPos := pos) hleft hpathCompl with
+      ⟨badPos, hposPath, hnegPath⟩
+    exact noDeleteCrossPathsSet_not_deletePurePath_pair_of_fullCorrect
+      (dqbf := dqbf) (cs := cs) (st := st) (vars := vars)
+      (on_ := on_) (of_ := of_) (pos := badPos)
+      hfull hon_le hon_univ hpaths hof hposPath hnegPath
+  · exact Or.inl hleft
+
+private theorem noDeleteCrossPathsSet_path_forces_complement_nonpath
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {vars : Array Var} {on_ of_ : Var} {σ : UnivAssignment} {pos : Bool}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList)
+    (hpath :
+      ∃ startPos,
+        startPos = !(σ on_) ∧
+        DeletePurePath st on_ (mkLit on_ startPos) (mkLit of_ pos)) :
+    ¬ DeletePurePath st on_ (mkLit on_ (σ on_)) (mkLit of_ (!pos)) := by
+  rcases hpath with ⟨startPos, hstart, hpath⟩
+  have hpath' :
+      DeletePurePath st on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) := by
+    subst startPos
+    exact hpath
+  rcases noDeleteCrossPathsSet_orients_seed
+      (dqbf := dqbf) (cs := cs) (st := st) (vars := vars)
+      (on_ := on_) (of_ := of_) (σ := σ) (pos := pos)
+      hfull hon_le hon_univ hpaths hof with
+    hleft | hright
+  · exact False.elim (hleft hpath')
+  · exact hright
+
+private theorem noDeleteCrossPathsSet_complement_path_forces_seed_nonpath
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {vars : Array Var} {on_ of_ : Var} {σ : UnivAssignment} {pos : Bool}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList)
+    (hpath :
+      DeletePurePath st on_ (mkLit on_ (σ on_)) (mkLit of_ (!pos))) :
+    ¬ DeletePurePath st on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) := by
+  rcases noDeleteCrossPathsSet_orients_seed
+      (dqbf := dqbf) (cs := cs) (st := st) (vars := vars)
+      (on_ := on_) (of_ := of_) (σ := σ) (pos := pos)
+      hfull hon_le hon_univ hpaths hof with
+    hleft | hright
+  · exact hleft
+  · exact False.elim (hright hpath)
+
+private theorem deleteDepWitness_oriented_seed_of_lit_values
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {vars : Array Var} {on_ of_ : Var} {sk : SkolemAssignment}
+    {σ₀ : UnivAssignment} {pos : Bool}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness st.formula of_ on_ sk σ₀)
+    (hseed : st.formula.litValue σ₀ sk (mkLit of_ pos) = true)
+    (hflip :
+      st.formula.litValue (flipUniv on_ σ₀) sk (mkLit of_ (!pos)) = true) :
+    ∃ σSeed posSeed,
+      DeleteDepWitness st.formula of_ on_ sk σSeed ∧
+      st.formula.litValue σSeed sk (mkLit of_ posSeed) = true ∧
+      st.formula.litValue (flipUniv on_ σSeed) sk
+        (mkLit of_ (!posSeed)) = true ∧
+      ¬ DeletePurePath st on_
+        (mkLit on_ (!(σSeed on_))) (mkLit of_ posSeed) := by
+  rcases noDeleteCrossPathsSet_orients_seed
+      (dqbf := dqbf) (cs := cs) (st := st) (vars := vars)
+      (on_ := on_) (of_ := of_) (σ := σ₀) (pos := pos)
+      hfull hon_le hon_univ hpaths hof with
+    hleft | hright
+  · exact ⟨σ₀, pos, hwit, hseed, hflip, hleft⟩
+  · refine ⟨flipUniv on_ σ₀, !pos, ?_, hflip, ?_, ?_⟩
+    · exact (deleteDepWitness_flipUniv_iff st.formula of_ on_ sk σ₀).2 hwit
+    · simpa [flipUniv_involutive] using hseed
+    · simpa [flipUniv] using hright
+
+private theorem deleteDepWitness_has_oriented_seed
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {vars : Array Var} {on_ of_ : Var} {sk : SkolemAssignment}
+    {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness st.formula of_ on_ sk σ₀) :
+    ∃ σSeed posSeed,
+      DeleteDepWitness st.formula of_ on_ sk σSeed ∧
+      st.formula.litValue σSeed sk (mkLit of_ posSeed) = true ∧
+      st.formula.litValue (flipUniv on_ σSeed) sk
+        (mkLit of_ (!posSeed)) = true ∧
+      ¬ DeletePurePath st on_
+        (mkLit on_ (!(σSeed on_))) (mkLit of_ posSeed) := by
+  let pos := st.formula.varValue σ₀ sk of_
+  have hpair :=
+    deleteDepWitness_mkLit_value_pair st.formula of_ on_ sk σ₀ hwit
+  exact deleteDepWitness_oriented_seed_of_lit_values
+      (dqbf := dqbf) (cs := cs) (st := st) (vars := vars)
+      (on_ := on_) (of_ := of_) (sk := sk) (σ₀ := σ₀) (pos := pos)
+      hfull hon_le hon_univ hpaths hof hwit hpair.1 hpair.2
+
+private theorem litValue_mkLit_true_true_pos_eq
+    (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (v : Var) {p q : Bool}
+    (hp : f.litValue σ sk (mkLit v p) = true)
+    (hq : f.litValue σ sk (mkLit v q) = true) :
+    p = q := by
+  cases p <;> cases q
+  · rfl
+  · rw [litValue_mkLit_false] at hp
+    rw [litValue_mkLit_true] at hq
+    cases hv : f.varValue σ sk v <;> simp [hv] at hp hq
+  · rw [litValue_mkLit_true] at hp
+    rw [litValue_mkLit_false] at hq
+    cases hv : f.varValue σ sk v <;> simp [hv] at hp hq
+  · rfl
+
+private theorem localPatchFailure_extract_paperData
+    {s : CheckState} {on_ of_ : Var}
+    (hexi_of : s.formula.isVarExistential of_ = true)
+    (hcontains_of : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (sk : SkolemAssignment)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ sk = true)
+    (σ₀ : UnivAssignment)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀)
+    (σ : UnivAssignment)
+    (hfalse :
+      s.clauses.matrixValue s.formula σ
+        (patchDeleteWitnessAt s.formula of_ σ₀ sk) = false) :
+    ∃ cref c pos,
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σ₀ on_ ∧
+      s.formula.litValue σ₀ sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σ₀) sk (mkLit of_ (!pos)) = true := by
+  rcases matrixValue_patchDeleteWitnessAt_false_implies_changed_lit
+      s.formula s.clauses of_ σ₀ σ sk hall hfalse with
+    ⟨cref, c, l, hget, hlmem, hlvar, hltrue, hlfalse⟩
+  have hfullArgs :
+      fullDepArgs s.formula of_ σ = fullDepArgs s.formula of_ σ₀ :=
+    litValue_patchDeleteWitnessAt_changed_implies_fullDepArgs_eq
+      s.formula of_ σ₀ σ sk l hexi_of hlvar hltrue hlfalse
+  have hon_eq : σ on_ = σ₀ on_ :=
+    fullDepArgs_eq_implies_on_eq_of_contains
+      s.formula of_ on_ σ σ₀ hcontains_of hfullArgs
+  let pos := s.formula.varValue σ₀ sk of_
+  have hchanged_lit : l = mkLit of_ pos := by
+    simpa [pos] using
+      litValue_patchDeleteWitnessAt_changed_implies_lit_eq_seed
+        s.formula of_ σ₀ σ sk l hexi_of hlvar hltrue hlfalse
+  have hseed_endpoint :
+      s.formula.litValue σ₀ sk (mkLit of_ pos) = true := by
+    simpa [pos] using
+      (deleteDepWitness_mkLit_value_pair
+        s.formula of_ on_ sk σ₀ hwit).1
+  have hflip_endpoint :
+      s.formula.litValue (flipUniv on_ σ₀) sk
+        (mkLit of_ (!pos)) = true := by
+    simpa [pos] using
+      (deleteDepWitness_mkLit_value_pair
+        s.formula of_ on_ sk σ₀ hwit).2
+  have hmem_changed : mkLit of_ pos ∈ c.lits.toList := by
+    simpa [hchanged_lit] using hlmem
+  exact ⟨cref, c, pos, hget, hmem_changed, hon_eq,
+    hseed_endpoint, hflip_endpoint⟩
+
+private theorem localPatchFailure_extract_clauseShape
+    {s : CheckState} {on_ of_ : Var}
+    (hexi_of : s.formula.isVarExistential of_ = true)
+    (hcontains_of : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (sk : SkolemAssignment)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ sk = true)
+    (σ₀ : UnivAssignment)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀)
+    (σ : UnivAssignment)
+    (hfalse :
+      s.clauses.matrixValue s.formula σ
+        (patchDeleteWitnessAt s.formula of_ σ₀ sk) = false) :
+    ∃ cref c pos,
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σ₀ on_ ∧
+      s.formula.litValue σ₀ sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σ₀) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) := by
+  rcases matrixValue_false_implies_exists_false_clause
+      s.formula s.clauses σ (patchDeleteWitnessAt s.formula of_ σ₀ sk) hfalse with
+    ⟨cref, c, hget, hclause_false⟩
+  have hclause_true : s.formula.clauseValue σ sk c.lits = true :=
+    clauseValue_of_matrixValue s.formula s.clauses σ sk cref c (hall σ) hget
+  rcases clauseValue_true_false_implies_exists_changed_lit_in_patch
+      s.formula of_ σ₀ σ sk c.lits hclause_true hclause_false with
+    ⟨changed, hchanged_mem, hchanged_var, hchanged_true, hchanged_false⟩
+  have hfullArgs :
+      fullDepArgs s.formula of_ σ = fullDepArgs s.formula of_ σ₀ :=
+    litValue_patchDeleteWitnessAt_changed_implies_fullDepArgs_eq
+      s.formula of_ σ₀ σ sk changed hexi_of hchanged_var
+        hchanged_true hchanged_false
+  have hon_eq : σ on_ = σ₀ on_ :=
+    fullDepArgs_eq_implies_on_eq_of_contains
+      s.formula of_ on_ σ σ₀ hcontains_of hfullArgs
+  let pos := s.formula.varValue σ₀ sk of_
+  have hchanged_lit : changed = mkLit of_ pos := by
+    simpa [pos] using
+      litValue_patchDeleteWitnessAt_changed_implies_lit_eq_seed
+        s.formula of_ σ₀ σ sk changed hexi_of hchanged_var
+          hchanged_true hchanged_false
+  have htarget_true_at_sigma :
+      s.formula.litValue σ sk (mkLit of_ pos) = true := by
+    simpa [hchanged_lit] using hchanged_true
+  have hseed_endpoint :
+      s.formula.litValue σ₀ sk (mkLit of_ pos) = true := by
+    simpa [pos] using
+      (deleteDepWitness_mkLit_value_pair
+        s.formula of_ on_ sk σ₀ hwit).1
+  have hflip_endpoint :
+      s.formula.litValue (flipUniv on_ σ₀) sk
+        (mkLit of_ (!pos)) = true := by
+    simpa [pos] using
+      (deleteDepWitness_mkLit_value_pair
+        s.formula of_ on_ sk σ₀ hwit).2
+  have hfullArgs_flip :
+      fullDepArgs s.formula of_ (flipUniv on_ σ) =
+        fullDepArgs s.formula of_ (flipUniv on_ σ₀) :=
+    fullDepArgs_flipUniv_eq_of_fullDepArgs_eq
+      s.formula of_ on_ σ σ₀ hfullArgs
+  have hvar_flip :
+      s.formula.varValue (flipUniv on_ σ) sk of_ =
+        s.formula.varValue (flipUniv on_ σ₀) sk of_ :=
+    varValue_eq_of_fullDepArgs_eq
+      s.formula of_ (flipUniv on_ σ) (flipUniv on_ σ₀)
+      sk hexi_of hfullArgs_flip
+  have hflip_endpoint_sigma :
+      s.formula.litValue (flipUniv on_ σ) sk
+        (mkLit of_ (!pos)) = true := by
+    cases hpos : pos
+    · have hflip' :
+          s.formula.litValue (flipUniv on_ σ₀) sk (mkLit of_ true) = true := by
+        simpa [hpos] using hflip_endpoint
+      have hflip_var :
+          s.formula.varValue (flipUniv on_ σ₀) sk of_ = true := by
+        simpa [litValue_mkLit_true] using hflip'
+      have hgoal_var :
+          s.formula.varValue (flipUniv on_ σ) sk of_ = true := by
+        rw [hvar_flip]
+        exact hflip_var
+      simpa [hpos, litValue_mkLit_true] using hgoal_var
+    · have hflip' :
+          s.formula.litValue (flipUniv on_ σ₀) sk (mkLit of_ false) = true := by
+        simpa [hpos] using hflip_endpoint
+      have hflip_var :
+          !(s.formula.varValue (flipUniv on_ σ₀) sk of_) = true := by
+        simpa [litValue_mkLit_false] using hflip'
+      have hgoal_var :
+          !(s.formula.varValue (flipUniv on_ σ) sk of_) = true := by
+        rw [hvar_flip]
+        exact hflip_var
+      simpa [hpos, litValue_mkLit_false] using hgoal_var
+  have hpatched_false :
+      ∀ l ∈ c.lits.toList,
+        s.formula.litValue σ
+          (patchDeleteWitnessAt s.formula of_ σ₀ sk) l = false :=
+    clauseValue_false_implies_all_lits_false_early
+      s.formula σ (patchDeleteWitnessAt s.formula of_ σ₀ sk)
+      c.lits hclause_false
+  have hothers_false :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false := by
+    intro l hl hne_target
+    by_cases hvar : l.var = of_
+    · have hsame_var : l.var = (mkLit of_ pos).var := by
+        simpa [mkLit_var_early] using hvar
+      rcases literal_eq_or_negate_of_same_var l (mkLit of_ pos) hsame_var with hEq | hNeg
+      · exact False.elim (hne_target hEq)
+      · rw [hNeg, litValue_negate_early s.formula σ sk (mkLit of_ pos),
+          htarget_true_at_sigma]
+        rfl
+    · have hpatched_l_false := hpatched_false l hl
+      rw [litValue_patchDeleteWitnessAt_eq_of_ne_var
+        s.formula of_ σ₀ σ sk l hvar] at hpatched_l_false
+      exact hpatched_l_false
+  have hno_compl :
+      ∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList := by
+    intro l hl hneg
+    have htaut :
+        s.formula.clauseValue σ
+          (patchDeleteWitnessAt s.formula of_ σ₀ sk) c.lits = true :=
+      clauseValue_true_of_mem_lit_and_negate
+        s.formula σ (patchDeleteWitnessAt s.formula of_ σ₀ sk)
+        (lits := c.lits) (l := l) hl hneg
+    rw [hclause_false] at htaut
+    cases htaut
+  have hmem_changed : mkLit of_ pos ∈ c.lits.toList := by
+    simpa [hchanged_lit] using hchanged_mem
+  exact ⟨cref, c, pos, hget, hmem_changed, hon_eq,
+    hseed_endpoint, hflip_endpoint, hflip_endpoint_sigma, hno_compl,
+    hothers_false⟩
+
+private theorem clauseShape_flip_has_other_true_lit
+    {s : CheckState} {on_ of_ : Var}
+    (sk : SkolemAssignment)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ sk = true)
+    (σ₀ : UnivAssignment)
+    {cref : CRef} {c : Clause} {pos : Bool}
+    (hget : s.clauses.getClause cref = some c)
+    (hflip :
+      s.formula.litValue (flipUniv on_ σ₀) sk (mkLit of_ (!pos)) = true) :
+    ∃ l ∈ c.lits.toList,
+      l ≠ mkLit of_ pos ∧
+      s.formula.litValue (flipUniv on_ σ₀) sk l = true := by
+  have hclause_true :
+      s.formula.clauseValue (flipUniv on_ σ₀) sk c.lits = true :=
+    clauseValue_of_matrixValue s.formula s.clauses (flipUniv on_ σ₀) sk
+      cref c (hall (flipUniv on_ σ₀)) hget
+  rcases clauseValue_true_implies_exists_true_lit
+      s.formula (flipUniv on_ σ₀) sk c.lits hclause_true with
+    ⟨l, hlmem, hltrue⟩
+  refine ⟨l, hlmem, ?_, hltrue⟩
+  intro hEq
+  have htarget_false :
+      s.formula.litValue (flipUniv on_ σ₀) sk (mkLit of_ pos) = false := by
+    cases pos <;> simpa [litValue_mkLit_true, litValue_mkLit_false] using hflip
+  subst l
+  rw [htarget_false] at hltrue
+  cases hltrue
+
+private theorem clauseShape_flipSigma_has_changed_other_lit
+    {s : CheckState} {on_ of_ : Var}
+    (sk : SkolemAssignment)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ sk = true)
+    (σ : UnivAssignment)
+    {cref : CRef} {c : Clause} {pos : Bool}
+    (hget : s.clauses.getClause cref = some c)
+    (hflip :
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true)
+    (hothers :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) :
+    ∃ l ∈ c.lits.toList,
+      l ≠ mkLit of_ pos ∧
+      s.formula.litValue σ sk l = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk l = true := by
+  have hclause_true :
+      s.formula.clauseValue (flipUniv on_ σ) sk c.lits = true :=
+    clauseValue_of_matrixValue s.formula s.clauses (flipUniv on_ σ) sk
+      cref c (hall (flipUniv on_ σ)) hget
+  rcases clauseValue_true_implies_exists_true_lit
+      s.formula (flipUniv on_ σ) sk c.lits hclause_true with
+    ⟨l, hlmem, hltrue⟩
+  have htarget_false :
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ pos) = false := by
+    cases pos <;> simpa [litValue_mkLit_true, litValue_mkLit_false] using hflip
+  have hne : l ≠ mkLit of_ pos := by
+    intro hEq
+    subst l
+    rw [htarget_false] at hltrue
+    cases hltrue
+  exact ⟨l, hlmem, hne, hothers l hlmem hne, hltrue⟩
+
+private theorem clauseShape_flipSigma_has_classified_other_lit
+    {s : CheckState} {on_ of_ : Var}
+    (sk : SkolemAssignment)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ sk = true)
+    (σ : UnivAssignment)
+    {cref : CRef} {c : Clause} {pos : Bool}
+    (hget : s.clauses.getClause cref = some c)
+    (hflip :
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true)
+    (hothers :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) :
+    ∃ l ∈ c.lits.toList,
+      l ≠ mkLit of_ pos ∧
+      s.formula.litValue σ sk l = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk l = true ∧
+      DeleteDepWitness s.formula l.var on_ sk σ ∧
+      ((s.formula.isVarExistential l.var = true ∧
+          (s.formula.depset.getD l.var #[]).contains on_ = true) ∨
+        (s.formula.isVarExistential l.var = false ∧ l.var = on_)) := by
+  rcases clauseShape_flipSigma_has_changed_other_lit
+      (s := s) (on_ := on_) (of_ := of_) sk hall σ hget hflip hothers with
+    ⟨l, hlmem, hlne, hlfalse, hltrue⟩
+  have hwit : DeleteDepWitness s.formula l.var on_ sk σ :=
+    deleteDepWitness_of_litValue_false_true_flip
+      s.formula on_ σ sk l hlfalse hltrue
+  refine ⟨l, hlmem, hlne, hlfalse, hltrue, hwit, ?_⟩
+  by_cases hexi : s.formula.isVarExistential l.var = true
+  · left
+    exact ⟨hexi,
+      litValue_false_true_flip_existential_contains
+        s.formula on_ σ sk l hexi hlfalse hltrue⟩
+  · right
+    have huniv : s.formula.isVarExistential l.var = false := by
+      cases h : s.formula.isVarExistential l.var <;> simp_all
+    exact ⟨huniv,
+      litValue_false_true_flip_universal_eq_on
+        s.formula on_ σ sk l huniv hlfalse hltrue⟩
+
+private theorem clauseShape_flipSigma_gives_initial_path_or_dependent_tail
+    {s : CheckState} {on_ of_ : Var}
+    (sk : SkolemAssignment)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ sk = true)
+    (σ : UnivAssignment)
+    {cref : CRef} {c : Clause} {pos : Bool}
+    (hget : s.clauses.getClause cref = some c)
+    (htarget : mkLit of_ pos ∈ c.lits.toList)
+    (hnoCompl : ∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList)
+    (hof_ne : of_ ≠ on_)
+    (hexi_of : s.formula.isVarExistential of_ = true)
+    (hcontains_of : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hflip :
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true)
+    (hothers :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) :
+    (∃ startPos,
+      DeletePurePath s on_ (mkLit on_ startPos) (mkLit of_ pos)) ∨
+    (∃ nextOf nextPos,
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true) := by
+  rcases clauseShape_flipSigma_has_classified_other_lit
+      (s := s) (on_ := on_) (of_ := of_) sk hall σ hget hflip hothers with
+    ⟨l, hlmem, hlne, hlfalse, hltrue, _hwit, hclass⟩
+  rcases hclass with hExi | hUniv
+  · rcases hExi with ⟨hexi_l, hdep_l⟩
+    right
+    let nextOf := l.var
+    let nextPos := l.isPos
+    have hl_eq : l = mkLit nextOf nextPos := by
+      simpa [nextOf, nextPos] using literal_eq_mkLit_var_isPos l
+    have hnext_ne : nextOf ≠ of_ := by
+      intro hEq
+      have hvar_ne :
+          l.var ≠ (mkLit of_ pos).var :=
+        noCompl_other_lit_var_ne htarget hlmem hlne hnoCompl
+      have htarget_var : (mkLit of_ pos).var = of_ :=
+        mkLit_var_early of_ pos
+      exact hvar_ne (by
+        rw [htarget_var]
+        exact hEq)
+    refine ⟨nextOf, nextPos, hnext_ne, ?_, ?_, ?_, ?_, ?_⟩
+    · simpa [← hl_eq] using hlmem
+    · simpa [nextOf] using hexi_l
+    · simpa [nextOf] using hdep_l
+    · simpa [← hl_eq] using hlfalse
+    · simpa [← hl_eq] using hltrue
+  · rcases hUniv with ⟨_, hvar_on⟩
+    left
+    rcases deletePurePath_first_of_universal_clause_lit
+        (st := s) (on_ := on_) (of_ := of_) (targetPos := pos)
+        (start := l) hget hlmem hvar_on hnoCompl htarget
+        hof_ne hexi_of hcontains_of with
+      ⟨startPos, _hstart_eq, hpath⟩
+    exact ⟨startPos, hpath⟩
+
+private theorem clauseShape_flipSigma_gives_polarized_initial_path_or_dependent_tail
+    {s : CheckState} {on_ of_ : Var}
+    (sk : SkolemAssignment)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ sk = true)
+    (σ : UnivAssignment)
+    {cref : CRef} {c : Clause} {pos : Bool}
+    (hget : s.clauses.getClause cref = some c)
+    (htarget : mkLit of_ pos ∈ c.lits.toList)
+    (hnoCompl : ∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList)
+    (hof_ne : of_ ≠ on_)
+    (hexi_of : s.formula.isVarExistential of_ = true)
+    (hcontains_of : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hflip :
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true)
+    (hothers :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) :
+    (∃ startPos,
+      startPos = !(σ on_) ∧
+      DeletePurePath s on_ (mkLit on_ startPos) (mkLit of_ pos)) ∨
+    (∃ nextOf nextPos,
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true) := by
+  rcases clauseShape_flipSigma_has_classified_other_lit
+      (s := s) (on_ := on_) (of_ := of_) sk hall σ hget hflip hothers with
+    ⟨l, hlmem, hlne, hlfalse, hltrue, _hwit, hclass⟩
+  rcases hclass with hExi | hUniv
+  · rcases hExi with ⟨hexi_l, hdep_l⟩
+    right
+    let nextOf := l.var
+    let nextPos := l.isPos
+    have hl_eq : l = mkLit nextOf nextPos := by
+      simpa [nextOf, nextPos] using literal_eq_mkLit_var_isPos l
+    have hnext_ne : nextOf ≠ of_ := by
+      intro hEq
+      have hvar_ne :
+          l.var ≠ (mkLit of_ pos).var :=
+        noCompl_other_lit_var_ne htarget hlmem hlne hnoCompl
+      have htarget_var : (mkLit of_ pos).var = of_ :=
+        mkLit_var_early of_ pos
+      exact hvar_ne (by
+        rw [htarget_var]
+        exact hEq)
+    refine ⟨nextOf, nextPos, hnext_ne, ?_, ?_, ?_, ?_, ?_⟩
+    · simpa [← hl_eq] using hlmem
+    · simpa [nextOf] using hexi_l
+    · simpa [nextOf] using hdep_l
+    · simpa [← hl_eq] using hlfalse
+    · simpa [← hl_eq] using hltrue
+  · rcases hUniv with ⟨huniv_l, hvar_on⟩
+    left
+    have hon_univ : s.formula.isVarExistential on_ = false := by
+      simpa [hvar_on] using huniv_l
+    rcases deletePurePath_first_of_universal_changed_clause_lit
+        (st := s) (on_ := on_) (of_ := of_) (targetPos := pos)
+        (start := l) (σ := σ) (sk := sk) hon_univ hget hlmem hvar_on
+        hlfalse hnoCompl htarget hof_ne hexi_of hcontains_of with
+      ⟨startPos, hstart, _hstart_eq, hpath⟩
+    exact ⟨startPos, hstart, hpath⟩
+
+private theorem clauseShape_flipSigma_gives_path_or_tail_witness
+    {s : CheckState} {on_ of_ : Var}
+    (sk : SkolemAssignment)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ sk = true)
+    (σ : UnivAssignment)
+    {cref : CRef} {c : Clause} {pos : Bool}
+    (hget : s.clauses.getClause cref = some c)
+    (htarget : mkLit of_ pos ∈ c.lits.toList)
+    (hnoCompl : ∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList)
+    (hof_ne : of_ ≠ on_)
+    (hexi_of : s.formula.isVarExistential of_ = true)
+    (hcontains_of : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hflip :
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true)
+    (hothers :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) :
+    (∃ startPos,
+      startPos = !(σ on_) ∧
+      DeletePurePath s on_ (mkLit on_ startPos) (mkLit of_ pos)) ∨
+    (∃ nextOf nextPos,
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ) := by
+  rcases clauseShape_flipSigma_gives_polarized_initial_path_or_dependent_tail
+      (s := s) (on_ := on_) (of_ := of_) sk hall σ hget htarget
+      hnoCompl hof_ne hexi_of hcontains_of hflip hothers with
+    hpath | htail
+  · exact Or.inl hpath
+  · right
+    rcases htail with
+      ⟨nextOf, nextPos, hne, hmem, hexi_next, hdep_next, hfalse, htrue⟩
+    refine ⟨nextOf, nextPos, hne, hmem, hexi_next, hdep_next,
+      hfalse, htrue, ?_⟩
+    simpa [mkLit_var_early] using
+      deleteDepWitness_of_litValue_false_true_flip
+        s.formula on_ σ sk (mkLit nextOf nextPos) hfalse htrue
+
+private theorem deletePurePath_step_from_opposite_target_tail
+    {st : CheckState} {on_ of_ nextOf : Var}
+    {startPos pos nextPos : Bool}
+    {cref : CRef} {clause : Clause}
+    (hprev :
+      DeletePurePath st on_ (mkLit on_ startPos) (mkLit of_ (!pos)))
+    (hget : st.clauses.getClause cref = some clause)
+    (htarget : mkLit of_ pos ∈ clause.lits.toList)
+    (hnoStartNeg : (mkLit on_ startPos).negate ∉ clause.lits.toList)
+    (hnext : mkLit nextOf nextPos ∈ clause.lits.toList)
+    (hnext_ne : nextOf ≠ of_)
+    (hexi : st.formula.isVarExistential nextOf = true)
+    (hdep : (st.formula.depset.getD nextOf #[]).contains on_ = true) :
+    DeletePurePath st on_ (mkLit on_ startPos) (mkLit nextOf nextPos) := by
+  have hcur : (mkLit of_ (!pos)).negate ∈ clause.lits.toList := by
+    simpa [mkLit_negate] using htarget
+  exact deletePurePath_step_mkLit_of_var_ne
+    hprev hget hcur hnoStartNeg hnext hnext_ne hexi hdep
+
+private theorem noStartNeg_of_false_other_literals
+    {s : CheckState} {on_ of_ : Var}
+    {startPos pos : Bool} {c : Clause}
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hof_ne : of_ ≠ on_)
+    (hstartNeg_true :
+      s.formula.litValue σ sk (mkLit on_ startPos).negate = true)
+    (hothers :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) :
+    (mkLit on_ startPos).negate ∉ c.lits.toList := by
+  intro hmem
+  have hne : (mkLit on_ startPos).negate ≠ mkLit of_ pos := by
+    intro hEq
+    have hvar := congrArg Literal.var hEq
+    rw [literal_negate_var, mkLit_var_early, mkLit_var_early] at hvar
+    exact hof_ne hvar.symm
+  have hfalse := hothers (mkLit on_ startPos).negate hmem hne
+  rw [hstartNeg_true] at hfalse
+  cases hfalse
+
+private theorem litValue_start_neg_true_of_start_eq_not_sigma
+    {s : CheckState} {on_ : Var} {startPos : Bool}
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hstart : startPos = !(σ on_)) :
+    s.formula.litValue σ sk (mkLit on_ startPos).negate = true := by
+  subst startPos
+  cases hσ : σ on_ <;>
+    simp [mkLit_negate, litValue_mkLit_true, litValue_mkLit_false,
+      DQBF.varValue, hon_univ, hσ]
+
+private theorem clauseShape_tail_extends_polarized_path
+    {s : CheckState} {on_ of_ nextOf : Var}
+    {startPos pos nextPos : Bool} {cref : CRef} {c : Clause}
+    (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hof_ne : of_ ≠ on_)
+    (hstart : startPos = !(σ on_))
+    (hprev : DeletePurePath s on_ (mkLit on_ startPos) (mkLit of_ (!pos)))
+    (hget : s.clauses.getClause cref = some c)
+    (htarget : mkLit of_ pos ∈ c.lits.toList)
+    (hnext : mkLit nextOf nextPos ∈ c.lits.toList)
+    (hnext_ne : nextOf ≠ of_)
+    (hexi_next : s.formula.isVarExistential nextOf = true)
+    (hdep_next : (s.formula.depset.getD nextOf #[]).contains on_ = true)
+    (hothers :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) :
+    DeletePurePath s on_ (mkLit on_ startPos) (mkLit nextOf nextPos) := by
+  have hstartNeg_true :
+      s.formula.litValue σ sk (mkLit on_ startPos).negate = true :=
+    litValue_start_neg_true_of_start_eq_not_sigma
+      (s := s) (on_ := on_) (startPos := startPos)
+      σ sk hon_univ hstart
+  have hnoStartNeg :
+      (mkLit on_ startPos).negate ∉ c.lits.toList :=
+    noStartNeg_of_false_other_literals
+      (s := s) (on_ := on_) (of_ := of_) (startPos := startPos)
+      (pos := pos) (c := c) σ sk hof_ne hstartNeg_true hothers
+  exact deletePurePath_step_from_opposite_target_tail
+    (st := s) (on_ := on_) (of_ := of_) (nextOf := nextOf)
+    (startPos := startPos) (pos := pos) (nextPos := nextPos)
+    hprev hget htarget hnoStartNeg hnext hnext_ne hexi_next hdep_next
+
+private theorem ne_on_of_gt_on_mem
+    {vars : Array Var} {on_ of_ : Var}
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hof : of_ ∈ vars.toList) :
+    of_ ≠ on_ :=
+  Nat.ne_of_gt (hgt of_ hof)
+
+private theorem clauseShape_continuation_input_gives_path_or_tail_witness
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ : UnivAssignment}
+    {cref : CRef} {c : Clause} {pos : Bool}
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hget : s.clauses.getClause cref = some c)
+    (hmem : mkLit of_ pos ∈ c.lits.toList)
+    (hflip_sigma :
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true)
+    (hno_compl : ∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList)
+    (hothers :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) :
+    (∃ startPos,
+      startPos = !(σ on_) ∧
+      DeletePurePath s on_ (mkLit on_ startPos) (mkLit of_ pos)) ∨
+    (∃ nextOf nextPos,
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ) := by
+  exact clauseShape_flipSigma_gives_path_or_tail_witness
+    (s := s) (on_ := on_) (of_ := of_) sk hall σ hget hmem hno_compl
+    (ne_on_of_gt_on_mem hgt hof) (hexi of_ hof) (hcontains of_ hof)
+    hflip_sigma hothers
+
+private theorem localPatchFailure_extract_path_or_tail_witness
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hall : ∀ τ, s.clauses.matrixValue s.formula τ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀)
+    {σ : UnivAssignment}
+    (hfalse :
+      s.clauses.matrixValue s.formula σ
+        (patchDeleteWitnessAt s.formula of_ σ₀ sk) = false) :
+    ∃ cref c pos,
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σ₀ on_ ∧
+      s.formula.litValue σ₀ sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σ₀) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ((∃ startPos,
+        startPos = !(σ on_) ∧
+        DeletePurePath s on_ (mkLit on_ startPos) (mkLit of_ pos)) ∨
+      (∃ nextOf nextPos,
+        nextOf ≠ of_ ∧
+        mkLit nextOf nextPos ∈ c.lits.toList ∧
+        s.formula.isVarExistential nextOf = true ∧
+        (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+        s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+        s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+        DeleteDepWitness s.formula nextOf on_ sk σ)) := by
+  rcases localPatchFailure_extract_clauseShape
+      (s := s) (on_ := on_) (of_ := of_)
+      (hexi of_ hof) (hcontains of_ hof) sk hall σ₀ hwit σ hfalse with
+    ⟨cref, c, pos, hget, hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers⟩
+  have hpathOrTail :=
+    clauseShape_continuation_input_gives_path_or_tail_witness
+      (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+      (sk := sk) (σ := σ) (cref := cref) (c := c) (pos := pos)
+      hgt hexi hcontains hall hof hget hmem hflip_sigma hno_compl hothers
+  exact ⟨cref, c, pos, hget, hmem, hon_eq, hseed, hflip, hflip_sigma,
+    hno_compl, hothers, hpathOrTail⟩
+
+private theorem deleteWitness_or_patch_preserves_or_oriented_path_or_tail
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ σSeed posSeed,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.formula.litValue σSeed sk (mkLit of_ posSeed) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk
+        (mkLit of_ (!posSeed)) = true ∧
+      ¬ DeletePurePath s on_
+        (mkLit on_ (!(σSeed on_))) (mkLit of_ posSeed) ∧
+      ∀ σ, s.clauses.matrixValue s.formula σ
+        (patchDeleteWitnessAt s.formula of_ σSeed sk) = true) ∨
+    (∃ σSeed σ cref c pos,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      ((∃ startPos,
+        startPos = !(σ on_) ∧
+        DeletePurePath s on_ (mkLit on_ startPos) (mkLit of_ pos)) ∨
+      (∃ nextOf nextPos,
+        nextOf ≠ of_ ∧
+        mkLit nextOf nextPos ∈ c.lits.toList ∧
+        s.formula.isVarExistential nextOf = true ∧
+        (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+        s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+        s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+        DeleteDepWitness s.formula nextOf on_ sk σ))) := by
+  rcases deleteDepWitness_has_oriented_seed
+      (dqbf := dqbf) (cs := cs) (st := s) (vars := vars)
+      (on_ := on_) (of_ := of_) (sk := sk) (σ₀ := σ₀)
+      hfull hon_le hon_univ hpaths hof hwit with
+    ⟨σSeed, posSeed, hwitSeed, hseedSeed, hflipSeed, hnoSeedPath⟩
+  by_cases hfail :
+      ∃ σ, s.clauses.matrixValue s.formula σ
+        (patchDeleteWitnessAt s.formula of_ σSeed sk) = false
+  · right
+    rcases hfail with ⟨σ, hfalse⟩
+    rcases localPatchFailure_extract_path_or_tail_witness
+        (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+        (sk := sk) (σ₀ := σSeed)
+        hgt hexi hcontains hall hof hwitSeed hfalse with
+      ⟨cref, c, pos, hget, hmem, hon_eq, hseed, hflip, hflip_sigma,
+        hno_compl, hothers, hpathOrTail⟩
+    have hpos_eq : pos = posSeed :=
+      litValue_mkLit_true_true_pos_eq s.formula σSeed sk of_
+        hseed hseedSeed
+    have hno_oriented :
+        ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) := by
+      intro hpath
+      exact hnoSeedPath (by simpa [hon_eq, hpos_eq] using hpath)
+    exact ⟨σSeed, σ, cref, c, pos, hwitSeed, hget, hmem, hon_eq,
+      hseed, hflip, hflip_sigma, hno_compl, hothers, hno_oriented,
+      hpathOrTail⟩
+  · left
+    refine ⟨σSeed, posSeed, hwitSeed, hseedSeed, hflipSeed, hnoSeedPath, ?_⟩
+    intro σ
+    cases hval :
+        s.clauses.matrixValue s.formula σ
+          (patchDeleteWitnessAt s.formula of_ σSeed sk) with
+    | false =>
+        exact False.elim (hfail ⟨σ, hval⟩)
+    | true =>
+        rfl
+
+private theorem deleteWitness_or_patch_preserves_or_oriented_dependent_tail
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ σSeed posSeed,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.formula.litValue σSeed sk (mkLit of_ posSeed) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk
+        (mkLit of_ (!posSeed)) = true ∧
+      ¬ DeletePurePath s on_
+        (mkLit on_ (!(σSeed on_))) (mkLit of_ posSeed) ∧
+      ∀ σ, s.clauses.matrixValue s.formula σ
+        (patchDeleteWitnessAt s.formula of_ σSeed sk) = true) ∨
+    (∃ σSeed σ cref c pos nextOf nextPos,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ) := by
+  rcases deleteWitness_or_patch_preserves_or_oriented_path_or_tail
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hshape
+  · exact Or.inl hgood
+  · right
+    rcases hshape with
+      ⟨σSeed, σ, cref, c, pos, hwitSeed, hget, hmem, hon_eq,
+        hseed, hflip, hflip_sigma, hno_compl, hothers, hno_oriented,
+        hpathOrTail⟩
+    rcases hpathOrTail with hpath | htail
+    · rcases hpath with ⟨startPos, hstart, hpath⟩
+      exact False.elim (hno_oriented (by subst startPos; exact hpath))
+    · rcases htail with
+        ⟨nextOf, nextPos, hnext_ne, hnext_mem, hexi_next,
+          hcontains_next, hnext_false, hnext_true, hwit_next⟩
+      exact ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next⟩
+
+theorem oriented_dependent_tail_forces_next_old_lit_nonpath
+    {s : CheckState} {vars : Array Var} {on_ of_ nextOf : Var}
+    {sk : SkolemAssignment} {σ : UnivAssignment}
+    {cref : CRef} {c : Clause} {pos nextPos : Bool}
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hof : of_ ∈ vars.toList)
+    (hget : s.clauses.getClause cref = some c)
+    (hmem : mkLit of_ pos ∈ c.lits.toList)
+    (hno_oriented :
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos))
+    (hnext_ne : nextOf ≠ of_)
+    (hnext_mem : mkLit nextOf nextPos ∈ c.lits.toList)
+    (hothers :
+      ∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) :
+    ¬ DeletePurePath s on_
+      (mkLit on_ (!(σ on_))) (mkLit nextOf (!nextPos)) := by
+  intro hpath_next_old
+  have hof_ne_on : of_ ≠ on_ := by
+    intro hEq
+    have hcontra : s.formula.isVarExistential of_ = false := by
+      simpa [hEq] using hon_univ
+    have hof_exi : s.formula.isVarExistential of_ = true := hexi of_ hof
+    rw [hcontra] at hof_exi
+    cases hof_exi
+  have hstartNeg_true :
+      s.formula.litValue σ sk (mkLit on_ (!(σ on_))).negate = true :=
+    litValue_start_neg_true_of_start_eq_not_sigma
+      (s := s) (on_ := on_) (startPos := !(σ on_))
+      σ sk hon_univ rfl
+  have hnoStartNeg :
+      (mkLit on_ (!(σ on_))).negate ∉ c.lits.toList :=
+    noStartNeg_of_false_other_literals
+      (s := s) (on_ := on_) (of_ := of_) (startPos := !(σ on_))
+      (pos := pos) (c := c) σ sk hof_ne_on hstartNeg_true hothers
+  have hpath_to_original :
+      DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) := by
+    exact deletePurePath_step_from_opposite_target_tail
+      (st := s) (on_ := on_) (of_ := nextOf) (nextOf := of_)
+      (startPos := !(σ on_)) (pos := nextPos) (nextPos := pos)
+      (cref := cref) (clause := c)
+      hpath_next_old hget hnext_mem hnoStartNeg hmem
+      (Ne.symm hnext_ne) (hexi of_ hof) (hcontains of_ hof)
+  exact hno_oriented hpath_to_original
+
+private theorem deleteWitness_or_patch_preserves_or_oriented_tail_with_next_nonpath
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ σSeed posSeed,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.formula.litValue σSeed sk (mkLit of_ posSeed) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk
+        (mkLit of_ (!posSeed)) = true ∧
+      ¬ DeletePurePath s on_
+        (mkLit on_ (!(σSeed on_))) (mkLit of_ posSeed) ∧
+      ∀ σ, s.clauses.matrixValue s.formula σ
+        (patchDeleteWitnessAt s.formula of_ σSeed sk) = true) ∨
+    (∃ σSeed σ cref c pos nextOf nextPos,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ ∧
+      ¬ DeletePurePath s on_
+        (mkLit on_ (!(σ on_))) (mkLit nextOf (!nextPos))) := by
+  rcases deleteWitness_or_patch_preserves_or_oriented_dependent_tail
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | htail
+  · exact Or.inl hgood
+  · right
+    rcases htail with
+      ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next⟩
+    have hnext_nonpath :
+        ¬ DeletePurePath s on_
+          (mkLit on_ (!(σ on_))) (mkLit nextOf (!nextPos)) :=
+      oriented_dependent_tail_forces_next_old_lit_nonpath
+        (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+        (nextOf := nextOf) (sk := sk) (σ := σ) (cref := cref)
+        (c := c) (pos := pos) (nextPos := nextPos)
+        hon_univ hexi hcontains hof hget hmem hno_oriented hnext_ne
+        hnext_mem hothers
+    exact ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, hwitSeed, hget,
+      hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+      hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+      hnext_false, hnext_true, hwit_next, hnext_nonpath⟩
+
+private theorem deleteWitness_descent_step_of_second_distinct_patch_preserves
+    {s : CheckState} {vars : Array Var} {on_ of_ nextOf : Var}
+    {sk : SkolemAssignment} {σ₀ σ : UnivAssignment}
+    (hof : of_ ∈ vars.toList)
+    (hnext_ne : nextOf ≠ of_)
+    (hexi_of : s.formula.isVarExistential of_ = true)
+    (hcontains_of : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hwit_of : DeleteDepWitness s.formula of_ on_ sk σ₀)
+    (hexi_next : s.formula.isVarExistential nextOf = true)
+    (hcontains_next : (s.formula.depset.getD nextOf #[]).contains on_ = true)
+    (hwit_next : DeleteDepWitness s.formula nextOf on_ sk σ)
+    (hpatch :
+      ∀ τ, s.clauses.matrixValue s.formula τ
+        (patchDeleteWitnessAt s.formula nextOf σ
+          (patchDeleteWitnessAt s.formula of_ σ₀ sk)) = true) :
+    ∃ sk',
+      (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk := by
+  refine ⟨patchDeleteWitnessAt s.formula nextOf σ
+      (patchDeleteWitnessAt s.formula of_ σ₀ sk), hpatch, ?_⟩
+  exact deleteWitnessFiberCountSet_second_distinct_patch_lt
+    s.formula vars of_ nextOf on_ σ₀ σ sk hof hnext_ne hexi_of
+    hcontains_of hwit_of hexi_next hcontains_next hwit_next
+
+private theorem deleteWitness_descent_step_or_second_distinct_patch_failure
+    {s : CheckState} {vars : Array Var} {on_ of_ nextOf : Var}
+    {sk : SkolemAssignment} {σ₀ σ : UnivAssignment}
+    (hof : of_ ∈ vars.toList)
+    (hnext_ne : nextOf ≠ of_)
+    (hexi_of : s.formula.isVarExistential of_ = true)
+    (hcontains_of : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hwit_of : DeleteDepWitness s.formula of_ on_ sk σ₀)
+    (hexi_next : s.formula.isVarExistential nextOf = true)
+    (hcontains_next : (s.formula.depset.getD nextOf #[]).contains on_ = true)
+    (hwit_next : DeleteDepWitness s.formula nextOf on_ sk σ) :
+    (∃ sk',
+      (∀ τ, s.clauses.matrixValue s.formula τ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ τ, s.clauses.matrixValue s.formula τ
+      (patchDeleteWitnessAt s.formula nextOf σ
+        (patchDeleteWitnessAt s.formula of_ σ₀ sk)) = false := by
+  classical
+  by_cases hfail :
+      ∃ τ, s.clauses.matrixValue s.formula τ
+        (patchDeleteWitnessAt s.formula nextOf σ
+          (patchDeleteWitnessAt s.formula of_ σ₀ sk)) = false
+  · exact Or.inr hfail
+  · left
+    apply deleteWitness_descent_step_of_second_distinct_patch_preserves
+      (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+      (nextOf := nextOf) (sk := sk) (σ₀ := σ₀) (σ := σ)
+      hof hnext_ne hexi_of hcontains_of hwit_of hexi_next
+      hcontains_next hwit_next
+    intro τ
+    cases hval :
+        s.clauses.matrixValue s.formula τ
+          (patchDeleteWitnessAt s.formula nextOf σ
+            (patchDeleteWitnessAt s.formula of_ σ₀ sk)) with
+    | false =>
+        exact False.elim (hfail ⟨τ, hval⟩)
+    | true =>
+        rfl
+
+private theorem deleteWitness_descent_step_or_oriented_second_patch_failure
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ σSeed σ cref c pos nextOf nextPos τ,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ ∧
+      ¬ DeletePurePath s on_
+        (mkLit on_ (!(σ on_))) (mkLit nextOf (!nextPos)) ∧
+      s.clauses.matrixValue s.formula τ
+        (patchDeleteWitnessAt s.formula nextOf σ
+          (patchDeleteWitnessAt s.formula of_ σSeed sk)) = false := by
+  rcases deleteWitness_or_patch_preserves_or_oriented_tail_with_next_nonpath
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | htail
+  · left
+    rcases hgood with
+      ⟨σSeed, _posSeed, hwitSeed, _hseedSeed, _hflipSeed, _hnoSeedPath, hpatch⟩
+    refine ⟨patchDeleteWitnessAt s.formula of_ σSeed sk, hpatch, ?_⟩
+    exact deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+      s.formula vars of_ on_ σSeed sk hof (hexi of_ hof) (hcontains of_ hof) hwitSeed
+  · rcases htail with
+      ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, hwitSeed, hget, hmem,
+        hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next, hnext_nonpath⟩
+    rcases deleteWitness_descent_step_or_second_distinct_patch_failure
+        (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+        (nextOf := nextOf) (sk := sk) (σ₀ := σSeed) (σ := σ)
+        hof hnext_ne (hexi of_ hof) (hcontains of_ hof) hwitSeed
+        hexi_next hcontains_next hwit_next with
+      hgood | hfail
+    · exact Or.inl hgood
+    · rcases hfail with ⟨τ, hfalse⟩
+      right
+      exact ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next, hnext_nonpath, hfalse⟩
+
+private theorem litValue_two_patch_eq_of_ne_vars
+    (f : DQBF) (of_ nextOf : Var)
+    (σ₀ σ τ : UnivAssignment) (sk : SkolemAssignment) (l : Literal)
+    (hne_of : l.var ≠ of_) (hne_next : l.var ≠ nextOf) :
+    f.litValue τ
+        (patchDeleteWitnessAt f nextOf σ
+          (patchDeleteWitnessAt f of_ σ₀ sk)) l =
+      f.litValue τ sk l := by
+  rw [litValue_patchDeleteWitnessAt_eq_of_ne_var
+      f nextOf σ τ (patchDeleteWitnessAt f of_ σ₀ sk) l hne_next,
+    litValue_patchDeleteWitnessAt_eq_of_ne_var
+      f of_ σ₀ τ sk l hne_of]
+
+def PatchChangedLit
+    (f : DQBF) (cs : ClauseStore) (of_ : Var)
+    (σ₀ τ : UnivAssignment) (sk : SkolemAssignment) : Prop :=
+  ∃ cref c l,
+    cs.getClause cref = some c ∧
+    l ∈ c.lits.toList ∧
+    l.var = of_ ∧
+    f.litValue τ sk l = true ∧
+    f.litValue τ (patchDeleteWitnessAt f of_ σ₀ sk) l = false
+
+def PatchChangedFiber
+    (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
+    (σ₀ τ : UnivAssignment) (sk : SkolemAssignment) : Prop :=
+  PatchChangedLit f cs of_ σ₀ τ sk ∧
+    fullDepArgs f of_ τ = fullDepArgs f of_ σ₀ ∧
+    deleteDepArgs f of_ on_ τ = deleteDepArgs f of_ on_ σ₀ ∧
+    τ on_ = σ₀ on_
+
+def TwoPatchChangedLit
+    (f : DQBF) (cs : ClauseStore) (of_ nextOf : Var)
+    (σ₀ σ τ : UnivAssignment) (sk : SkolemAssignment) : Prop :=
+  ∃ cref c l,
+    cs.getClause cref = some c ∧
+    l ∈ c.lits.toList ∧
+    (l.var = of_ ∨ l.var = nextOf) ∧
+    f.litValue τ sk l = true ∧
+    f.litValue τ
+      (patchDeleteWitnessAt f nextOf σ
+        (patchDeleteWitnessAt f of_ σ₀ sk)) l = false
+
+theorem matrixValue_two_patch_false_implies_changed_lit_in_patched_vars
+    (f : DQBF) (cs : ClauseStore) (of_ nextOf : Var)
+    (σ₀ σ τ : UnivAssignment) (sk : SkolemAssignment)
+    (hall : ∀ ρ, cs.matrixValue f ρ sk = true)
+    (hfalse :
+      cs.matrixValue f τ
+        (patchDeleteWitnessAt f nextOf σ
+          (patchDeleteWitnessAt f of_ σ₀ sk)) = false) :
+    TwoPatchChangedLit f cs of_ nextOf σ₀ σ τ sk := by
+  rcases matrixValue_false_implies_exists_false_clause
+      f cs τ
+      (patchDeleteWitnessAt f nextOf σ
+        (patchDeleteWitnessAt f of_ σ₀ sk)) hfalse with
+    ⟨cref, c, hget, hclause_false⟩
+  have hclause_true : f.clauseValue τ sk c.lits = true :=
+    clauseValue_of_matrixValue f cs τ sk cref c (hall τ) hget
+  rcases clauseValue_true_false_implies_exists_true_false_lit
+      f τ sk
+      (patchDeleteWitnessAt f nextOf σ
+        (patchDeleteWitnessAt f of_ σ₀ sk)) c.lits
+      hclause_true hclause_false with
+    ⟨l, hlmem, hltrue, hlfalse⟩
+  have hvar : l.var = of_ ∨ l.var = nextOf := by
+    by_cases hEqOf : l.var = of_
+    · exact Or.inl hEqOf
+    · by_cases hEqNext : l.var = nextOf
+      · exact Or.inr hEqNext
+      · have hsame :=
+          litValue_two_patch_eq_of_ne_vars f of_ nextOf σ₀ σ τ sk l
+            hEqOf hEqNext
+        rw [hsame, hltrue] at hlfalse
+        cases hlfalse
+  exact ⟨cref, c, l, hget, hlmem, hvar, hltrue, hlfalse⟩
+
+theorem twoPatchChangedLit_cases
+    (f : DQBF) (cs : ClauseStore) {of_ nextOf : Var}
+    {σ₀ σ τ : UnivAssignment} {sk : SkolemAssignment}
+    (hnext_ne : nextOf ≠ of_)
+    (hchanged : TwoPatchChangedLit f cs of_ nextOf σ₀ σ τ sk) :
+    PatchChangedLit f cs of_ σ₀ τ sk ∨
+      PatchChangedLit f cs nextOf σ τ
+        (patchDeleteWitnessAt f of_ σ₀ sk) := by
+  rcases hchanged with
+    ⟨cref, c, l, hget, hlmem, hvar, hltrue, hlfalse⟩
+  rcases hvar with hvarOf | hvarNext
+  · left
+    have hne_next : l.var ≠ nextOf := by
+      intro hEq
+      exact hnext_ne (hEq.symm.trans hvarOf)
+    have hfalse_first :
+        f.litValue τ (patchDeleteWitnessAt f of_ σ₀ sk) l = false := by
+      have hsame :=
+        litValue_patchDeleteWitnessAt_eq_of_ne_var
+          f nextOf σ τ (patchDeleteWitnessAt f of_ σ₀ sk) l hne_next
+      rw [hsame] at hlfalse
+      exact hlfalse
+    exact ⟨cref, c, l, hget, hlmem, hvarOf, hltrue, hfalse_first⟩
+  · right
+    have hne_of : l.var ≠ of_ := by
+      intro hEq
+      exact hnext_ne (hvarNext.symm.trans hEq)
+    have htrue_first :
+        f.litValue τ (patchDeleteWitnessAt f of_ σ₀ sk) l = true := by
+      rw [litValue_patchDeleteWitnessAt_eq_of_ne_var
+        f of_ σ₀ τ sk l hne_of]
+      exact hltrue
+    exact ⟨cref, c, l, hget, hlmem, hvarNext, htrue_first, hlfalse⟩
+
+private theorem patchChangedLit_implies_fullDepArgs_eq
+    (f : DQBF) (cs : ClauseStore) {of_ : Var}
+    {σ₀ τ : UnivAssignment} {sk : SkolemAssignment}
+    (hexi : f.isVarExistential of_ = true)
+    (hchanged : PatchChangedLit f cs of_ σ₀ τ sk) :
+    fullDepArgs f of_ τ = fullDepArgs f of_ σ₀ := by
+  rcases hchanged with
+    ⟨_cref, _c, l, _hget, _hlmem, hvar, hltrue, hlfalse⟩
+  exact litValue_patchDeleteWitnessAt_changed_implies_fullDepArgs_eq
+    f of_ σ₀ τ sk l hexi hvar hltrue hlfalse
+
+private theorem patchChangedLit_implies_deleteDepArgs_eq
+    (f : DQBF) (cs : ClauseStore) {of_ on_ : Var}
+    {σ₀ τ : UnivAssignment} {sk : SkolemAssignment}
+    (hexi : f.isVarExistential of_ = true)
+    (hchanged : PatchChangedLit f cs of_ σ₀ τ sk) :
+    deleteDepArgs f of_ on_ τ = deleteDepArgs f of_ on_ σ₀ := by
+  exact deleteDepArgs_eq_of_fullDepArgs_eq f of_ on_ τ σ₀
+    (patchChangedLit_implies_fullDepArgs_eq f cs hexi hchanged)
+
+private theorem patchChangedLit_implies_on_eq_of_contains
+    (f : DQBF) (cs : ClauseStore) {of_ on_ : Var}
+    {σ₀ τ : UnivAssignment} {sk : SkolemAssignment}
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hchanged : PatchChangedLit f cs of_ σ₀ τ sk) :
+    τ on_ = σ₀ on_ := by
+  exact fullDepArgs_eq_implies_on_eq_of_contains f of_ on_ τ σ₀ hcontains
+    (patchChangedLit_implies_fullDepArgs_eq f cs hexi hchanged)
+
+theorem patchChangedLit_implies_fiber
+    (f : DQBF) (cs : ClauseStore) {of_ on_ : Var}
+    {σ₀ τ : UnivAssignment} {sk : SkolemAssignment}
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hchanged : PatchChangedLit f cs of_ σ₀ τ sk) :
+    PatchChangedFiber f cs of_ on_ σ₀ τ sk := by
+  exact ⟨hchanged,
+    patchChangedLit_implies_fullDepArgs_eq f cs hexi hchanged,
+    patchChangedLit_implies_deleteDepArgs_eq f cs hexi hchanged,
+    patchChangedLit_implies_on_eq_of_contains f cs hexi hcontains hchanged⟩
+
+theorem patchChangedFiber_removed_by_patch
+    (f : DQBF) (cs : ClauseStore) {of_ on_ : Var}
+    {σ₀ τ : UnivAssignment} {sk : SkolemAssignment}
+    (hexi : f.isVarExistential of_ = true)
+    (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
+    (hwit : DeleteDepWitness f of_ on_ sk σ₀)
+    (hfiber : PatchChangedFiber f cs of_ on_ σ₀ τ sk) :
+    ¬ DeleteDepWitness f of_ on_ (patchDeleteWitnessAt f of_ σ₀ sk) τ := by
+  exact deleteDepWitness_sameFiber_removed_by_patch
+    f of_ on_ σ₀ τ sk hexi hcontains hwit hfiber.2.2.1
+
+private theorem deleteWitness_descent_step_or_oriented_second_patch_changed_lit
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ σSeed σ cref c pos nextOf nextPos τ,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ ∧
+      TwoPatchChangedLit s.formula s.clauses of_ nextOf σSeed σ τ sk := by
+  rcases deleteWitness_descent_step_or_oriented_second_patch_failure
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hfailure
+  · exact Or.inl hgood
+  · right
+    rcases hfailure with
+      ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next, _hnext_nonpath, hfalse⟩
+    have hchanged :
+        TwoPatchChangedLit s.formula s.clauses of_ nextOf σSeed σ τ sk :=
+      matrixValue_two_patch_false_implies_changed_lit_in_patched_vars
+        s.formula s.clauses of_ nextOf σSeed σ τ sk hall hfalse
+    exact ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+      hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+      hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+      hnext_false, hnext_true, hwit_next, hchanged⟩
+
+private theorem deleteWitness_descent_step_or_oriented_second_patch_changed_lit_cases
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ σSeed σ cref c pos nextOf nextPos τ,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ ∧
+      (PatchChangedLit s.formula s.clauses of_ σSeed τ sk ∨
+        PatchChangedLit s.formula s.clauses nextOf σ τ
+          (patchDeleteWitnessAt s.formula of_ σSeed sk)) := by
+  rcases deleteWitness_descent_step_or_oriented_second_patch_changed_lit
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hbad
+  · exact Or.inl hgood
+  · right
+    rcases hbad with
+      ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next, hchanged⟩
+    have hcases :
+        PatchChangedLit s.formula s.clauses of_ σSeed τ sk ∨
+          PatchChangedLit s.formula s.clauses nextOf σ τ
+            (patchDeleteWitnessAt s.formula of_ σSeed sk) :=
+      twoPatchChangedLit_cases
+        s.formula s.clauses hnext_ne hchanged
+    exact ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+      hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+      hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+      hnext_false, hnext_true, hwit_next, hcases⟩
+
+private theorem deleteWitness_descent_step_or_oriented_second_patch_fiber_cases
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ σSeed σ cref c pos nextOf nextPos τ,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ ∧
+      (PatchChangedFiber s.formula s.clauses of_ on_ σSeed τ sk ∨
+        PatchChangedFiber s.formula s.clauses nextOf on_ σ τ
+          (patchDeleteWitnessAt s.formula of_ σSeed sk)) := by
+  rcases deleteWitness_descent_step_or_oriented_second_patch_changed_lit_cases
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hbad
+  · exact Or.inl hgood
+  · right
+    rcases hbad with
+      ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next, hcases⟩
+    have hfiber :
+        PatchChangedFiber s.formula s.clauses of_ on_ σSeed τ sk ∨
+          PatchChangedFiber s.formula s.clauses nextOf on_ σ τ
+            (patchDeleteWitnessAt s.formula of_ σSeed sk) := by
+      rcases hcases with hfirst | hsecond
+      · exact Or.inl
+          (patchChangedLit_implies_fiber
+            s.formula s.clauses (hexi of_ hof) (hcontains of_ hof) hfirst)
+      · exact Or.inr
+          (patchChangedLit_implies_fiber
+            s.formula s.clauses hexi_next hcontains_next hsecond)
+    exact ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+      hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+      hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+      hnext_false, hnext_true, hwit_next, hfiber⟩
+
+private theorem deleteWitness_descent_step_or_oriented_second_patch_removed_fiber_cases
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ σSeed σ cref c pos nextOf nextPos τ,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ ∧
+      ((PatchChangedFiber s.formula s.clauses of_ on_ σSeed τ sk ∧
+          ¬ DeleteDepWitness s.formula of_ on_
+            (patchDeleteWitnessAt s.formula nextOf σ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ) ∨
+        (PatchChangedFiber s.formula s.clauses nextOf on_ σ τ
+            (patchDeleteWitnessAt s.formula of_ σSeed sk) ∧
+          ¬ DeleteDepWitness s.formula nextOf on_
+            (patchDeleteWitnessAt s.formula nextOf σ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ)) := by
+  rcases deleteWitness_descent_step_or_oriented_second_patch_fiber_cases
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hbad
+  · exact Or.inl hgood
+  · right
+    rcases hbad with
+      ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next, hcases⟩
+    have hremoved :
+        (PatchChangedFiber s.formula s.clauses of_ on_ σSeed τ sk ∧
+            ¬ DeleteDepWitness s.formula of_ on_
+              (patchDeleteWitnessAt s.formula nextOf σ
+                (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ) ∨
+          (PatchChangedFiber s.formula s.clauses nextOf on_ σ τ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk) ∧
+            ¬ DeleteDepWitness s.formula nextOf on_
+              (patchDeleteWitnessAt s.formula nextOf σ
+                (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ) := by
+      rcases hcases with hfirst | hsecond
+      · left
+        have hno_first :
+            ¬ DeleteDepWitness s.formula of_ on_
+              (patchDeleteWitnessAt s.formula of_ σSeed sk) τ :=
+          patchChangedFiber_removed_by_patch
+            s.formula s.clauses (hexi of_ hof) (hcontains of_ hof)
+            hwitSeed hfirst
+        refine ⟨hfirst, ?_⟩
+        intro hdouble
+        have hno_eq : of_ ≠ nextOf := Ne.symm hnext_ne
+        have hfirst_wit :
+            DeleteDepWitness s.formula of_ on_
+              (patchDeleteWitnessAt s.formula of_ σSeed sk) τ :=
+          (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+            s.formula nextOf of_ on_ σ τ
+            (patchDeleteWitnessAt s.formula of_ σSeed sk) hno_eq).1 hdouble
+        exact hno_first hfirst_wit
+      · right
+        let sk₁ := patchDeleteWitnessAt s.formula of_ σSeed sk
+        have hwit_next₁ :
+            DeleteDepWitness s.formula nextOf on_ sk₁ σ := by
+          exact (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+            s.formula of_ nextOf on_ σSeed σ sk hnext_ne).2 hwit_next
+        have hno_second :
+            ¬ DeleteDepWitness s.formula nextOf on_
+              (patchDeleteWitnessAt s.formula nextOf σ sk₁) τ :=
+          patchChangedFiber_removed_by_patch
+            s.formula s.clauses hexi_next hcontains_next hwit_next₁ hsecond
+        refine ⟨hsecond, ?_⟩
+        simpa [sk₁] using hno_second
+    exact ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+      hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+      hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+      hnext_false, hnext_true, hwit_next, hremoved⟩
+
+private theorem deleteWitness_descent_step_or_oriented_second_patch_progress_candidate
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ σSeed σ cref c pos nextOf nextPos τ,
+      DeleteDepWitness s.formula of_ on_ sk σSeed ∧
+      s.clauses.getClause cref = some c ∧
+      mkLit of_ pos ∈ c.lits.toList ∧
+      σ on_ = σSeed on_ ∧
+      s.formula.litValue σSeed sk (mkLit of_ pos) = true ∧
+      s.formula.litValue (flipUniv on_ σSeed) sk (mkLit of_ (!pos)) = true ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit of_ (!pos)) = true ∧
+      (∀ l ∈ c.lits.toList, l.negate ∉ c.lits.toList) ∧
+      (∀ l ∈ c.lits.toList, l ≠ mkLit of_ pos →
+        s.formula.litValue σ sk l = false) ∧
+      ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos) ∧
+      nextOf ≠ of_ ∧
+      mkLit nextOf nextPos ∈ c.lits.toList ∧
+      s.formula.isVarExistential nextOf = true ∧
+      (s.formula.depset.getD nextOf #[]).contains on_ = true ∧
+      s.formula.litValue σ sk (mkLit nextOf nextPos) = false ∧
+      s.formula.litValue (flipUniv on_ σ) sk (mkLit nextOf nextPos) = true ∧
+      DeleteDepWitness s.formula nextOf on_ sk σ ∧
+      ¬ DeletePurePath s on_
+        (mkLit on_ (!(σ on_))) (mkLit nextOf (!nextPos)) ∧
+      TargetRepairProgressCandidate s vars on_ sk
+        (patchDeleteWitnessAt s.formula nextOf σ
+          (patchDeleteWitnessAt s.formula of_ σSeed sk)) ∧
+      s.clauses.matrixValue s.formula τ
+        (patchDeleteWitnessAt s.formula nextOf σ
+          (patchDeleteWitnessAt s.formula of_ σSeed sk)) = false ∧
+      ((PatchChangedFiber s.formula s.clauses of_ on_ σSeed τ sk ∧
+          ¬ DeleteDepWitness s.formula of_ on_
+            (patchDeleteWitnessAt s.formula nextOf σ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ) ∨
+        (PatchChangedFiber s.formula s.clauses nextOf on_ σ τ
+            (patchDeleteWitnessAt s.formula of_ σSeed sk) ∧
+          ¬ DeleteDepWitness s.formula nextOf on_
+            (patchDeleteWitnessAt s.formula nextOf σ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ)) := by
+  rcases deleteWitness_or_patch_preserves_or_oriented_tail_with_next_nonpath
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | htail
+  · left
+    rcases hgood with
+      ⟨σSeed, _posSeed, hwitSeed, _hseedSeed, _hflipSeed, _hnoSeedPath, hpatch⟩
+    refine ⟨patchDeleteWitnessAt s.formula of_ σSeed sk, hpatch, ?_⟩
+    exact deleteWitnessFiberCountSet_patchDeleteWitnessAt_lt_of_mem
+      s.formula vars of_ on_ σSeed sk hof (hexi of_ hof) (hcontains of_ hof) hwitSeed
+  · rcases htail with
+      ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next, hnext_nonpath⟩
+    let sk₁ := patchDeleteWitnessAt s.formula of_ σSeed sk
+    have hprogress₁ :
+        TargetRepairProgressCandidate s vars on_ sk sk₁ := by
+      exact targetRepairProgressCandidate_initial_patch
+        (s := s) (vars := vars) (on_ := on_) (patched := of_)
+        (sk := sk) (σSeed := σSeed) hexi hcontains hof hwitSeed
+    have hwit_next₁ :
+        DeleteDepWitness s.formula nextOf on_ sk₁ σ := by
+      exact (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+        s.formula of_ nextOf on_ σSeed σ sk hnext_ne).2 hwit_next
+    have hprogress₂ :
+        TargetRepairProgressCandidate s vars on_ sk
+          (patchDeleteWitnessAt s.formula nextOf σ sk₁) := by
+      exact targetRepairProgressCandidate_patch_of_witness
+        (s := s) (vars := vars) (on_ := on_) (patched := nextOf)
+        (skBase := sk) (skCand := sk₁) (σSeed := σ)
+        hexi hcontains hprogress₁ hwit_next₁
+    rcases deleteWitness_descent_step_or_second_distinct_patch_failure
+        (s := s) (vars := vars) (on_ := on_) (of_ := of_)
+        (nextOf := nextOf) (sk := sk) (σ₀ := σSeed) (σ := σ)
+        hof hnext_ne (hexi of_ hof) (hcontains of_ hof) hwitSeed
+        hexi_next hcontains_next hwit_next with
+      hgood | hfail
+    · exact Or.inl hgood
+    · right
+      rcases hfail with ⟨τ, hfalse⟩
+      have hchanged :
+          TwoPatchChangedLit s.formula s.clauses of_ nextOf σSeed σ τ sk :=
+        matrixValue_two_patch_false_implies_changed_lit_in_patched_vars
+          s.formula s.clauses of_ nextOf σSeed σ τ sk hall hfalse
+      have hcases :
+          PatchChangedLit s.formula s.clauses of_ σSeed τ sk ∨
+            PatchChangedLit s.formula s.clauses nextOf σ τ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk) :=
+        twoPatchChangedLit_cases
+          s.formula s.clauses hnext_ne hchanged
+      have hremoved :
+          (PatchChangedFiber s.formula s.clauses of_ on_ σSeed τ sk ∧
+              ¬ DeleteDepWitness s.formula of_ on_
+                (patchDeleteWitnessAt s.formula nextOf σ
+                  (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ) ∨
+            (PatchChangedFiber s.formula s.clauses nextOf on_ σ τ
+                (patchDeleteWitnessAt s.formula of_ σSeed sk) ∧
+              ¬ DeleteDepWitness s.formula nextOf on_
+                (patchDeleteWitnessAt s.formula nextOf σ
+                  (patchDeleteWitnessAt s.formula of_ σSeed sk)) τ) := by
+        rcases hcases with hfirst | hsecond
+        · left
+          have hfiber :
+              PatchChangedFiber s.formula s.clauses of_ on_ σSeed τ sk :=
+            patchChangedLit_implies_fiber
+              s.formula s.clauses (hexi of_ hof) (hcontains of_ hof) hfirst
+          have hno_first :
+              ¬ DeleteDepWitness s.formula of_ on_
+                (patchDeleteWitnessAt s.formula of_ σSeed sk) τ :=
+            patchChangedFiber_removed_by_patch
+              s.formula s.clauses (hexi of_ hof) (hcontains of_ hof)
+              hwitSeed hfiber
+          refine ⟨hfiber, ?_⟩
+          intro hdouble
+          have hno_eq : of_ ≠ nextOf := Ne.symm hnext_ne
+          have hfirst_wit :
+              DeleteDepWitness s.formula of_ on_
+                (patchDeleteWitnessAt s.formula of_ σSeed sk) τ :=
+            (deleteDepWitness_patchDeleteWitnessAt_iff_of_ne
+              s.formula nextOf of_ on_ σ τ
+              (patchDeleteWitnessAt s.formula of_ σSeed sk) hno_eq).1
+              hdouble
+          exact hno_first hfirst_wit
+        · right
+          have hfiber :
+              PatchChangedFiber s.formula s.clauses nextOf on_ σ τ sk₁ :=
+            patchChangedLit_implies_fiber
+              s.formula s.clauses hexi_next hcontains_next hsecond
+          have hno_second :
+              ¬ DeleteDepWitness s.formula nextOf on_
+                (patchDeleteWitnessAt s.formula nextOf σ sk₁) τ :=
+            patchChangedFiber_removed_by_patch
+              s.formula s.clauses hexi_next hcontains_next hwit_next₁ hfiber
+          refine ⟨hfiber, ?_⟩
+          simpa [sk₁] using hno_second
+      exact ⟨σSeed, σ, cref, c, pos, nextOf, nextPos, τ, hwitSeed, hget,
+        hmem, hon_eq, hseed, hflip, hflip_sigma, hno_compl, hothers,
+        hno_oriented, hnext_ne, hnext_mem, hexi_next, hcontains_next,
+        hnext_false, hnext_true, hwit_next, hnext_nonpath, hprogress₂,
+        hfalse, hremoved⟩
+
+private theorem deleteWitness_descent_step_or_restartable_false_candidate
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ skCand τ,
+      DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand sk ∧
+      s.clauses.matrixValue s.formula τ skCand = false := by
+  rcases deleteWitness_descent_step_or_oriented_second_patch_progress_candidate
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hbad
+  · exact Or.inl hgood
+  · rcases hbad with
+      ⟨σSeed, σ, _cref, _c, _pos, nextOf, _nextPos, τ, _hwitSeed, _hget,
+        _hmem, _hon_eq, _hseed, _hflip, _hflip_sigma, _hno_compl, _hothers,
+        _hno_oriented, _hnext_ne, _hnext_mem, _hexi_next, _hcontains_next,
+        _hnext_false, _hnext_true, _hwit_next, _hnext_nonpath, hprogress,
+        hfalse, _hremoved⟩
+    let skCand := patchDeleteWitnessAt s.formula nextOf σ
+      (patchDeleteWitnessAt s.formula of_ σSeed sk)
+    have hproper :
+        DeleteWitnessFiberSetProperSubset s.formula vars on_ skCand sk := by
+      simpa [skCand] using
+        targetRepairProgressCandidate_properSubset
+          (s := s) (vars := vars) (on_ := on_)
+          (skBase := sk)
+          (skCand := patchDeleteWitnessAt s.formula nextOf σ
+            (patchDeleteWitnessAt s.formula of_ σSeed sk))
+          hprogress
+    exact Or.inr ⟨skCand, τ, hproper, by simpa [skCand] using hfalse⟩
+
+private theorem deleteWitness_descent_step_or_progress_false_candidate
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    (∃ sk',
+      (∀ σ, s.clauses.matrixValue s.formula σ sk' = true) ∧
+      deleteWitnessFiberCountSet s.formula vars on_ sk' <
+        deleteWitnessFiberCountSet s.formula vars on_ sk) ∨
+    ∃ skCand τ,
+      TargetRepairProgressCandidate s vars on_ sk skCand ∧
+      s.clauses.matrixValue s.formula τ skCand = false := by
+  rcases deleteWitness_descent_step_or_oriented_second_patch_progress_candidate
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hbad
+  · exact Or.inl hgood
+  · rcases hbad with
+      ⟨σSeed, σ, _cref, _c, _pos, nextOf, _nextPos, τ, _hwitSeed, _hget,
+        _hmem, _hon_eq, _hseed, _hflip, _hflip_sigma, _hno_compl, _hothers,
+        _hno_oriented, _hnext_ne, _hnext_mem, _hexi_next, _hcontains_next,
+        _hnext_false, _hnext_true, _hwit_next, _hnext_nonpath, hprogress,
+        hfalse, _hremoved⟩
+    let skCand := patchDeleteWitnessAt s.formula nextOf σ
+      (patchDeleteWitnessAt s.formula of_ σSeed sk)
+    exact Or.inr ⟨skCand, τ, by simpa [skCand] using hprogress,
+      by simpa [skCand] using hfalse⟩
+
+private theorem deleteWitness_progress_candidate_frontier
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    {skBase skCand : SkolemAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hallBase : ∀ σ, s.clauses.matrixValue s.formula σ skBase = true)
+    (hprogressCand : TargetRepairProgressCandidate s vars on_ skBase skCand) :
+    DeleteIndependenceDescentOutcome s vars on_ skBase ∨
+      ∃ skNext,
+        TargetRepairProgressCandidate s vars on_ skBase skNext ∧
+        deleteWitnessFiberCountSet s.formula vars on_ skNext <
+          deleteWitnessFiberCountSet s.formula vars on_ skBase ∧
+        ∃ τ, s.clauses.matrixValue s.formula τ skNext = false := by
+  rcases targetRepairProgressCandidate_missingAssignment
+      (s := s) (vars := vars) (on_ := on_)
+      (skBase := skBase) (skCand := skCand) hprogressCand with
+    ⟨of_, hof, σSeed, hwitBase, _hnotCand⟩
+  have hstep :=
+    deleteWitness_descent_step_or_progress_false_candidate
+      (dqbf := dqbf) (cs := cs) (s := s) (vars := vars)
+      (on_ := on_) (of_ := of_) (sk := skBase) (σ₀ := σSeed)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hallBase hof hwitBase
+  rcases hstep with hgood | hnext
+  · exact Or.inl (Or.inl hgood)
+  · rcases hnext with ⟨skNext, τ, hprogressNext, hfalseNext⟩
+    exact Or.inr ⟨skNext, hprogressNext, hprogressNext.1, τ, hfalseNext⟩
+
+private theorem deleteWitness_descent_outcome_of_properSubsetFalseRestart
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hrestart : DeleteWitnessProperSubsetFalseRestart s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    DeleteIndependenceDescentOutcome s vars on_ sk := by
+  rcases deleteWitness_descent_step_or_restartable_false_candidate
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hrestartCase
+  · exact Or.inl hgood
+  · rcases hrestartCase with ⟨skCand, τ, hproper, hfalse⟩
+    exact hrestart hall hproper hfalse
+
+private theorem deleteWitness_descent_outcome_of_progressFalseRestart
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    {sk : SkolemAssignment} {σ₀ : UnivAssignment}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ x ∈ vars.toList, s.formula.isVarExistential x = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hrestart : DeleteWitnessProgressFalseRestart s vars on_)
+    (hall : ∀ σ, s.clauses.matrixValue s.formula σ sk = true)
+    (hof : of_ ∈ vars.toList)
+    (hwit : DeleteDepWitness s.formula of_ on_ sk σ₀) :
+    DeleteIndependenceDescentOutcome s vars on_ sk := by
+  rcases deleteWitness_descent_step_or_progress_false_candidate
+      dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+      hall hof hwit with
+    hgood | hrestartCase
+  · exact Or.inl hgood
+  · rcases hrestartCase with ⟨skCand, τ, hprogress, hfalse⟩
+    exact hrestart hall hprogress hfalse
+
+private theorem deleteIndependenceSetBridge_of_deleteWitness_properSubsetFalseRestart
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hrestart : DeleteWitnessProperSubsetFalseRestart s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_deleteWitness_descent_outcome_step
+    hfull hon_le hon_univ hexi hpaths
+  intro of_ sk σ₀ hall hof hwit
+  exact deleteWitness_descent_outcome_of_properSubsetFalseRestart
+    dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+    hrestart hall hof hwit
+
+private theorem deleteIndependenceSetBridge_of_deleteWitness_progressFalseRestart
+    {dqbf : DQBF} {cs : ClauseStore}
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hgt : ∀ x ∈ vars.toList, on_ < x)
+    (hexi : ∀ of_ ∈ vars.toList, s.formula.isVarExistential of_ = true)
+    (hcontains : ∀ x ∈ vars.toList,
+      (s.formula.depset.getD x #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet s vars on_)
+    (hrestart : DeleteWitnessProgressFalseRestart s vars on_) :
+    DeleteIndependenceSetBridge s vars on_ := by
+  apply deleteIndependenceSetBridge_of_deleteWitness_descent_outcome_step
+    hfull hon_le hon_univ hexi hpaths
+  intro of_ sk σ₀ hall hof hwit
+  exact deleteWitness_descent_outcome_of_progressFalseRestart
+    dqbf cs hfull hon_le hon_univ hgt hexi hcontains hpaths
+    hrestart hall hof hwit
+
+private theorem computeDeps_member_characterization
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ of_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hmem : of_ ∈ (s₁.indepOf.getD (on_ - 1) #[]).toList) :
+    let reachPos := getReachable s (mkLit on_ true)
+    let reachNeg := getReachable s (mkLit on_ false)
+    of_ ∈ s.formula.exivars.toList ∧
+      of_ > on_ ∧
+      !((reachPos.getD (of_ * 2) false && reachNeg.getD (of_ * 2 + 1) false) ||
+        (reachPos.getD (of_ * 2 + 1) false && reachNeg.getD (of_ * 2) false)) = true := by
+  let reachPos := getReachable s (mkLit on_ true)
+  let reachNeg := getReachable s (mkLit on_ false)
+  let indep := s.formula.exivars.filter fun xvar =>
+    if xvar <= on_ then false
+    else
+      let xNeg := xvar * 2
+      let xPos := xvar * 2 + 1
+      !((reachPos.getD xNeg false && reachNeg.getD xPos false) ||
+        (reachPos.getD xPos false && reachNeg.getD xNeg false))
+  have hrun_expected :
+      computeDeps on_ s =
+        EStateM.Result.ok (ε := String) (σ := CheckState) () { s with
+          indepKnown := s.indepKnown.setIfInBounds (on_ - 1) true
+          indepOf := s.indepOf.setIfInBounds (on_ - 1) indep } := by
+    simp [computeDeps, get, getThe, MonadStateOf.get, modify, modifyGet,
+      MonadStateOf.modifyGet, EStateM.get, EStateM.modifyGet, Bind.bind, EStateM.bind,
+      EStateM.pure, Pure.pure, hon_univ, reachPos, reachNeg, indep]
+  have hrun' := hrun
+  rw [hrun_expected] at hrun'
+  have hs₁ :
+      { s with
+          indepKnown := s.indepKnown.setIfInBounds (on_ - 1) true
+          indepOf := s.indepOf.setIfInBounds (on_ - 1) indep } = s₁ := by
+    injection hrun' with hs₁
+  subst s₁
+  have hslot :
+      ({ s with
+          indepKnown := s.indepKnown.setIfInBounds (on_ - 1) true
+          indepOf := s.indepOf.setIfInBounds (on_ - 1) indep
+        }).indepOf.getD (on_ - 1) #[] = indep := by
+    have hlt : on_ - 1 < s.indepOf.size := by
+      rw [hfull.toCorrect.toSound.indepOf_size]
+      exact Nat.lt_of_lt_of_le (Nat.sub_lt (Nat.succ_le_of_lt hon) (by decide)) hon_le
+    simpa using arraySetIfInBounds_getD_eq s.indepOf (on_ - 1) indep #[] hlt
+  have hmem' : of_ ∈ indep.toList := by
+    simpa [hslot] using hmem
+  have hfilter := Array.mem_filter.mp (Array.mem_toList_iff.mp hmem')
+  refine ⟨Array.mem_toList_iff.mpr hfilter.1, ?_, ?_⟩
+  · by_cases hle : of_ ≤ on_
+    · simp [hle] at hfilter
+    · exact Nat.lt_of_not_ge hle
+  · by_cases hle : of_ ≤ on_
+    · simp [hle] at hfilter
+    · simpa [hle] using hfilter.2
+
+private theorem computeDeps_indepOf_mem_exivars
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁) :
+    ∀ of_ ∈ (s₁.indepOf.getD (on_ - 1) #[]).toList,
+      of_ ∈ s.formula.exivars.toList := by
+  intro of_ hmem
+  exact (computeDeps_member_characterization
+    dqbf cs hfull hon hon_le hon_univ hrun hmem).1
+
+private theorem computeDeps_indepOf_gt_on
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁) :
+    ∀ of_ ∈ (s₁.indepOf.getD (on_ - 1) #[]).toList, on_ < of_ := by
+  intro of_ hmem
+  exact (computeDeps_member_characterization
+    dqbf cs hfull hon hon_le hon_univ hrun hmem).2.1
+
+private theorem computeDeps_indepOf_noDeleteCrossPathsSet
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁) :
+    NoDeleteCrossPathsSet s (s₁.indepOf.getD (on_ - 1) #[]) on_ := by
+  intro of_ hmem
+  simpa [NoDeleteCrossPaths] using
+    (computeDeps_member_characterization
+      dqbf cs hfull hon hon_le hon_univ hrun hmem).2.2
+
+private theorem computeDeps_member_of_exivars_gt_noDeleteCrossPaths
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {of_ on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hpaths : NoDeleteCrossPaths s on_ of_) :
+    of_ ∈ (s₁.indepOf.getD (on_ - 1) #[]).toList := by
+  let reachPos := getReachable s (mkLit on_ true)
+  let reachNeg := getReachable s (mkLit on_ false)
+  let indep := s.formula.exivars.filter fun xvar =>
+    if xvar <= on_ then false
+    else
+      let xNeg := xvar * 2
+      let xPos := xvar * 2 + 1
+      !((reachPos.getD xNeg false && reachNeg.getD xPos false) ||
+        (reachPos.getD xPos false && reachNeg.getD xNeg false))
+  have hrun_expected :
+      computeDeps on_ s =
+        EStateM.Result.ok (ε := String) (σ := CheckState) () { s with
+          indepKnown := s.indepKnown.setIfInBounds (on_ - 1) true
+          indepOf := s.indepOf.setIfInBounds (on_ - 1) indep } := by
+    simp [computeDeps, get, getThe, MonadStateOf.get, modify, modifyGet,
+      MonadStateOf.modifyGet, EStateM.get, EStateM.modifyGet, Bind.bind, EStateM.bind,
+      EStateM.pure, Pure.pure, hon_univ, reachPos, reachNeg, indep]
+  have hrun' := hrun
+  rw [hrun_expected] at hrun'
+  have hs₁ :
+      { s with
+          indepKnown := s.indepKnown.setIfInBounds (on_ - 1) true
+          indepOf := s.indepOf.setIfInBounds (on_ - 1) indep } = s₁ := by
+    injection hrun' with hs₁
+  subst s₁
+  have hslot :
+      ({ s with
+          indepKnown := s.indepKnown.setIfInBounds (on_ - 1) true
+          indepOf := s.indepOf.setIfInBounds (on_ - 1) indep
+        }).indepOf.getD (on_ - 1) #[] = indep := by
+    have hlt : on_ - 1 < s.indepOf.size := by
+      rw [hfull.toCorrect.toSound.indepOf_size]
+      exact Nat.lt_of_lt_of_le
+        (Nat.sub_lt (Nat.succ_le_of_lt hon) (by decide)) hon_le
+    simpa using arraySetIfInBounds_getD_eq s.indepOf (on_ - 1) indep #[] hlt
+  have hof_filter : of_ ∈ indep.toList := by
+    apply Array.mem_toList_iff.mpr
+    apply Array.mem_filter.mpr
+    refine ⟨Array.mem_toList_iff.mp hexivar, ?_⟩
+    have hnot_le : ¬ of_ ≤ on_ := Nat.not_le_of_gt hgt
+    simpa [indep, reachPos, reachNeg, hnot_le, NoDeleteCrossPaths] using hpaths
+  simpa [hslot] using hof_filter
+
+private theorem noDeleteCrossPathsSet_filter_contains
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hpaths : NoDeleteCrossPathsSet s vars on_) :
+    NoDeleteCrossPathsSet s
+      (vars.filter fun of_ => (s.formula.depset.getD of_ #[]).contains on_) on_ := by
+  intro of_ hof
+  have hof_array :
+      of_ ∈ vars.filter fun of_ => (s.formula.depset.getD of_ #[]).contains on_ :=
+    Array.mem_toList_iff.mp hof
+  have hof_base_array : of_ ∈ vars :=
+    (Array.mem_filter.mp hof_array).1
+  have hof_base : of_ ∈ vars.toList :=
+    Array.mem_toList_iff.mpr hof_base_array
+  exact hpaths of_ hof_base
+
+private theorem exivars_filter_contains
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hexivar : ∀ of_ ∈ vars.toList, of_ ∈ s.formula.exivars.toList) :
+    ∀ of_ ∈
+      (vars.filter fun of_ => (s.formula.depset.getD of_ #[]).contains on_).toList,
+        of_ ∈ s.formula.exivars.toList := by
+  intro of_ hof
+  have hof_array :
+      of_ ∈ vars.filter fun of_ => (s.formula.depset.getD of_ #[]).contains on_ :=
+    Array.mem_toList_iff.mp hof
+  exact hexivar of_ (Array.mem_toList_iff.mpr (Array.mem_filter.mp hof_array).1)
+
+private theorem gt_on_filter_contains
+    {s : CheckState} {vars : Array Var} {on_ : Var}
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_) :
+    ∀ of_ ∈
+      (vars.filter fun of_ => (s.formula.depset.getD of_ #[]).contains on_).toList,
+        on_ < of_ := by
+  intro of_ hof
+  have hof_array :
+      of_ ∈ vars.filter fun of_ => (s.formula.depset.getD of_ #[]).contains on_ :=
+    Array.mem_toList_iff.mp hof
+  exact hgt of_ (Array.mem_toList_iff.mpr (Array.mem_filter.mp hof_array).1)
+
+private theorem contains_on_filter_contains
+    {s : CheckState} {vars : Array Var} {on_ : Var} :
+    ∀ of_ ∈
+      (vars.filter fun of_ => (s.formula.depset.getD of_ #[]).contains on_).toList,
+        (s.formula.depset.getD of_ #[]).contains on_ = true := by
+  intro of_ hof
+  have hof_array :
+      of_ ∈ vars.filter fun of_ => (s.formula.depset.getD of_ #[]).contains on_ :=
+    Array.mem_toList_iff.mp hof
+  exact (Array.mem_filter.mp hof_array).2
+
+private def computeDepsActiveDeletionVars
+    (s₁ : CheckState) (on_ : Var) : Array Var :=
+  (s₁.indepOf.getD (on_ - 1) #[]).filter fun of_ =>
+    (s₁.formula.depset.getD of_ #[]).contains on_
+
+private def DeleteDependencyNoCrossDepClosedSet
+    (s : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
+  ∀ of_,
+    of_ ∈ s.formula.exivars.toList →
+    on_ < of_ →
+    (s.formula.depset.getD of_ #[]).contains on_ = true →
+    NoDeleteCrossPaths s on_ of_ →
+    of_ ∈ vars.toList
+
+private theorem computeDeps_indepOf_filter_contains_noCrossDepClosedSet
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁) :
+    DeleteDependencyNoCrossDepClosedSet
+      s (computeDepsActiveDeletionVars s₁ on_) on_ := by
+  intro of_ hexivar hgt hcontains hpaths
+  have hsame := computeDeps_sameFC_spec on_ s s ⟨rfl, rfl⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hsame
+  rw [hrun] at hsame
+  rcases hsame with ⟨hformula, _hclauses⟩
+  have hmem :
+      of_ ∈ (s₁.indepOf.getD (on_ - 1) #[]).toList :=
+    computeDeps_member_of_exivars_gt_noDeleteCrossPaths
+      dqbf cs hfull hon hon_le hon_univ hrun hexivar hgt hpaths
+  apply Array.mem_toList_iff.mpr
+  unfold computeDepsActiveDeletionVars
+  apply Array.mem_filter.mpr
+  refine ⟨Array.mem_toList_iff.mp hmem, ?_⟩
+  simpa [hformula] using hcontains
+
+private theorem noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_not_noDeleteCrossPaths
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    (hclosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hcontains : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hnot_mem : of_ ∉ vars.toList) :
+    ¬ NoDeleteCrossPaths s on_ of_ := by
+  intro hpaths
+  exact hnot_mem (hclosed of_ hexivar hgt hcontains hpaths)
+
+private theorem noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_reach_pair
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    (hclosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hexivar : of_ ∈ s.formula.exivars.toList)
+    (hgt : on_ < of_)
+    (hcontains : (s.formula.depset.getD of_ #[]).contains on_ = true)
+    (hnot_mem : of_ ∉ vars.toList) :
+    ∃ pos : Bool,
+      (getReachable s (mkLit on_ true)).getD (mkLit of_ pos).x false = true ∧
+      (getReachable s (mkLit on_ false)).getD (mkLit of_ (!pos)).x false = true := by
+  exact not_noDeleteCrossPaths_exists_reach_pair
+    (noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_not_noDeleteCrossPaths
+      hclosed hexivar hgt hcontains hnot_mem)
+
+private theorem externalDiagnostic_of_noCrossDepClosedSet_not_mem
+    {s : CheckState} {vars : Array Var} {on_ of_ : Var}
+    (hclosed : DeleteDependencyNoCrossDepClosedSet s vars on_)
+    (hnot_mem : of_ ∉ vars.toList)
+    (hcontains : (s.formula.depset.getD of_ #[]).contains on_ = true) :
+    of_ ∉ s.formula.exivars.toList ∨
+      ¬ on_ < of_ ∨
+      ∃ pos : Bool,
+        (getReachable s (mkLit on_ true)).getD
+            (mkLit of_ pos).x false = true ∧
+        (getReachable s (mkLit on_ false)).getD
+            (mkLit of_ (!pos)).x false = true := by
+  classical
+  by_cases hexivar : of_ ∈ s.formula.exivars.toList
+  · by_cases hgt : on_ < of_
+    · exact Or.inr (Or.inr
+        (noCrossDepClosedSet_not_mem_of_exivars_gt_contains_imp_reach_pair
+          hclosed hexivar hgt hcontains hnot_mem))
+    · exact Or.inr (Or.inl hgt)
+  · exact Or.inl hexivar
+
+private structure ComputeDepsActiveDeletionFacts
+    (s s₁ : CheckState) (vars : Array Var) (on_ : Var) : Prop where
+  sameFC : SameFC s s₁
+  hexivar : ∀ of_ ∈ vars.toList, of_ ∈ s.formula.exivars.toList
+  gt_on : ∀ of_ ∈ vars.toList, on_ < of_
+  contains_on : ∀ of_ ∈ vars.toList,
+    (s₁.formula.depset.getD of_ #[]).contains on_ = true
+  no_cross_paths : NoDeleteCrossPathsSet s vars on_
+  no_cross_dep_closed : DeleteDependencyNoCrossDepClosedSet s vars on_
+
+private theorem computeDeps_activeDeletionFacts_filter_contains
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁) :
+    ComputeDepsActiveDeletionFacts s s₁
+      (computeDepsActiveDeletionVars s₁ on_) on_ := by
+  classical
+  have hsame_spec := computeDeps_sameFC_spec on_ s s ⟨rfl, rfl⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hsame_spec
+  rw [hrun] at hsame_spec
+  rcases hsame_spec with ⟨hformula, hclauses⟩
+  have hsame : SameFC s s₁ := ⟨hformula, hclauses⟩
+  refine
+    { sameFC := hsame
+      hexivar := ?_
+      gt_on := ?_
+      contains_on := ?_
+      no_cross_paths := ?_
+      no_cross_dep_closed := ?_ }
+  · simpa [computeDepsActiveDeletionVars, hformula] using
+      exivars_filter_contains
+        (s := s) (vars := s₁.indepOf.getD (on_ - 1) #[])
+        (on_ := on_)
+        (computeDeps_indepOf_mem_exivars
+          dqbf cs hfull hon hon_le hon_univ hrun)
+  · simpa [computeDepsActiveDeletionVars, hformula] using
+      gt_on_filter_contains
+        (s := s) (vars := s₁.indepOf.getD (on_ - 1) #[])
+        (on_ := on_)
+        (computeDeps_indepOf_gt_on
+          dqbf cs hfull hon hon_le hon_univ hrun)
+  · simpa [computeDepsActiveDeletionVars] using
+      contains_on_filter_contains
+        (s := s₁) (vars := s₁.indepOf.getD (on_ - 1) #[])
+        (on_ := on_)
+  · simpa [computeDepsActiveDeletionVars, hformula] using
+      noDeleteCrossPathsSet_filter_contains
+        (s := s) (vars := s₁.indepOf.getD (on_ - 1) #[])
+        (on_ := on_)
+        (computeDeps_indepOf_noDeleteCrossPathsSet
+          dqbf cs hfull hon hon_le hon_univ hrun)
+  · exact computeDeps_indepOf_filter_contains_noCrossDepClosedSet
+      dqbf cs hfull hon hon_le hon_univ hrun
+
+private theorem varValue_forceDelDeps_filter_existential_eq
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (v : Var) :
+    (forceDelDeps f vars on_).varValue σ sk v =
+      (forceDelDeps f (vars.filter f.isVarExistential) on_).varValue σ sk v := by
+  by_cases hex : f.isVarExistential v = true
+  · have hex_all : (forceDelDeps f vars on_).isVarExistential v = true := by
+      simpa [forceDelDeps_isVarExistential] using hex
+    have hex_exi :
+        (forceDelDeps f (vars.filter f.isVarExistential) on_).isVarExistential v = true := by
+      simpa [forceDelDeps_isVarExistential] using hex
+    rw [DQBF.varValue, DQBF.varValue, hex_all, hex_exi]
+    have hdeps_all :
+        (forceDelDeps f vars on_).depset.getD v #[] =
+          if v ∈ vars.toList then
+            (f.depset.getD v #[]).filter (· ≠ on_)
+          else
+            f.depset.getD v #[] := by
+      simpa using forceDelDeps_depset_getD f vars on_ v
+    have hdeps_exi :
+        (forceDelDeps f (vars.filter f.isVarExistential) on_).depset.getD v #[] =
+          if v ∈ (vars.filter f.isVarExistential).toList then
+            (f.depset.getD v #[]).filter (· ≠ on_)
+          else
+            f.depset.getD v #[] := by
+      simpa using forceDelDeps_depset_getD
+        f (vars.filter f.isVarExistential) on_ v
+    by_cases hmem : v ∈ vars.toList
+    · have hmem_exi : v ∈ (vars.filter f.isVarExistential).toList := by
+        exact Array.mem_toList_iff.mpr <|
+          Array.mem_filter.mpr ⟨Array.mem_toList_iff.mp hmem, hex⟩
+      simp [DQBF.exiValue, hdeps_all, hdeps_exi, hmem, hex]
+    · have hnot_mem_exi : v ∉ (vars.filter f.isVarExistential).toList := by
+        intro hmem_exi
+        exact hmem (Array.mem_toList_iff.mpr (Array.mem_filter.mp
+          (Array.mem_toList_iff.mp hmem_exi)).1)
+      simp [DQBF.exiValue, hdeps_all, hdeps_exi, hmem, hnot_mem_exi, hex]
+  · have hex_all : (forceDelDeps f vars on_).isVarExistential v = false := by
+      simpa [forceDelDeps_isVarExistential] using hex
+    have hex_exi :
+        (forceDelDeps f (vars.filter f.isVarExistential) on_).isVarExistential v = false := by
+      simpa [forceDelDeps_isVarExistential] using hex
+    simp [DQBF.varValue, hex_all, hex_exi]
+
+private theorem litValue_forceDelDeps_filter_existential_eq
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal) :
+    (forceDelDeps f vars on_).litValue σ sk l =
+      (forceDelDeps f (vars.filter f.isVarExistential) on_).litValue σ sk l := by
+  simp [DQBF.litValue, varValue_forceDelDeps_filter_existential_eq
+    f vars on_ σ sk l.var]
+
+private theorem clauseValue_forceDelDeps_filter_existential_eq
+    (f : DQBF) (vars : Array Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal) :
+    (forceDelDeps f vars on_).clauseValue σ sk lits =
+      (forceDelDeps f (vars.filter f.isVarExistential) on_).clauseValue σ sk lits := by
+  unfold DQBF.clauseValue
+  simpa using
+    (Array.any_congr
+      (w := rfl)
+      (h := fun l => litValue_forceDelDeps_filter_existential_eq f vars on_ σ sk l)
+      (wstart := rfl) (wstop := rfl))
+
+private theorem matrixValue_forceDelDeps_filter_existential_eq
+    (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) :
+    cs.matrixValue (forceDelDeps f vars on_) σ sk =
+      cs.matrixValue (forceDelDeps f (vars.filter f.isVarExistential) on_) σ sk := by
+  unfold ClauseStore.matrixValue
+  apply List.all_congr rfl
+  intro i
+  cases hclause : cs.getClause (i + 1) with
+  | none =>
+      simp [hclause]
+  | some c =>
+      simp [hclause, clauseValue_forceDelDeps_filter_existential_eq
+        f vars on_ σ sk c.lits]
+
+private theorem DQBFTrue_forceDelDeps_filter_existential_iff
+    (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var) :
+    DQBFTrue (forceDelDeps f vars on_) cs ↔
+      DQBFTrue (forceDelDeps f (vars.filter f.isVarExistential) on_) cs := by
+  constructor
+  · intro htrue
+    rcases htrue with ⟨sk, hall⟩
+    refine ⟨sk, ?_⟩
+    intro σ
+    simpa [matrixValue_forceDelDeps_filter_existential_eq f cs vars on_ σ sk]
+      using hall σ
+  · intro htrue
+    rcases htrue with ⟨sk, hall⟩
+    refine ⟨sk, ?_⟩
+    intro σ
+    simpa [matrixValue_forceDelDeps_filter_existential_eq f cs vars on_ σ sk]
+      using hall σ
+
+private theorem forceDelDeps_formula_sound_of_noDeleteCrossPaths_of_restart
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hexi : ∀ of_ ∈ vars.toList, st.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (st.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hrestart : DeleteWitnessProgressFalseRestart st vars on_)
+    (htrue : DQBFTrue st.formula st.clauses) :
+    DQBFTrue (forceDelDeps st.formula vars on_) st.clauses := by
+  have hbridge :=
+    deleteIndependenceSetBridge_of_deleteWitness_progressFalseRestart
+      (dqbf := dqbf) (cs := cs) (s := st) (vars := vars) (on_ := on_)
+      hfull hon_le hon_univ hgt hexi hcontains hpaths hrestart
+  exact DQBFTrue_forceDelDeps_of_setBridge hbridge htrue
+
+private theorem forceDelDeps_formula_sound_of_noDeleteCrossPaths_of_currentRestart
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hexi : ∀ of_ ∈ vars.toList, st.formula.isVarExistential of_ = true)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (st.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (hcurrent : DeleteWitnessProgressCurrentStrictRestart st vars on_)
+    (htrue : DQBFTrue st.formula st.clauses) :
+    DQBFTrue (forceDelDeps st.formula vars on_) st.clauses := by
+  exact forceDelDeps_formula_sound_of_noDeleteCrossPaths_of_restart
+    (dqbf := dqbf) (cs := cs) (st := st) (vars := vars) (on_ := on_)
+    hfull hon_le hon_univ hgt hexi hcontains hpaths
+    (deleteWitnessProgressFalseRestart_of_currentStrictRestart hcurrent)
+    htrue
+
+private theorem forceDelDeps_formula_sound_of_noDeleteCrossPaths
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {vars : Array Var} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs st)
+    (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false)
+    (hgt : ∀ of_ ∈ vars.toList, on_ < of_)
+    (hcontains : ∀ of_ ∈ vars.toList,
+      (st.formula.depset.getD of_ #[]).contains on_ = true)
+    (hpaths : NoDeleteCrossPathsSet st vars on_)
+    (htrue : DQBFTrue st.formula st.clauses) :
+    DQBFTrue (forceDelDeps st.formula vars on_) st.clauses := by
+  let exiVars := vars.filter st.formula.isVarExistential
+  have hgt_exi : ∀ of_ ∈ exiVars.toList, on_ < of_ := by
+    intro of_ hof
+    exact hgt of_ (Array.mem_toList_iff.mpr (Array.mem_filter.mp
+      (Array.mem_toList_iff.mp hof)).1)
+  have hexi_exi : ∀ of_ ∈ exiVars.toList, st.formula.isVarExistential of_ = true := by
+    intro of_ hof
+    exact (Array.mem_filter.mp (Array.mem_toList_iff.mp hof)).2
+  have hcontains_exi :
+      ∀ of_ ∈ exiVars.toList,
+        (st.formula.depset.getD of_ #[]).contains on_ = true := by
+    intro of_ hof
+    exact hcontains of_ (Array.mem_toList_iff.mpr (Array.mem_filter.mp
+      (Array.mem_toList_iff.mp hof)).1)
+  have hpaths_exi : NoDeleteCrossPathsSet st exiVars on_ := by
+    intro of_ hof
+    exact hpaths of_ (Array.mem_toList_iff.mpr (Array.mem_filter.mp
+      (Array.mem_toList_iff.mp hof)).1)
+  have hsound_exi :
+      DQBFTrue (forceDelDeps st.formula exiVars on_) st.clauses := by
+    have hcurrent_exi :
+        DeleteWitnessProgressCurrentStrictRestart st exiVars on_ := by
+      sorry
+    exact forceDelDeps_formula_sound_of_noDeleteCrossPaths_of_currentRestart
+      (dqbf := dqbf) (cs := cs) (st := st) (vars := exiVars) (on_ := on_)
+      hfull hon_le hon_univ hgt_exi hexi_exi hcontains_exi hpaths_exi
+      hcurrent_exi htrue
+  exact (DQBFTrue_forceDelDeps_filter_existential_iff
+    st.formula st.clauses vars on_).2 hsound_exi
+
+private theorem computeDeps_forceDelDeps_formula_sound
+    (dqbf : DQBF) (cs : ClauseStore)
+    {s s₁ : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs s)
+    (hon : 0 < on_)
+    (hon_le : on_ ≤ s.formula.maxVar)
+    (hon_univ : s.formula.isVarExistential on_ = false)
+    (hrun : computeDeps on_ s = .ok () s₁)
+    (htrue : DQBFTrue s₁.formula s₁.clauses) :
+    DQBFTrue
+      (forceDelDeps s₁.formula (computeDepsActiveDeletionVars s₁ on_) on_)
+      s₁.clauses := by
+  have hsame := computeDeps_sameFC_spec on_ s s ⟨rfl, rfl⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hsame
+  rw [hrun] at hsame
+  have hactive :=
+    computeDeps_activeDeletionFacts_filter_contains
+      dqbf cs hfull hon hon_le hon_univ hrun
+  have htrue_s : DQBFTrue s.formula s.clauses := by
+    simpa [hsame.1, hsame.2] using htrue
+  have hsound_s :
+      DQBFTrue
+        (forceDelDeps s.formula (computeDepsActiveDeletionVars s₁ on_) on_)
+        s.clauses := by
+    refine forceDelDeps_formula_sound_of_noDeleteCrossPaths
+      hfull hon_le hon_univ hactive.gt_on ?_ hactive.no_cross_paths htrue_s
+    intro of_ hmem
+    simpa [hactive.sameFC.1] using hactive.contains_on of_ hmem
+  simpa [hsame.1, hsame.2] using hsound_s
+
 private theorem computeDeps_forceDelDep_formula_sound_of_member_contains
     (dqbf : DQBF) (cs : ClauseStore)
     {s s₁ : CheckState} {of_ on_ : Var}
@@ -10406,7 +19107,32 @@ private theorem computeDeps_forceDelDep_formula_sound_of_member_contains
     (hcontains : (s₁.formula.depset.getD of_ #[]).contains on_ = true)
     (htrue : DQBFTrue s₁.formula s₁.clauses) :
     DQBFTrue (s₁.formula.forceDelDep of_ on_) s₁.clauses := by
-  sorry
+  have hsame := computeDeps_sameFC_spec on_ s s ⟨rfl, rfl⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hsame
+  rw [hrun] at hsame
+  rcases hsame with ⟨hformula, _⟩
+  have hexi' : s₁.formula.isVarExistential of_ = true := by
+    simpa [hformula] using hexi
+  have htrueDelSet :
+      DQBFTrue
+        (forceDelDeps s₁.formula (computeDepsActiveDeletionVars s₁ on_) on_)
+        s₁.clauses :=
+    computeDeps_forceDelDeps_formula_sound
+      dqbf cs hfull hon hon_le hon_univ hrun htrue
+  have hmemActive :
+      of_ ∈ (computeDepsActiveDeletionVars s₁ on_).toList := by
+    apply Array.mem_toList_iff.mpr
+    unfold computeDepsActiveDeletionVars
+    exact Array.mem_filter.mpr
+      ⟨Array.mem_toList_iff.mp hmem, hcontains⟩
+  have hbridge : DeleteIndependenceBridge s₁ of_ on_ := by
+    exact DeleteIndependenceBridge.of_forceDelDepsTrue
+      (st := s₁)
+      (vars := computeDepsActiveDeletionVars s₁ on_)
+      (of_ := of_) (on_ := on_)
+      hmemActive hexi' htrueDelSet
+  exact DQBFTrue_forceDelDep_of_exhibiting_bridge
+    s₁.formula s₁.clauses of_ on_ hexi' hbridge htrue
 
 private theorem computeDeps_forceDelDep_formula_sound_of_member
     (dqbf : DQBF) (cs : ClauseStore)

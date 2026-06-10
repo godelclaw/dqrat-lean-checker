@@ -14,8 +14,18 @@ full soundness of the executable-aligned checker.
   - `processProofNoNegE_sound'`
 - `checkDQRATE_sound_spec` is now proved on the executable-aligned
   `FullCorrect` surface.
-- The only remaining explicit theorem-body `sorry` in
-  `DqratLean/Soundness.lean` is `checkAction_sound`.
+- This clone is `dqrat-lean-checker-work` on
+  `codex/wip-parser-soundness-seam`.
+- The only remaining explicit theorem-body `sorry` in this clone is
+  `forceDelDeps_formula_sound_of_noDeleteCrossPaths` in
+  `DqratLean/Soundness.lean`.
+- `checkAction_sound` is no longer the direct frontier theorem in this clone.
+  The remaining deletion wrapper chain depends on the static
+  `forceDelDeps`-truth theorem above.
+- A parallel clone, `dqrat-lean-checker-watched` on
+  `codex/watched-literals-port`, is pursuing a different dynamic
+  continuation strategy for the same negative-`e` gap. See
+  `docs/negative_e_strategy_split.md`.
 
 ## Real blockers
 
@@ -130,22 +140,39 @@ itself.
 
 ## Shortest path from here
 
-### Phase 1: Close negative-`e`
+### Phase 0: Keep one target branch
 
-Goal: prove full soundness of `checkModifyExistential`, not just the add-only fragment.
+Goal: avoid proving the same negative-`e` frontier twice.
+
+Working decision for this clone:
+
+1. Treat `dqrat-lean-checker-work` as the merge target.
+2. Mine `dqrat-lean-checker-watched` for reusable lemmas and
+   counterexample packaging only.
+3. Do not deepen the dynamic continuation stack here unless the static route
+   is shown false.
+
+### Phase 1: Close the static negative-`e` theorem
+
+Goal: prove the set-level `forceDelDeps` truth theorem that this clone has
+already isolated.
 
 Steps:
 
-1. Formalize the correct semantic replacement for the refuted fixed-witness
-   bridge, i.e. prove `computeDeps_forceDelDepsTrue`: after successful
-   `computeDeps u`, the recomputed state `s₁` satisfies
-   `DQBFTrue (forceDelDeps s₁.formula (s₁.indepOf.getD (u - 1) #[]) u) s₁.clauses`.
-2. Feed that theorem into the existing build-green wrappers
+1. Prove `forceDelDeps_formula_sound_of_noDeleteCrossPaths`: if every
+   `of_ ∈ vars` satisfies `NoDeleteCrossPaths st on_ of_`, then deleting `on_`
+   from the whole set via `forceDelDeps` preserves `DQBFTrue`.
+2. Use `computeDeps_member_characterization` to discharge the
+   `NoDeleteCrossPaths` hypothesis for the cached set produced by a successful
+   `computeDeps`.
+3. Recover `computeDeps_forceDelDeps_formula_sound`.
+4. Feed that theorem into the existing build-green wrappers
    `delDependencyReset_full_correct_lookup_spec_of_forceDelDepsTrue` and
    `checkModifyExistentialDelStep_full_sound_of_forceDelDepsTrue`.
-3. Show failed dep deletions return `.Failed ...` without breaking the
+5. Show failed dep deletions return `.Failed ...` without breaking the
    action-boundary invariant.
-4. Combine the add and delete sides into the full modify-existential action theorem.
+6. Combine the add and delete sides into the full modify-existential action
+   theorem.
 
 ### Phase 2: Promote the loop invariant if needed
 
@@ -174,10 +201,11 @@ inside the RAT branch.
 
 ## Immediate next action
 
-1. Use `deleteBridge...` to pin down the exact failure of the fixed-witness,
-   `x`-only patch plan.
-2. Decide the replacement semantic object: dependency-cone patching or
-   witness-selection.
-3. Package the resulting successful `delDependencyReset` theorem.
-4. Lift that into `checkModifyExistentialDelStep`.
-5. Then close the remaining `ModifyExistential` case of `checkAction_sound`.
+1. Keep this clone as the primary target and stop treating
+   `checkAction_sound` as the live hole.
+2. Use `deleteBridge...` to document exactly what the fixed-witness,
+   deleted-variable-only patch route refutes.
+3. Prove `forceDelDeps_formula_sound_of_noDeleteCrossPaths`.
+4. Lift that theorem through `computeDeps_forceDelDeps_formula_sound`,
+   `delDependencyReset`, and `checkModifyExistentialDelStep`.
+5. Only then return to the outer modify-existential wrapper theorems.
