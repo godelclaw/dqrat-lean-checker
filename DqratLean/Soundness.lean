@@ -721,10 +721,7 @@ theorem DQBFFalse.of_not_true
     cases h : cs.matrixValue f σ sk <;> simp at h ⊢
     exact False.elim (hex ⟨σ, h⟩)
 
-/-- `addForallFormula` defines `(f : DQBF) (ext : Nat) : DQBF := let v := f.maxVar + 1 { f with
-    maxVar := v internalName := f.internalName.push (ext, v) externalName := f.externalName.push ext
-    isExistential := f.isExistential.push false univars := f.univars.push v depset := f.depset.push
-    #[] }`. -/
+/-- Extend a formula with a fresh universal variable registered under external name `ext`. -/
 def addForallFormula (f : DQBF) (ext : Nat) : DQBF :=
   let v := f.maxVar + 1
   { f with
@@ -735,10 +732,7 @@ def addForallFormula (f : DQBF) (ext : Nat) : DQBF :=
     univars := f.univars.push v
     depset := f.depset.push #[] }
 
-/-- `addExistsFormula` defines `(f : DQBF) (ext : Nat) (deps : Array Var) : DQBF := let v :=
-    f.maxVar + 1 { f with maxVar := v internalName := f.internalName.push (ext, v) externalName :=
-    f.externalName.push ext isExistential := f.isExistential.push true exivars := f.exivars.push v
-    depset := f.depset.push deps }`. -/
+/-- Extend a formula with a fresh existential variable under external name `ext`, with dependency set `deps`. -/
 def addExistsFormula (f : DQBF) (ext : Nat) (deps : Array Var) : DQBF :=
   let v := f.maxVar + 1
   { f with
