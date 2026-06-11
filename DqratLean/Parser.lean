@@ -3,6 +3,15 @@ import DqratLean.Checker
 
 -- ─── Tokenizer ─────────────────────────────────────────────────────────────
 
+/-!
+# Parser
+
+Tokenizer and parser for DQDIMACS formulas and DQRAT proof actions on the
+default non-watched checker path.
+
+Trust status: executable default-path parser whose top-level soundness is
+proved in `Soundness.lean`.
+-/
 def isCommentLine (line : String) : Bool :=
   match line.toList.dropWhile Char.isWhitespace with
   | 'c' :: _ => true

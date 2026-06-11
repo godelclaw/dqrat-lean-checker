@@ -1,5 +1,13 @@
 import DqratLean.WatchedBinarySoundness
 
+/-!
+# Watched Binary Refinement
+
+Refinement invariants for the watched binary-implication cache.
+
+Trust status: experimental watched-layer proof work, outside the certified
+default path.
+-/
 namespace DqratLean.Watched
 
 /--

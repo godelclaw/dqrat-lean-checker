@@ -1,6 +1,14 @@
 import DqratLean.WatchedArrayLemmas
 import DqratLean.WatchedState
 
+/-!
+# Watched Live-Occurrence Soundness
+
+Soundness and completeness predicates for the watched live-occurrence cache.
+
+Trust status: experimental watched-layer proof work, outside the certified
+default path.
+-/
 namespace DqratLean.Watched
 
 def LiveOccSound (st : CheckState) : Prop :=

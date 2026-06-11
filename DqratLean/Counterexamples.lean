@@ -2,6 +2,15 @@ import DqratLean.Checker
 import DqratLean.Semantics
 import DqratLean.Soundness
 
+/-!
+# Counterexamples
+
+Concrete diagnostic witnesses and native-evaluation checks for stale-state and
+occurrence-list counterexamples.
+
+Trust status: diagnostics only; this module intentionally sits outside the
+certified default path.
+-/
 namespace DqratLean.Counterexamples
 
 /-- Post-delete formula from `repros/stale_delete_state.*`:

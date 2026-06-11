@@ -7,19 +7,31 @@ import DqratLean.SoundnessCore
 `getReachable` BFS specification and completeness, and the
 `NoDeleteCrossPaths(Set)` reach-pair predicates certified by the checker,
 including the orientation lemmas used by the exhibition proof.
+
+Trust status: certified proof module on the default non-watched path.
 -/
 open Std.Do
 
+/-- `NoDeleteCrossPaths` defines `(st : CheckState) (on_ of_ : Var) : Prop := let reachPos :=
+    getReachable st (mkLit on_ true) let reachNeg := getReachable st (mkLit on_ false)
+    !((reachPos.getD (of_ * 2) false && reachNeg.getD (of_ * 2 + 1) false) || (reachPos.getD (of_ *
+    2 + 1) false && reachNeg.getD (of_ * 2) false)) = true`. -/
 def NoDeleteCrossPaths (st : CheckState) (on_ of_ : Var) : Prop :=
   let reachPos := getReachable st (mkLit on_ true)
   let reachNeg := getReachable st (mkLit on_ false)
   !((reachPos.getD (of_ * 2) false && reachNeg.getD (of_ * 2 + 1) false) ||
     (reachPos.getD (of_ * 2 + 1) false && reachNeg.getD (of_ * 2) false)) = true
 
+/-- `NoDeleteCrossPathsSet` defines `(st : CheckState) (vars : Array Var) (on_ : Var) : Prop := (st
+    : CheckState) (vars : Array Var) (on_ : Var) : Prop := ∀ of_ ∈ vars.toList, NoDeleteCrossPaths
+    st on_ of_`. -/
 def NoDeleteCrossPathsSet
     (st : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   ∀ of_ ∈ vars.toList, NoDeleteCrossPaths st on_ of_
 
+/-- `noDeleteCrossPaths_not_reachPos_neg_reachNeg_pos` states `{st : CheckState} {on_ of_ : Var}
+    (hpaths : NoDeleteCrossPaths st on_ of_) : ¬ ((getReachable st (mkLit on_ true)).getD (of_ * 2)
+    false = true ∧ (getReachable st (mkLit on_ false)).getD (of_ * 2 + 1) false = true)`. -/
 theorem noDeleteCrossPaths_not_reachPos_neg_reachNeg_pos
     {st : CheckState} {on_ of_ : Var}
     (hpaths : NoDeleteCrossPaths st on_ of_) :
@@ -29,6 +41,9 @@ theorem noDeleteCrossPaths_not_reachPos_neg_reachNeg_pos
   rcases hbad with ⟨hposNeg, hnegPos⟩
   simp [NoDeleteCrossPaths, hposNeg, hnegPos] at hpaths
 
+/-- `noDeleteCrossPaths_not_reachPos_pos_reachNeg_neg` states `{st : CheckState} {on_ of_ : Var}
+    (hpaths : NoDeleteCrossPaths st on_ of_) : ¬ ((getReachable st (mkLit on_ true)).getD (of_ * 2 +
+    1) false = true ∧ (getReachable st (mkLit on_ false)).getD (of_ * 2) false = true)`. -/
 theorem noDeleteCrossPaths_not_reachPos_pos_reachNeg_neg
     {st : CheckState} {on_ of_ : Var}
     (hpaths : NoDeleteCrossPaths st on_ of_) :
@@ -38,6 +53,10 @@ theorem noDeleteCrossPaths_not_reachPos_pos_reachNeg_neg
   rcases hbad with ⟨hposPos, hnegNeg⟩
   simp [NoDeleteCrossPaths, hposPos, hnegNeg] at hpaths
 
+/-- `noDeleteCrossPaths_not_reachPos_lit_reachNeg_negate` states `{st : CheckState} {on_ of_ : Var}
+    {pos : Bool} (hpaths : NoDeleteCrossPaths st on_ of_) : ¬ ((getReachable st (mkLit on_
+    true)).getD (mkLit of_ pos).x false = true ∧ (getReachable st (mkLit on_ false)).getD (mkLit of_
+    (!pos)).x false = true)`. -/
 theorem noDeleteCrossPaths_not_reachPos_lit_reachNeg_negate
     {st : CheckState} {on_ of_ : Var} {pos : Bool}
     (hpaths : NoDeleteCrossPaths st on_ of_) :
@@ -75,6 +94,9 @@ inductive DeletePurePath
       (hdep : (st.formula.depset.getD lit.var #[]).contains on_ = true) :
       DeletePurePath st on_ start lit
 
+/-- `deletePurePath_target_isVarExistential` states `{st : CheckState} {on_ : Var} {start target :
+    Literal} (hpath : DeletePurePath st on_ start target) : st.formula.isVarExistential target.var =
+    true`. -/
 theorem deletePurePath_target_isVarExistential
     {st : CheckState} {on_ : Var} {start target : Literal}
     (hpath : DeletePurePath st on_ start target) :
@@ -85,6 +107,8 @@ theorem deletePurePath_target_isVarExistential
   | step _ _ _ _ _ _ hexi _ _ =>
       exact hexi
 
+/-- `literal_x_lt_numLits_of_var_le_maxVar` states `(l : Literal) {maxVar : Nat} (hle : l.var ≤
+    maxVar) : l.x < maxVar * 2 + 2`. -/
 theorem literal_x_lt_numLits_of_var_le_maxVar
     (l : Literal) {maxVar : Nat} (hle : l.var ≤ maxVar) :
     l.x < maxVar * 2 + 2 := by
@@ -99,6 +123,7 @@ theorem literal_x_lt_numLits_of_var_le_maxVar
     _ ≤ (maxVar + 1) * 2 := Nat.mul_le_mul_right 2 (Nat.succ_le_succ hle)
     _ = maxVar * 2 + 2 := by omega
 
+/-- `literal_negate_var` states `(l : Literal) : l.negate.var = l.var`. -/
 theorem literal_negate_var (l : Literal) :
     l.negate.var = l.var := by
   unfold Literal.negate Literal.var
@@ -110,11 +135,14 @@ theorem literal_negate_var (l : Literal) :
     exact fun h => Nat.succ_ne_zero k (Nat.testBit_one_eq_true_iff_self_eq_zero.mp h)
   simp [h1]
 
+/-- `one_testBit_succ_false` states `(k : Nat) : Nat.testBit 1 (k + 1) = false`. -/
 theorem one_testBit_succ_false (k : Nat) :
     Nat.testBit 1 (k + 1) = false := by
   rw [Bool.eq_false_iff]
   exact fun h => Nat.succ_ne_zero k (Nat.testBit_one_eq_true_iff_self_eq_zero.mp h)
 
+/-- `testBit_mul2_add_one_succ` states `(v k : Nat) : (v * 2 + 1).testBit (k + 1) = (v * 2).testBit
+    (k + 1)`. -/
 theorem testBit_mul2_add_one_succ (v k : Nat) :
     (v * 2 + 1).testBit (k + 1) = (v * 2).testBit (k + 1) := by
   rw [Nat.testBit_succ, Nat.testBit_succ]
@@ -122,6 +150,7 @@ theorem testBit_mul2_add_one_succ (v k : Nat) :
   have h2 : (v * 2) / 2 = v := by omega
   rw [h1, h2]
 
+/-- `xor_mul_two_false` states `(v : Nat) : v * 2 ^^^ 1 = v * 2 + 1`. -/
 theorem xor_mul_two_false (v : Nat) :
     v * 2 ^^^ 1 = v * 2 + 1 := by
   apply Nat.eq_of_testBit_eq
@@ -132,6 +161,7 @@ theorem xor_mul_two_false (v : Nat) :
       rw [Nat.testBit_xor, one_testBit_succ_false]
       simp [testBit_mul2_add_one_succ]
 
+/-- `xor_mul_two_true` states `(v : Nat) : v * 2 + 1 ^^^ 1 = v * 2`. -/
 theorem xor_mul_two_true (v : Nat) :
     v * 2 + 1 ^^^ 1 = v * 2 := by
   apply Nat.eq_of_testBit_eq
@@ -142,10 +172,19 @@ theorem xor_mul_two_true (v : Nat) :
       rw [Nat.testBit_xor, one_testBit_succ_false]
       simp [testBit_mul2_add_one_succ]
 
+/-- `mkLit_negate` states `(v : Var) (pos : Bool) : (mkLit v pos).negate = mkLit v (!pos)`. -/
 theorem mkLit_negate (v : Var) (pos : Bool) :
     (mkLit v pos).negate = mkLit v (!pos) := by
   cases pos <;> simp [mkLit, Literal.negate, xor_mul_two_false, xor_mul_two_true]
 
+/-- `deletePurePath_step_mkLit_of_var_ne` states `{st : CheckState} {on_ prevOf nextOf : Var}
+    {startPos prevPos nextPos : Bool} {cref : CRef} {clause : Clause} (hprev : DeletePurePath st on_
+    (mkLit on_ startPos) (mkLit prevOf prevPos)) (hget : st.clauses.getClause cref = some clause)
+    (hcur : (mkLit prevOf prevPos).negate ∈ clause.lits.toList) (hnoStartNeg : (mkLit on_
+    startPos).negate ∉ clause.lits.toList) (hnext : mkLit nextOf nextPos ∈ clause.lits.toList)
+    (hnext_ne_prev : nextOf ≠ prevOf) (hexi : st.formula.isVarExistential nextOf = true) (hdep :
+    (st.formula.depset.getD nextOf #[]).contains on_ = true) : DeletePurePath st on_ (mkLit on_
+    startPos) (mkLit nextOf nextPos)`. -/
 theorem deletePurePath_step_mkLit_of_var_ne
     {st : CheckState} {on_ prevOf nextOf : Var}
     {startPos prevPos nextPos : Bool}
@@ -168,18 +207,26 @@ theorem deletePurePath_step_mkLit_of_var_ne
     (by simpa [mkLit_var_early] using hexi)
     (by simpa [mkLit_var_early] using hdep)
 
+/-- `literal_negate_x_lt_numLits_of_var_le_maxVar` states `(l : Literal) {maxVar : Nat} (hle : l.var
+    ≤ maxVar) : l.negate.x < maxVar * 2 + 2`. -/
 theorem literal_negate_x_lt_numLits_of_var_le_maxVar
     (l : Literal) {maxVar : Nat} (hle : l.var ≤ maxVar) :
     l.negate.x < maxVar * 2 + 2 := by
   exact literal_x_lt_numLits_of_var_le_maxVar l.negate
     (by simpa [literal_negate_var] using hle)
 
+/-- `mkLit_x_lt_numLits_of_var_le_maxVar` states `{v maxVar : Nat} {pos : Bool} (hle : v ≤ maxVar) :
+    (mkLit v pos).x < maxVar * 2 + 2`. -/
 theorem mkLit_x_lt_numLits_of_var_le_maxVar
     {v maxVar : Nat} {pos : Bool} (hle : v ≤ maxVar) :
     (mkLit v pos).x < maxVar * 2 + 2 := by
   exact literal_x_lt_numLits_of_var_le_maxVar (mkLit v pos)
     (by simpa [mkLit_var_early] using hle)
 
+/-- `clauseLit_x_lt_numLits_of_fullCorrect_raw_not_deleted` states `{dqbf : DQBF} {cs : ClauseStore}
+    {st : CheckState} (hfull : CheckState.FullCorrect dqbf cs st) {cref : CRef} {clause : Clause}
+    {lit : Literal} (hraw : st.clauses.getClauseRaw cref = some clause) (hdeleted : clause.deleted =
+    false) (hlit : lit ∈ clause.lits.toList) : lit.x < st.formula.maxVar * 2 + 2`. -/
 theorem clauseLit_x_lt_numLits_of_fullCorrect_raw_not_deleted
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -193,6 +240,9 @@ theorem clauseLit_x_lt_numLits_of_fullCorrect_raw_not_deleted
   exact literal_x_lt_numLits_of_var_le_maxVar lit
     ((hfull.toCorrect.clauses_wf cref clause hget lit hlit).2)
 
+/-- `isVarExistential_literal_var_le_maxVar_of_fullCorrect` states `{dqbf : DQBF} {cs : ClauseStore}
+    {st : CheckState} {lit : Literal} (hfull : CheckState.FullCorrect dqbf cs st) (hexi :
+    st.formula.isVarExistential lit.var = true) : lit.var ≤ st.formula.maxVar`. -/
 theorem isVarExistential_literal_var_le_maxVar_of_fullCorrect
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {lit : Literal}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -204,6 +254,9 @@ theorem isVarExistential_literal_var_le_maxVar_of_fullCorrect
   rw [hfull.toCorrect.toSound.isExistential_size] at hlt
   exact Nat.lt_succ_iff.mp hlt
 
+/-- `isVarExistential_literal_x_lt_numLits_of_fullCorrect` states `{dqbf : DQBF} {cs : ClauseStore}
+    {st : CheckState} {lit : Literal} (hfull : CheckState.FullCorrect dqbf cs st) (hexi :
+    st.formula.isVarExistential lit.var = true) : lit.x < st.formula.maxVar * 2 + 2`. -/
 theorem isVarExistential_literal_x_lt_numLits_of_fullCorrect
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {lit : Literal}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -212,6 +265,9 @@ theorem isVarExistential_literal_x_lt_numLits_of_fullCorrect
   literal_x_lt_numLits_of_var_le_maxVar lit
     (isVarExistential_literal_var_le_maxVar_of_fullCorrect hfull hexi)
 
+/-- `isVarExistential_literal_negate_x_lt_numLits_of_fullCorrect` states `{dqbf : DQBF} {cs :
+    ClauseStore} {st : CheckState} {lit : Literal} (hfull : CheckState.FullCorrect dqbf cs st) (hexi
+    : st.formula.isVarExistential lit.var = true) : lit.negate.x < st.formula.maxVar * 2 + 2`. -/
 theorem isVarExistential_literal_negate_x_lt_numLits_of_fullCorrect
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {lit : Literal}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -220,11 +276,13 @@ theorem isVarExistential_literal_negate_x_lt_numLits_of_fullCorrect
   literal_negate_x_lt_numLits_of_var_le_maxVar lit
     (isVarExistential_literal_var_le_maxVar_of_fullCorrect hfull hexi)
 
+/-- `literal_negate_negate_local` states `(l : Literal) : l.negate.negate = l`. -/
 theorem literal_negate_negate_local (l : Literal) :
     l.negate.negate = l := by
   cases l
   simp [Literal.negate, Nat.xor_assoc]
 
+/-- `literal_eq_of_x_eq` states `{a b : Literal} (h : a.x = b.x) : a = b`. -/
 theorem literal_eq_of_x_eq
     {a b : Literal} (h : a.x = b.x) : a = b := by
   cases a
@@ -232,6 +290,8 @@ theorem literal_eq_of_x_eq
   simp at h ⊢
   exact h
 
+/-- `literal_eq_negate_of_negate_x_eq` states `{a b : Literal} (h : a.negate.x = b.x) : a =
+    b.negate`. -/
 theorem literal_eq_negate_of_negate_x_eq
     {a b : Literal} (h : a.negate.x = b.x) :
     a = b.negate := by
@@ -243,6 +303,8 @@ theorem literal_eq_negate_of_negate_x_eq
           rw [← h]
           simp [Nat.xor_assoc]
 
+/-- `array_toList_getLast_eq_getD_last` states `{α : Type} {xs : Array α} (fallback : α) (h :
+    xs.toList ≠ []) : xs.toList.getLast h = xs.getD (xs.size - 1) fallback`. -/
 theorem array_toList_getLast_eq_getD_last
     {α : Type} {xs : Array α} (fallback : α) (h : xs.toList ≠ []) :
     xs.toList.getLast h = xs.getD (xs.size - 1) fallback := by
@@ -259,6 +321,8 @@ theorem array_toList_getLast_eq_getD_last
   rw [← Array.getElem_eq_getD (xs := xs) (i := xs.size - 1) (h := hidx) fallback]
   exact Array.getElem_toList (xs := xs) (i := xs.size - 1) hidx
 
+/-- `List.mem_dropLast_of_mem_ne_getLast'` states `{α : Type} [DecidableEq α] {xs : List α} {x : α}
+    (hne : xs ≠ []) (hmem : x ∈ xs) (hneLast : x ≠ xs.getLast hne) : x ∈ xs.dropLast`. -/
 theorem List.mem_dropLast_of_mem_ne_getLast'
     {α : Type} [DecidableEq α] {xs : List α} {x : α}
     (hne : xs ≠ []) (hmem : x ∈ xs) (hneLast : x ≠ xs.getLast hne) :
@@ -267,6 +331,9 @@ theorem List.mem_dropLast_of_mem_ne_getLast'
   simp at hmem
   exact hmem.resolve_right hneLast
 
+/-- `array_mem_pop_of_mem_ne_getD_last` states `{α : Type} [DecidableEq α] {xs : Array α} {x : α}
+    (fallback : α) (hmem : x ∈ xs.toList) (hneLast : x ≠ xs.getD (xs.size - 1) fallback) : x ∈
+    xs.pop.toList`. -/
 theorem array_mem_pop_of_mem_ne_getD_last
     {α : Type} [DecidableEq α] {xs : Array α} {x : α} (fallback : α)
     (hmem : x ∈ xs.toList)
@@ -282,6 +349,8 @@ theorem array_mem_pop_of_mem_ne_getD_last
       rw [← array_toList_getLast_eq_getD_last (xs := xs) fallback hlist_ne]
       exact hx))
 
+/-- `array_getD_last_mem_toList` states `{α : Type} {xs : Array α} (fallback : α) (hlist_ne :
+    xs.toList ≠ []) : xs.getD (xs.size - 1) fallback ∈ xs.toList`. -/
 theorem array_getD_last_mem_toList
     {α : Type} {xs : Array α} (fallback : α)
     (hlist_ne : xs.toList ≠ []) :
@@ -290,6 +359,8 @@ theorem array_getD_last_mem_toList
     List.getLast_mem hlist_ne
   rwa [array_toList_getLast_eq_getD_last fallback hlist_ne] at hlast
 
+/-- `false_replicate_array_getD` states `(n i : Nat) : ((List.replicate n false).toArray).getD i
+    false = false`. -/
 theorem false_replicate_array_getD
     (n i : Nat) :
     ((List.replicate n false).toArray).getD i false = false := by
@@ -297,6 +368,8 @@ theorem false_replicate_array_getD
   · simp [Array.getD]
   · simp [Array.getD]
 
+/-- `array_set_getD_ne` states `{α : Type} (a : Array α) (i j : Nat) (v fallback : α) (hi : i <
+    a.size) (hne : i ≠ j) : (a.set i v hi).getD j fallback = a.getD j fallback`. -/
 theorem array_set_getD_ne
     {α : Type} (a : Array α) (i j : Nat) (v fallback : α)
     (hi : i < a.size) (hne : i ≠ j) :
@@ -310,6 +383,8 @@ theorem array_set_getD_ne
       simpa [hsize] using hj
     rw [dif_neg hj', dif_neg hj]
 
+/-- `array_set_true_preserves_getD` states `(a : Array Bool) (i target : Nat) (hi : i < a.size) (h :
+    a.getD target false = true) : (a.set i true hi).getD target false = true`. -/
 theorem array_set_true_preserves_getD
     (a : Array Bool) (i target : Nat) (hi : i < a.size)
     (h : a.getD target false = true) :
@@ -325,12 +400,17 @@ theorem array_set_true_preserves_getD
   · rw [array_set_getD_ne a i target true false hi heq]
     exact h
 
+/-- `false_replicate_array_set_getD_of_ne` states `(n i j : Nat) (hi : i < ((List.replicate n
+    false).toArray).size) (hne : i ≠ j) : (((List.replicate n false).toArray).set i true hi).getD j
+    false = false`. -/
 theorem false_replicate_array_set_getD_of_ne
     (n i j : Nat) (hi : i < ((List.replicate n false).toArray).size) (hne : i ≠ j) :
     (((List.replicate n false).toArray).set i true hi).getD j false = false := by
   rw [array_set_getD_ne _ i j true false hi hne]
   exact false_replicate_array_getD n j
 
+/-- `arraySetIfInBounds_true_preserves_getD` states `(a : Array Bool) (i target : Nat) (h : a.getD
+    target false = true) : (a.setIfInBounds i true).getD target false = true`. -/
 theorem arraySetIfInBounds_true_preserves_getD
     (a : Array Bool) (i target : Nat)
     (h : a.getD target false = true) :
@@ -343,6 +423,8 @@ theorem arraySetIfInBounds_true_preserves_getD
   · rw [arraySetIfInBounds_getD_ne a i target true false hit]
     exact h
 
+/-- `array_getElem?_getD_eq_getD` states `{α : Type} (a : Array α) (i : Nat) (fallback : α) :
+    a[i]?.getD fallback = a.getD i fallback`. -/
 theorem array_getElem?_getD_eq_getD
     {α : Type} (a : Array α) (i : Nat) (fallback : α) :
     a[i]?.getD fallback = a.getD i fallback := by
@@ -350,6 +432,11 @@ theorem array_getElem?_getD_eq_getD
   · simp [Array.getD, h]
   · simp [Array.getD, h]
 
+/-- `getReachableLitStep_marks_reach_true` states `{st : CheckState} {lvar : Var} {explored : Array
+    Bool} {cur lit : Literal} {state : Array Literal × Array Bool} (hcur : lit ≠ cur) (hexpl :
+    explored.getD lit.negate.x false = false) (hexi : st.formula.isVarExistential lit.var = true)
+    (hdep : (st.formula.depset.getD lit.var #[]).contains lvar = true) (hlt : lit.x < state.2.size)
+    : ((getReachableLitStep st lvar explored cur state lit).2).getD lit.x false = true`. -/
 theorem getReachableLitStep_marks_reach_true
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur lit : Literal}
     {state : Array Literal × Array Bool}
@@ -368,6 +455,9 @@ theorem getReachableLitStep_marks_reach_true
     · simp [Array.getD, hlt_dep] at hmem
   simpa [getReachableLitStep, hcur, hexpl, hexi, hmem'] using hlt
 
+/-- `getReachableLitStep_reach_size` states `{st : CheckState} {lvar : Var} {explored : Array Bool}
+    {cur : Literal} {state : Array Literal × Array Bool} {lit : Literal} : ((getReachableLitStep st
+    lvar explored cur state lit).2).size = state.2.size`. -/
 theorem getReachableLitStep_reach_size
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
     {state : Array Literal × Array Bool} {lit : Literal} :
@@ -383,6 +473,10 @@ theorem getReachableLitStep_reach_size
       · simp [getReachableLitStep, hcur, hexpl, hguard]
       · simp [getReachableLitStep, hcur, hexpl, hguard]
 
+/-- `getReachableLitStep_preserves_reach_true` states `{st : CheckState} {lvar : Var} {explored :
+    Array Bool} {cur : Literal} {state : Array Literal × Array Bool} {lit : Literal} {target : Nat}
+    (h : state.2.getD target false = true) : ((getReachableLitStep st lvar explored cur state
+    lit).2).getD target false = true`. -/
 theorem getReachableLitStep_preserves_reach_true
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
     {state : Array Literal × Array Bool} {lit : Literal} {target : Nat}
@@ -411,6 +505,12 @@ theorem getReachableLitStep_preserves_reach_true
           simp [getReachableLitStep, hcur, hexpl, hexi, hmem', h]
       · simp [getReachableLitStep, hcur, hexpl, hexi, h]
 
+/-- `getReachableLitStep_marks_reach_true_of_pre` states `{st : CheckState} {lvar : Var} {explored :
+    Array Bool} {cur target : Literal} {state : Array Literal × Array Bool} (hcur : target ≠ cur)
+    (hpre : explored.getD target.negate.x false = true → state.2.getD target.x false = true) (hexi :
+    st.formula.isVarExistential target.var = true) (hdep : (st.formula.depset.getD target.var
+    #[]).contains lvar = true) (hlt : target.x < state.2.size) : ((getReachableLitStep st lvar
+    explored cur state target).2).getD target.x false = true`. -/
 theorem getReachableLitStep_marks_reach_true_of_pre
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
     {state : Array Literal × Array Bool}
@@ -432,6 +532,9 @@ theorem getReachableLitStep_marks_reach_true_of_pre
       (cur := cur) (lit := target) (state := state)
       hcur hexplFalse hexi hdep hlt
 
+/-- `getReachableLitStep_preserves_worklist_mem` states `{st : CheckState} {lvar : Var} {explored :
+    Array Bool} {cur lit keep : Literal} {state : Array Literal × Array Bool} (h : keep ∈
+    state.1.toList) : keep ∈ ((getReachableLitStep st lvar explored cur state lit).1).toList`. -/
 theorem getReachableLitStep_preserves_worklist_mem
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur lit keep : Literal}
     {state : Array Literal × Array Bool}
@@ -458,6 +561,10 @@ theorem getReachableLitStep_preserves_worklist_mem
           simp [getReachableLitStep, hcur, hexpl, hexi, hmem', h]
       · simp [getReachableLitStep, hcur, hexpl, hexi, h]
 
+/-- `ReachFrontierInvariant` defines `(start : Literal) (worklist : Array Literal) (reach expl :
+    Array Bool) : Prop := (start : Literal) (worklist : Array Literal) (reach expl : Array Bool) :
+    Prop := (∀ l, l ∈ worklist.toList → l ≠ start → reach.getD l.negate.x false = true) ∧ (∀ l,
+    expl.getD l.x false = true → l ≠ start → reach.getD l.negate.x false = true)`. -/
 def ReachFrontierInvariant
     (start : Literal) (worklist : Array Literal) (reach expl : Array Bool) : Prop :=
   (∀ l, l ∈ worklist.toList → l ≠ start →
@@ -465,6 +572,9 @@ def ReachFrontierInvariant
   (∀ l, expl.getD l.x false = true → l ≠ start →
       reach.getD l.negate.x false = true)
 
+/-- `ReachFrontierInvariant_initial` states `(start : Literal) (numLits : Nat) :
+    ReachFrontierInvariant start #[start] (List.replicate numLits false).toArray (List.replicate
+    numLits false).toArray`. -/
 theorem ReachFrontierInvariant_initial
     (start : Literal) (numLits : Nat) :
     ReachFrontierInvariant start #[start]
@@ -481,6 +591,13 @@ theorem ReachFrontierInvariant_initial
     rw [hfalse] at hexpl
     cases hexpl
 
+/-- `ReachProcessedInvariant` defines `(st : CheckState) (lvar : Var) (negL : Literal) (reach expl :
+    Array Bool) : Prop := (st : CheckState) (lvar : Var) (negL : Literal) (reach expl : Array Bool)
+    : Prop := ∀ cur, expl.getD cur.x false = true → ∀ cref clause target, cref ∈ (st.clauses.getOcc
+    cur).toList → st.clauses.getClauseRaw cref = some clause → clause.deleted = false → negL ∉
+    clause.lits → target ∈ clause.lits.toList → target ≠ cur → st.formula.isVarExistential
+    target.var = true → (st.formula.depset.getD target.var #[]).contains lvar = true → target.x <
+    reach.size → reach.getD target.x false = true`. -/
 def ReachProcessedInvariant
     (st : CheckState) (lvar : Var) (negL : Literal)
     (reach expl : Array Bool) : Prop :=
@@ -497,6 +614,9 @@ def ReachProcessedInvariant
       target.x < reach.size →
       reach.getD target.x false = true
 
+/-- `ReachProcessedInvariant_initial` states `(st : CheckState) (lvar : Var) (negL : Literal)
+    (numLits : Nat) : ReachProcessedInvariant st lvar negL (List.replicate numLits false).toArray
+    (List.replicate numLits false).toArray`. -/
 theorem ReachProcessedInvariant_initial
     (st : CheckState) (lvar : Var) (negL : Literal) (numLits : Nat) :
     ReachProcessedInvariant st lvar negL
@@ -509,12 +629,19 @@ theorem ReachProcessedInvariant_initial
   rw [hfalse] at hexpl
   cases hexpl
 
+/-- `ReachBackpointerInvariant` defines `(worklist : Array Literal) (reach expl : Array Bool) : Prop
+    := (worklist : Array Literal) (reach expl : Array Bool) : Prop := ∀ (lit : Literal),
+    lit.negate.x < expl.size → reach.getD lit.x false = true → lit.negate ∈ worklist.toList ∨
+    expl.getD lit.negate.x false = true`. -/
 def ReachBackpointerInvariant
     (worklist : Array Literal) (reach expl : Array Bool) : Prop :=
   ∀ (lit : Literal), lit.negate.x < expl.size →
     reach.getD lit.x false = true →
       lit.negate ∈ worklist.toList ∨ expl.getD lit.negate.x false = true
 
+/-- `ReachBackpointerInvariant_initial` states `(start : Literal) (numLits : Nat) :
+    ReachBackpointerInvariant #[start] (List.replicate numLits false).toArray (List.replicate
+    numLits false).toArray`. -/
 theorem ReachBackpointerInvariant_initial
     (start : Literal) (numLits : Nat) :
     ReachBackpointerInvariant #[start]
@@ -528,6 +655,11 @@ theorem ReachBackpointerInvariant_initial
   rw [hfalse] at hreach
   cases hreach
 
+/-- `getReachableLitStep_preserves_frontierInvariant` states `{st : CheckState} {lvar : Var}
+    {explored : Array Bool} {start cur lit : Literal} {state : Array Literal × Array Bool} (hinv :
+    ReachFrontierInvariant start state.1 state.2 explored) (hlt : lit.x < state.2.size) :
+    ReachFrontierInvariant start (getReachableLitStep st lvar explored cur state lit).1
+    (getReachableLitStep st lvar explored cur state lit).2 explored`. -/
 theorem getReachableLitStep_preserves_frontierInvariant
     {st : CheckState} {lvar : Var} {explored : Array Bool} {start cur lit : Literal}
     {state : Array Literal × Array Bool}
@@ -583,6 +715,10 @@ theorem getReachableLitStep_preserves_frontierInvariant
     exact getReachableLitStep_preserves_reach_true
       (hexplInv keep hkeep hkeep_ne_start)
 
+/-- `getReachableLitFold_preserves_reach_true` states `{st : CheckState} {lvar : Var} {explored :
+    Array Bool} {cur : Literal} (lits : List Literal) {state : Array Literal × Array Bool} {target :
+    Nat} (h : state.2.getD target false = true) : ((lits.foldl (getReachableLitStep st lvar explored
+    cur) state).2).getD target false = true`. -/
 theorem getReachableLitFold_preserves_reach_true
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
     (lits : List Literal) {state : Array Literal × Array Bool} {target : Nat}
@@ -595,6 +731,10 @@ theorem getReachableLitFold_preserves_reach_true
       rw [List.foldl_cons]
       exact ih (getReachableLitStep_preserves_reach_true h)
 
+/-- `getReachableLitFold_preserves_worklist_mem` states `{st : CheckState} {lvar : Var} {explored :
+    Array Bool} {cur keep : Literal} (lits : List Literal) {state : Array Literal × Array Bool} (h :
+    keep ∈ state.1.toList) : keep ∈ ((lits.foldl (getReachableLitStep st lvar explored cur)
+    state).1).toList`. -/
 theorem getReachableLitFold_preserves_worklist_mem
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur keep : Literal}
     (lits : List Literal) {state : Array Literal × Array Bool}
@@ -607,6 +747,9 @@ theorem getReachableLitFold_preserves_worklist_mem
       rw [List.foldl_cons]
       exact ih (getReachableLitStep_preserves_worklist_mem h)
 
+/-- `getReachableLitFold_reach_size` states `{st : CheckState} {lvar : Var} {explored : Array Bool}
+    {cur : Literal} (lits : List Literal) {state : Array Literal × Array Bool} : ((lits.foldl
+    (getReachableLitStep st lvar explored cur) state).2).size = state.2.size`. -/
 theorem getReachableLitFold_reach_size
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
     (lits : List Literal) {state : Array Literal × Array Bool} :
@@ -621,6 +764,12 @@ theorem getReachableLitFold_reach_size
         (st := st) (lvar := lvar) (explored := explored)
         (cur := cur) (state := state) (lit := lit)
 
+/-- `getReachableLitFold_preserves_frontierInvariant` states `{st : CheckState} {lvar : Var}
+    {explored : Array Bool} {start cur : Literal} (lits : List Literal) {state : Array Literal ×
+    Array Bool} (hinv : ReachFrontierInvariant start state.1 state.2 explored) (hbounds : ∀ lit ∈
+    lits, lit.x < state.2.size) : ReachFrontierInvariant start ((lits.foldl (getReachableLitStep st
+    lvar explored cur) state).1) ((lits.foldl (getReachableLitStep st lvar explored cur) state).2)
+    explored`. -/
 theorem getReachableLitFold_preserves_frontierInvariant
     {st : CheckState} {lvar : Var} {explored : Array Bool} {start cur : Literal}
     (lits : List Literal) {state : Array Literal × Array Bool}
@@ -655,6 +804,12 @@ theorem getReachableLitFold_preserves_frontierInvariant
             have htarget' : target ∈ lit :: rest := List.mem_cons_of_mem lit htarget
             simpa [hsize] using hbounds target htarget')
 
+/-- `getReachableLitFold_marks_reach_true` states `{st : CheckState} {lvar : Var} {explored : Array
+    Bool} {cur target : Literal} (lits : List Literal) {state : Array Literal × Array Bool} (hmem :
+    target ∈ lits) (hcur : target ≠ cur) (hexpl : explored.getD target.negate.x false = false) (hexi
+    : st.formula.isVarExistential target.var = true) (hdep : (st.formula.depset.getD target.var
+    #[]).contains lvar = true) (hlt : target.x < state.2.size) : ((lits.foldl (getReachableLitStep
+    st lvar explored cur) state).2).getD target.x false = true`. -/
 theorem getReachableLitFold_marks_reach_true
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
     (lits : List Literal) {state : Array Literal × Array Bool}
@@ -686,6 +841,13 @@ theorem getReachableLitFold_marks_reach_true
         exact ih (state := getReachableLitStep st lvar explored cur state lit)
           hrest (by simpa [hsize] using hlt)
 
+/-- `getReachableLitFold_marks_reach_true_of_pre` states `{st : CheckState} {lvar : Var} {explored :
+    Array Bool} {cur target : Literal} (lits : List Literal) {state : Array Literal × Array Bool}
+    (hmem : target ∈ lits) (hcur : target ≠ cur) (hpre : explored.getD target.negate.x false = true
+    → state.2.getD target.x false = true) (hexi : st.formula.isVarExistential target.var = true)
+    (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true) (hlt : target.x <
+    state.2.size) : ((lits.foldl (getReachableLitStep st lvar explored cur) state).2).getD target.x
+    false = true`. -/
 theorem getReachableLitFold_marks_reach_true_of_pre
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
     (lits : List Literal) {state : Array Literal × Array Bool}
@@ -723,6 +885,11 @@ theorem getReachableLitFold_marks_reach_true_of_pre
               getReachableLitStep_preserves_reach_true (hpre hexpl))
             (by simpa [hsize] using hlt)
 
+/-- `getReachableLitStep_preserves_backpointerInvariant` states `{st : CheckState} {lvar : Var}
+    {explored : Array Bool} {cur lit : Literal} {state : Array Literal × Array Bool} (hback :
+    ReachBackpointerInvariant state.1 state.2 explored) : ReachBackpointerInvariant
+    (getReachableLitStep st lvar explored cur state lit).1 (getReachableLitStep st lvar explored cur
+    state lit).2 explored`. -/
 theorem getReachableLitStep_preserves_backpointerInvariant
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur lit : Literal}
     {state : Array Literal × Array Bool}
@@ -797,6 +964,11 @@ theorem getReachableLitStep_preserves_backpointerInvariant
         · right
           exact hexplored
 
+/-- `getReachableLitFold_preserves_backpointerInvariant` states `{st : CheckState} {lvar : Var}
+    {explored : Array Bool} {cur : Literal} (lits : List Literal) {state : Array Literal × Array
+    Bool} (hback : ReachBackpointerInvariant state.1 state.2 explored) : ReachBackpointerInvariant
+    ((lits.foldl (getReachableLitStep st lvar explored cur) state).1) ((lits.foldl
+    (getReachableLitStep st lvar explored cur) state).2) explored`. -/
 theorem getReachableLitFold_preserves_backpointerInvariant
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
     (lits : List Literal) {state : Array Literal × Array Bool}
@@ -816,6 +988,10 @@ theorem getReachableLitFold_preserves_backpointerInvariant
           (st := st) (lvar := lvar) (explored := explored)
           (cur := cur) (lit := lit) (state := state) hback)
 
+/-- `getReachableLitArrayFold_preserves_reach_true` states `{st : CheckState} {lvar : Var} {explored
+    : Array Bool} {cur : Literal} (lits : Array Literal) {state : Array Literal × Array Bool}
+    {target : Nat} (h : state.2.getD target false = true) : ((lits.foldl (getReachableLitStep st
+    lvar explored cur) state).2).getD target false = true`. -/
 theorem getReachableLitArrayFold_preserves_reach_true
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
     (lits : Array Literal) {state : Array Literal × Array Bool} {target : Nat}
@@ -824,6 +1000,10 @@ theorem getReachableLitArrayFold_preserves_reach_true
   rw [← Array.foldl_toList]
   exact getReachableLitFold_preserves_reach_true lits.toList h
 
+/-- `getReachableLitArrayFold_preserves_worklist_mem` states `{st : CheckState} {lvar : Var}
+    {explored : Array Bool} {cur keep : Literal} (lits : Array Literal) {state : Array Literal ×
+    Array Bool} (h : keep ∈ state.1.toList) : keep ∈ ((lits.foldl (getReachableLitStep st lvar
+    explored cur) state).1).toList`. -/
 theorem getReachableLitArrayFold_preserves_worklist_mem
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur keep : Literal}
     (lits : Array Literal) {state : Array Literal × Array Bool}
@@ -832,6 +1012,9 @@ theorem getReachableLitArrayFold_preserves_worklist_mem
   rw [← Array.foldl_toList]
   exact getReachableLitFold_preserves_worklist_mem lits.toList h
 
+/-- `getReachableLitArrayFold_reach_size` states `{st : CheckState} {lvar : Var} {explored : Array
+    Bool} {cur : Literal} (lits : Array Literal) {state : Array Literal × Array Bool} : ((lits.foldl
+    (getReachableLitStep st lvar explored cur) state).2).size = state.2.size`. -/
 theorem getReachableLitArrayFold_reach_size
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
     (lits : Array Literal) {state : Array Literal × Array Bool} :
@@ -839,6 +1022,12 @@ theorem getReachableLitArrayFold_reach_size
   rw [← Array.foldl_toList]
   exact getReachableLitFold_reach_size lits.toList
 
+/-- `getReachableLitArrayFold_preserves_frontierInvariant` states `{st : CheckState} {lvar : Var}
+    {explored : Array Bool} {start cur : Literal} (lits : Array Literal) {state : Array Literal ×
+    Array Bool} (hinv : ReachFrontierInvariant start state.1 state.2 explored) (hbounds : ∀ lit ∈
+    lits.toList, lit.x < state.2.size) : ReachFrontierInvariant start ((lits.foldl
+    (getReachableLitStep st lvar explored cur) state).1) ((lits.foldl (getReachableLitStep st lvar
+    explored cur) state).2) explored`. -/
 theorem getReachableLitArrayFold_preserves_frontierInvariant
     {st : CheckState} {lvar : Var} {explored : Array Bool} {start cur : Literal}
     (lits : Array Literal) {state : Array Literal × Array Bool}
@@ -851,6 +1040,11 @@ theorem getReachableLitArrayFold_preserves_frontierInvariant
   rw [← Array.foldl_toList]
   exact getReachableLitFold_preserves_frontierInvariant lits.toList hinv hbounds
 
+/-- `getReachableLitArrayFold_preserves_backpointerInvariant` states `{st : CheckState} {lvar : Var}
+    {explored : Array Bool} {cur : Literal} (lits : Array Literal) {state : Array Literal × Array
+    Bool} (hback : ReachBackpointerInvariant state.1 state.2 explored) : ReachBackpointerInvariant
+    ((lits.foldl (getReachableLitStep st lvar explored cur) state).1) ((lits.foldl
+    (getReachableLitStep st lvar explored cur) state).2) explored`. -/
 theorem getReachableLitArrayFold_preserves_backpointerInvariant
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur : Literal}
     (lits : Array Literal) {state : Array Literal × Array Bool}
@@ -862,6 +1056,12 @@ theorem getReachableLitArrayFold_preserves_backpointerInvariant
   rw [← Array.foldl_toList]
   exact getReachableLitFold_preserves_backpointerInvariant lits.toList hback
 
+/-- `getReachableLitArrayFold_marks_reach_true` states `{st : CheckState} {lvar : Var} {explored :
+    Array Bool} {cur target : Literal} (lits : Array Literal) {state : Array Literal × Array Bool}
+    (hmem : target ∈ lits.toList) (hcur : target ≠ cur) (hexpl : explored.getD target.negate.x false
+    = false) (hexi : st.formula.isVarExistential target.var = true) (hdep : (st.formula.depset.getD
+    target.var #[]).contains lvar = true) (hlt : target.x < state.2.size) : ((lits.foldl
+    (getReachableLitStep st lvar explored cur) state).2).getD target.x false = true`. -/
 theorem getReachableLitArrayFold_marks_reach_true
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
     (lits : Array Literal) {state : Array Literal × Array Bool}
@@ -875,6 +1075,13 @@ theorem getReachableLitArrayFold_marks_reach_true
   rw [← Array.foldl_toList]
   exact getReachableLitFold_marks_reach_true lits.toList hmem hcur hexpl hexi hdep hlt
 
+/-- `getReachableLitArrayFold_marks_reach_true_of_pre` states `{st : CheckState} {lvar : Var}
+    {explored : Array Bool} {cur target : Literal} (lits : Array Literal) {state : Array Literal ×
+    Array Bool} (hmem : target ∈ lits.toList) (hcur : target ≠ cur) (hpre : explored.getD
+    target.negate.x false = true → state.2.getD target.x false = true) (hexi :
+    st.formula.isVarExistential target.var = true) (hdep : (st.formula.depset.getD target.var
+    #[]).contains lvar = true) (hlt : target.x < state.2.size) : ((lits.foldl (getReachableLitStep
+    st lvar explored cur) state).2).getD target.x false = true`. -/
 theorem getReachableLitArrayFold_marks_reach_true_of_pre
     {st : CheckState} {lvar : Var} {explored : Array Bool} {cur target : Literal}
     (lits : Array Literal) {state : Array Literal × Array Bool}
@@ -892,6 +1099,10 @@ theorem getReachableLitArrayFold_marks_reach_true_of_pre
   exact getReachableLitFold_marks_reach_true_of_pre lits.toList
     hmem hcur hpre hexi hdep hlt
 
+/-- `getReachableCRefStep_preserves_reach_true` states `{st : CheckState} {lvar : Var} {negL :
+    Literal} {explored : Array Bool} {cur : Literal} {state : Array Literal × Array Bool} {cref :
+    CRef} {target : Nat} (h : state.2.getD target false = true) : ((getReachableCRefStep st lvar
+    negL explored cur state cref).2).getD target false = true`. -/
 theorem getReachableCRefStep_preserves_reach_true
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur : Literal}
@@ -912,6 +1123,10 @@ theorem getReachableCRefStep_preserves_reach_true
           rw [array_getElem?_getD_eq_getD]
           exact getReachableLitArrayFold_preserves_reach_true clause.lits h
 
+/-- `getReachableCRefStep_preserves_worklist_mem` states `{st : CheckState} {lvar : Var} {negL :
+    Literal} {explored : Array Bool} {cur keep : Literal} {state : Array Literal × Array Bool} {cref
+    : CRef} (h : keep ∈ state.1.toList) : keep ∈ ((getReachableCRefStep st lvar negL explored cur
+    state cref).1).toList`. -/
 theorem getReachableCRefStep_preserves_worklist_mem
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur keep : Literal}
@@ -932,6 +1147,14 @@ theorem getReachableCRefStep_preserves_worklist_mem
           exact Array.mem_toList_iff.mp
             (getReachableLitArrayFold_preserves_worklist_mem clause.lits h)
 
+/-- `getReachableCRefStep_marks_reach_true` states `{st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal} {state : Array Literal × Array Bool} {cref :
+    CRef} {clause : Clause} (hraw : st.clauses.getClauseRaw cref = some clause) (hdel :
+    clause.deleted = false) (hnoNeg : negL ∉ clause.lits) (hmem : target ∈ clause.lits.toList) (hcur
+    : target ≠ cur) (hexpl : explored.getD target.negate.x false = false) (hexi :
+    st.formula.isVarExistential target.var = true) (hdep : (st.formula.depset.getD target.var
+    #[]).contains lvar = true) (hlt : target.x < state.2.size) : ((getReachableCRefStep st lvar negL
+    explored cur state cref).2).getD target.x false = true`. -/
 theorem getReachableCRefStep_marks_reach_true
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur target : Literal}
@@ -953,6 +1176,14 @@ theorem getReachableCRefStep_marks_reach_true
   rw [array_getElem?_getD_eq_getD]
   exact getReachableLitArrayFold_marks_reach_true clause.lits hmem hcur hexpl hexi hdep hlt
 
+/-- `getReachableCRefStep_marks_reach_true_of_pre` states `{st : CheckState} {lvar : Var} {negL :
+    Literal} {explored : Array Bool} {cur target : Literal} {state : Array Literal × Array Bool}
+    {cref : CRef} {clause : Clause} (hraw : st.clauses.getClauseRaw cref = some clause) (hdel :
+    clause.deleted = false) (hnoNeg : negL ∉ clause.lits) (hmem : target ∈ clause.lits.toList) (hcur
+    : target ≠ cur) (hpre : explored.getD target.negate.x false = true → state.2.getD target.x false
+    = true) (hexi : st.formula.isVarExistential target.var = true) (hdep : (st.formula.depset.getD
+    target.var #[]).contains lvar = true) (hlt : target.x < state.2.size) : ((getReachableCRefStep
+    st lvar negL explored cur state cref).2).getD target.x false = true`. -/
 theorem getReachableCRefStep_marks_reach_true_of_pre
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur target : Literal}
@@ -978,6 +1209,9 @@ theorem getReachableCRefStep_marks_reach_true_of_pre
   exact getReachableLitArrayFold_marks_reach_true_of_pre clause.lits
     hmem hcur hpre hexi hdep hlt
 
+/-- `getReachableCRefStep_reach_size` states `{st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal} {state : Array Literal × Array Bool} {cref : CRef} :
+    ((getReachableCRefStep st lvar negL explored cur state cref).2).size = state.2.size`. -/
 theorem getReachableCRefStep_reach_size
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur : Literal}
@@ -996,6 +1230,13 @@ theorem getReachableCRefStep_reach_size
         · simp [hdel, hcontains]
           exact getReachableLitArrayFold_reach_size clause.lits
 
+/-- `getReachableCRefStep_preserves_frontierInvariant` states `{st : CheckState} {lvar : Var} {negL
+    : Literal} {explored : Array Bool} {start cur : Literal} {state : Array Literal × Array Bool}
+    {cref : CRef} (hinv : ReachFrontierInvariant start state.1 state.2 explored) (hbounds : ∀
+    clause, st.clauses.getClauseRaw cref = some clause → clause.deleted = false → negL ∉ clause.lits
+    → ∀ lit ∈ clause.lits.toList, lit.x < state.2.size) : ReachFrontierInvariant start
+    ((getReachableCRefStep st lvar negL explored cur state cref).1) ((getReachableCRefStep st lvar
+    negL explored cur state cref).2) explored`. -/
 theorem getReachableCRefStep_preserves_frontierInvariant
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {start cur : Literal}
@@ -1032,6 +1273,11 @@ theorem getReachableCRefStep_preserves_frontierInvariant
             (state := (wl, rch)) hinv
             (hbounds clause hraw hdelFalse hcontains)
 
+/-- `getReachableCRefStep_preserves_backpointerInvariant` states `{st : CheckState} {lvar : Var}
+    {negL : Literal} {explored : Array Bool} {cur : Literal} {state : Array Literal × Array Bool}
+    {cref : CRef} (hback : ReachBackpointerInvariant state.1 state.2 explored) :
+    ReachBackpointerInvariant ((getReachableCRefStep st lvar negL explored cur state cref).1)
+    ((getReachableCRefStep st lvar negL explored cur state cref).2) explored`. -/
 theorem getReachableCRefStep_preserves_backpointerInvariant
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur : Literal}
@@ -1058,6 +1304,10 @@ theorem getReachableCRefStep_preserves_backpointerInvariant
             (st := st) (lvar := lvar) (explored := explored)
             (cur := cur) (lits := clause.lits) (state := (wl, rch)) hback
 
+/-- `getReachableCRefFold_preserves_reach_true` states `{st : CheckState} {lvar : Var} {negL :
+    Literal} {explored : Array Bool} {cur : Literal} (crefs : List CRef) {state : Array Literal ×
+    Array Bool} {target : Nat} (h : state.2.getD target false = true) : ((crefs.foldl
+    (getReachableCRefStep st lvar negL explored cur) state).2).getD target false = true`. -/
 theorem getReachableCRefFold_preserves_reach_true
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur : Literal}
@@ -1071,6 +1321,10 @@ theorem getReachableCRefFold_preserves_reach_true
       rw [List.foldl_cons]
       exact ih (getReachableCRefStep_preserves_reach_true h)
 
+/-- `getReachableCRefFold_preserves_worklist_mem` states `{st : CheckState} {lvar : Var} {negL :
+    Literal} {explored : Array Bool} {cur keep : Literal} (crefs : List CRef) {state : Array Literal
+    × Array Bool} (h : keep ∈ state.1.toList) : keep ∈ ((crefs.foldl (getReachableCRefStep st lvar
+    negL explored cur) state).1).toList`. -/
 theorem getReachableCRefFold_preserves_worklist_mem
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur keep : Literal}
@@ -1084,6 +1338,9 @@ theorem getReachableCRefFold_preserves_worklist_mem
       rw [List.foldl_cons]
       exact ih (getReachableCRefStep_preserves_worklist_mem h)
 
+/-- `getReachableCRefFold_reach_size` states `{st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal} (crefs : List CRef) {state : Array Literal × Array Bool}
+    : ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).size = state.2.size`. -/
 theorem getReachableCRefFold_reach_size
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur : Literal}
@@ -1099,6 +1356,13 @@ theorem getReachableCRefFold_reach_size
         (st := st) (lvar := lvar) (negL := negL)
         (explored := explored) (cur := cur) (state := state) (cref := cref)
 
+/-- `getReachableCRefFold_preserves_frontierInvariant` states `{st : CheckState} {lvar : Var} {negL
+    : Literal} {explored : Array Bool} {start cur : Literal} (crefs : List CRef) {state : Array
+    Literal × Array Bool} (hinv : ReachFrontierInvariant start state.1 state.2 explored) (hbounds :
+    ∀ cref ∈ crefs, ∀ clause, st.clauses.getClauseRaw cref = some clause → clause.deleted = false →
+    negL ∉ clause.lits → ∀ lit ∈ clause.lits.toList, lit.x < state.2.size) : ReachFrontierInvariant
+    start ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).1) ((crefs.foldl
+    (getReachableCRefStep st lvar negL explored cur) state).2) explored`. -/
 theorem getReachableCRefFold_preserves_frontierInvariant
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {start cur : Literal}
@@ -1146,6 +1410,11 @@ theorem getReachableCRefFold_preserves_frontierInvariant
             simpa [hsize] using
               hbounds hit hhit' clause hraw hdel hnoNeg lit hlit)
 
+/-- `getReachableCRefFold_preserves_backpointerInvariant` states `{st : CheckState} {lvar : Var}
+    {negL : Literal} {explored : Array Bool} {cur : Literal} (crefs : List CRef) {state : Array
+    Literal × Array Bool} (hback : ReachBackpointerInvariant state.1 state.2 explored) :
+    ReachBackpointerInvariant ((crefs.foldl (getReachableCRefStep st lvar negL explored cur)
+    state).1) ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2) explored`. -/
 theorem getReachableCRefFold_preserves_backpointerInvariant
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur : Literal}
@@ -1167,6 +1436,14 @@ theorem getReachableCRefFold_preserves_backpointerInvariant
           (explored := explored) (cur := cur)
           (state := state) (cref := cref) hback)
 
+/-- `getReachableCRefFold_marks_reach_true` states `{st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur target : Literal} (crefs : List CRef) {state : Array Literal ×
+    Array Bool} {hit : CRef} {clause : Clause} (hhit : hit ∈ crefs) (hraw : st.clauses.getClauseRaw
+    hit = some clause) (hdel : clause.deleted = false) (hnoNeg : negL ∉ clause.lits) (hmem : target
+    ∈ clause.lits.toList) (hcur : target ≠ cur) (hexpl : explored.getD target.negate.x false =
+    false) (hexi : st.formula.isVarExistential target.var = true) (hdep : (st.formula.depset.getD
+    target.var #[]).contains lvar = true) (hlt : target.x < state.2.size) : ((crefs.foldl
+    (getReachableCRefStep st lvar negL explored cur) state).2).getD target.x false = true`. -/
 theorem getReachableCRefFold_marks_reach_true
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur target : Literal}
@@ -1204,6 +1481,15 @@ theorem getReachableCRefFold_marks_reach_true
           exact ih (state := getReachableCRefStep st lvar negL explored cur state cref)
             hrest (by simpa [hsize] using hlt)
 
+/-- `getReachableCRefFold_marks_reach_true_of_pre` states `{st : CheckState} {lvar : Var} {negL :
+    Literal} {explored : Array Bool} {cur target : Literal} (crefs : List CRef) {state : Array
+    Literal × Array Bool} {hit : CRef} {clause : Clause} (hhit : hit ∈ crefs) (hraw :
+    st.clauses.getClauseRaw hit = some clause) (hdel : clause.deleted = false) (hnoNeg : negL ∉
+    clause.lits) (hmem : target ∈ clause.lits.toList) (hcur : target ≠ cur) (hpre : explored.getD
+    target.negate.x false = true → state.2.getD target.x false = true) (hexi :
+    st.formula.isVarExistential target.var = true) (hdep : (st.formula.depset.getD target.var
+    #[]).contains lvar = true) (hlt : target.x < state.2.size) : ((crefs.foldl (getReachableCRefStep
+    st lvar negL explored cur) state).2).getD target.x false = true`. -/
 theorem getReachableCRefFold_marks_reach_true_of_pre
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur target : Literal}
@@ -1247,6 +1533,10 @@ theorem getReachableCRefFold_marks_reach_true_of_pre
               getReachableCRefStep_preserves_reach_true (hpre hexpl))
             (by simpa [hsize] using hlt)
 
+/-- `getReachableCRefArrayFold_preserves_reach_true` states `{st : CheckState} {lvar : Var} {negL :
+    Literal} {explored : Array Bool} {cur : Literal} (crefs : Array CRef) {state : Array Literal ×
+    Array Bool} {target : Nat} (h : state.2.getD target false = true) : ((crefs.foldl
+    (getReachableCRefStep st lvar negL explored cur) state).2).getD target false = true`. -/
 theorem getReachableCRefArrayFold_preserves_reach_true
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur : Literal}
@@ -1256,6 +1546,10 @@ theorem getReachableCRefArrayFold_preserves_reach_true
   rw [← Array.foldl_toList]
   exact getReachableCRefFold_preserves_reach_true crefs.toList h
 
+/-- `getReachableCRefArrayFold_preserves_worklist_mem` states `{st : CheckState} {lvar : Var} {negL
+    : Literal} {explored : Array Bool} {cur keep : Literal} (crefs : Array CRef) {state : Array
+    Literal × Array Bool} (h : keep ∈ state.1.toList) : keep ∈ ((crefs.foldl (getReachableCRefStep
+    st lvar negL explored cur) state).1).toList`. -/
 theorem getReachableCRefArrayFold_preserves_worklist_mem
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur keep : Literal}
@@ -1265,6 +1559,10 @@ theorem getReachableCRefArrayFold_preserves_worklist_mem
   rw [← Array.foldl_toList]
   exact getReachableCRefFold_preserves_worklist_mem crefs.toList h
 
+/-- `getReachableCRefArrayFold_reach_size` states `{st : CheckState} {lvar : Var} {negL : Literal}
+    {explored : Array Bool} {cur : Literal} (crefs : Array CRef) {state : Array Literal × Array
+    Bool} : ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).size =
+    state.2.size`. -/
 theorem getReachableCRefArrayFold_reach_size
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur : Literal}
@@ -1273,6 +1571,13 @@ theorem getReachableCRefArrayFold_reach_size
   rw [← Array.foldl_toList]
   exact getReachableCRefFold_reach_size crefs.toList
 
+/-- `getReachableCRefArrayFold_preserves_frontierInvariant` states `{st : CheckState} {lvar : Var}
+    {negL : Literal} {explored : Array Bool} {start cur : Literal} (crefs : Array CRef) {state :
+    Array Literal × Array Bool} (hinv : ReachFrontierInvariant start state.1 state.2 explored)
+    (hbounds : ∀ cref ∈ crefs.toList, ∀ clause, st.clauses.getClauseRaw cref = some clause →
+    clause.deleted = false → negL ∉ clause.lits → ∀ lit ∈ clause.lits.toList, lit.x < state.2.size)
+    : ReachFrontierInvariant start ((crefs.foldl (getReachableCRefStep st lvar negL explored cur)
+    state).1) ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2) explored`. -/
 theorem getReachableCRefArrayFold_preserves_frontierInvariant
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {start cur : Literal}
@@ -1292,6 +1597,11 @@ theorem getReachableCRefArrayFold_preserves_frontierInvariant
   rw [← Array.foldl_toList]
   exact getReachableCRefFold_preserves_frontierInvariant crefs.toList hinv hbounds
 
+/-- `getReachableCRefArrayFold_preserves_backpointerInvariant` states `{st : CheckState} {lvar :
+    Var} {negL : Literal} {explored : Array Bool} {cur : Literal} (crefs : Array CRef) {state :
+    Array Literal × Array Bool} (hback : ReachBackpointerInvariant state.1 state.2 explored) :
+    ReachBackpointerInvariant ((crefs.foldl (getReachableCRefStep st lvar negL explored cur)
+    state).1) ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2) explored`. -/
 theorem getReachableCRefArrayFold_preserves_backpointerInvariant
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur : Literal}
@@ -1304,6 +1614,10 @@ theorem getReachableCRefArrayFold_preserves_backpointerInvariant
   rw [← Array.foldl_toList]
   exact getReachableCRefFold_preserves_backpointerInvariant crefs.toList hback
 
+/-- `ReachBackpointerInvariant_pop_of_explored` states `{worklist wl' : Array Literal} {reach expl :
+    Array Bool} {cur : Literal} (hcur : cur = worklist.getD (worklist.size - 1) ⟨0⟩) (hwl' : wl' =
+    worklist.pop) (hexplCur : expl.getD cur.x false = true) (hback : ReachBackpointerInvariant
+    worklist reach expl) : ReachBackpointerInvariant wl' reach expl`. -/
 theorem ReachBackpointerInvariant_pop_of_explored
     {worklist wl' : Array Literal} {reach expl : Array Bool} {cur : Literal}
     (hcur : cur = worklist.getD (worklist.size - 1) ⟨0⟩)
@@ -1327,6 +1641,10 @@ theorem ReachBackpointerInvariant_pop_of_explored
   · right
     exact hexplored
 
+/-- `ReachBackpointerInvariant_pop_of_outOfBounds` states `{worklist wl' : Array Literal} {reach
+    expl : Array Bool} {cur : Literal} (hcur : cur = worklist.getD (worklist.size - 1) ⟨0⟩) (hwl' :
+    wl' = worklist.pop) (hcur_oob : ¬ cur.x < expl.size) (hback : ReachBackpointerInvariant worklist
+    reach expl) : ReachBackpointerInvariant wl' reach expl`. -/
 theorem ReachBackpointerInvariant_pop_of_outOfBounds
     {worklist wl' : Array Literal} {reach expl : Array Bool} {cur : Literal}
     (hcur : cur = worklist.getD (worklist.size - 1) ⟨0⟩)
@@ -1349,6 +1667,11 @@ theorem ReachBackpointerInvariant_pop_of_outOfBounds
   · right
     exact hexplored
 
+/-- `ReachBackpointerInvariant_pop_set_current` states `{worklist wl' : Array Literal} {reach expl :
+    Array Bool} {cur : Literal} {idx : Nat} (hcur : cur = worklist.getD (worklist.size - 1) ⟨0⟩)
+    (hwl' : wl' = worklist.pop) (hidx_eq : idx = cur.x) (hidx : idx < expl.size) (hback :
+    ReachBackpointerInvariant worklist reach expl) : ReachBackpointerInvariant wl' reach (expl.set
+    idx true hidx)`. -/
 theorem ReachBackpointerInvariant_pop_set_current
     {worklist wl' : Array Literal} {reach expl : Array Bool} {cur : Literal}
     {idx : Nat}
@@ -1385,6 +1708,15 @@ theorem ReachBackpointerInvariant_pop_set_current
   · right
     exact array_set_true_preserves_getD expl cur.x lit.negate.x hidx hexplored
 
+/-- `getReachableCRefArrayFold_marks_reach_true` states `{st : CheckState} {lvar : Var} {negL :
+    Literal} {explored : Array Bool} {cur target : Literal} (crefs : Array CRef) {state : Array
+    Literal × Array Bool} {hit : CRef} {clause : Clause} (hhit : hit ∈ crefs.toList) (hraw :
+    st.clauses.getClauseRaw hit = some clause) (hdel : clause.deleted = false) (hnoNeg : negL ∉
+    clause.lits) (hmem : target ∈ clause.lits.toList) (hcur : target ≠ cur) (hexpl : explored.getD
+    target.negate.x false = false) (hexi : st.formula.isVarExistential target.var = true) (hdep :
+    (st.formula.depset.getD target.var #[]).contains lvar = true) (hlt : target.x < state.2.size) :
+    ((crefs.foldl (getReachableCRefStep st lvar negL explored cur) state).2).getD target.x false =
+    true`. -/
 theorem getReachableCRefArrayFold_marks_reach_true
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur target : Literal}
@@ -1404,6 +1736,15 @@ theorem getReachableCRefArrayFold_marks_reach_true
   exact getReachableCRefFold_marks_reach_true crefs.toList hhit
     hraw hdel hnoNeg hmem hcur hexpl hexi hdep hlt
 
+/-- `getReachableCRefArrayFold_marks_reach_true_of_pre` states `{st : CheckState} {lvar : Var} {negL
+    : Literal} {explored : Array Bool} {cur target : Literal} (crefs : Array CRef) {state : Array
+    Literal × Array Bool} {hit : CRef} {clause : Clause} (hhit : hit ∈ crefs.toList) (hraw :
+    st.clauses.getClauseRaw hit = some clause) (hdel : clause.deleted = false) (hnoNeg : negL ∉
+    clause.lits) (hmem : target ∈ clause.lits.toList) (hcur : target ≠ cur) (hpre : explored.getD
+    target.negate.x false = true → state.2.getD target.x false = true) (hexi :
+    st.formula.isVarExistential target.var = true) (hdep : (st.formula.depset.getD target.var
+    #[]).contains lvar = true) (hlt : target.x < state.2.size) : ((crefs.foldl (getReachableCRefStep
+    st lvar negL explored cur) state).2).getD target.x false = true`. -/
 theorem getReachableCRefArrayFold_marks_reach_true_of_pre
     {st : CheckState} {lvar : Var} {negL : Literal}
     {explored : Array Bool} {cur target : Literal}
@@ -1426,6 +1767,13 @@ theorem getReachableCRefArrayFold_marks_reach_true_of_pre
   exact getReachableCRefFold_marks_reach_true_of_pre crefs.toList hhit
     hraw hdel hnoNeg hmem hcur hpre hexi hdep hlt
 
+/-- `getReachableCRefArrayFold_processedInvariant_after_current` states `{st : CheckState} {lvar :
+    Var} {negL start cur : Literal} {worklist wl' : Array Literal} {reach expl : Array Bool} (hnegL
+    : negL = start.negate) (hcur_lt : cur.x < expl.size) (hfront : ReachFrontierInvariant start
+    worklist reach expl) (hproc : ReachProcessedInvariant st lvar negL reach expl) (hcur_mem : cur ∈
+    worklist.toList) : ReachProcessedInvariant st lvar negL (((st.clauses.getOcc cur).foldl
+    (getReachableCRefStep st lvar negL (expl.set cur.x true hcur_lt) cur) (wl', reach)).2) (expl.set
+    cur.x true hcur_lt)`. -/
 theorem getReachableCRefArrayFold_processedInvariant_after_current
     {st : CheckState} {lvar : Var} {negL start cur : Literal}
     {worklist wl' : Array Literal} {reach expl : Array Bool}
@@ -1508,6 +1856,9 @@ theorem getReachableCRefArrayFold_processedInvariant_after_current
         hnoNeg' hmem' hne' hexi' hdep'
         (by simpa [hsize_fold] using hlt'))
 
+/-- `getReachable_go_preserves_reach_true` states `(st : CheckState) (lvar : Var) (negL : Literal)
+    (worklist : Array Literal) (reach expl : Array Bool) {target : Nat} (h : reach.getD target false
+    = true) : (getReachable.go st lvar negL worklist reach expl).getD target false = true`. -/
 theorem getReachable_go_preserves_reach_true
     (st : CheckState) (lvar : Var) (negL : Literal)
     (worklist : Array Literal) (reach expl : Array Bool) {target : Nat}
@@ -1555,6 +1906,18 @@ theorem getReachable_go_preserves_reach_true
       exact ih h)
     worklist reach expl h
 
+/-- `getReachable_go_worklist_clause_marks_reach_true_of_invariants` states `{dqbf : DQBF} {cs :
+    ClauseStore} {st : CheckState} (hfull : CheckState.FullCorrect dqbf cs st) {lvar : Var} {negL
+    start prev target : Literal} {worklist : Array Literal} {reach expl : Array Bool} {cref : CRef}
+    {clause : Clause} (hnegL : negL = start.negate) (hbound : ∀ cref clause lit,
+    st.clauses.getClauseRaw cref = some clause → clause.deleted = false → lit ∈ clause.lits.toList →
+    lit.x < reach.size) (hfront : ReachFrontierInvariant start worklist reach expl) (hproc :
+    ReachProcessedInvariant st lvar negL reach expl) (hprevIn : prev.negate ∈ worklist.toList)
+    (hprevNeg_lt : prev.negate.x < expl.size) (hget : st.clauses.getClause cref = some clause)
+    (hprev : prev.negate ∈ clause.lits.toList) (hnoNeg : negL ∉ clause.lits.toList) (hmem : target ∈
+    clause.lits.toList) (hne : target ≠ prev.negate) (hexi : st.formula.isVarExistential target.var
+    = true) (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true) (hlt : target.x <
+    reach.size) : (getReachable.go st lvar negL worklist reach expl).getD target.x false = true`. -/
 theorem getReachable_go_worklist_clause_marks_reach_true_of_invariants
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -1849,6 +2212,19 @@ theorem getReachable_go_worklist_clause_marks_reach_true_of_invariants
         exact ih hbound hfront' hproc hprevNeg_lt hprevIn' hlt)
     worklist reach expl hbound hfront hproc hprevNeg_lt hprevIn hlt
 
+/-- `getReachable_go_current_reachable_clause_marks_reach_true_of_invariants` states `{dqbf : DQBF}
+    {cs : ClauseStore} {st : CheckState} (hfull : CheckState.FullCorrect dqbf cs st) {lvar : Var}
+    {negL start prev target : Literal} {worklist : Array Literal} {reach expl : Array Bool} {cref :
+    CRef} {clause : Clause} (hnegL : negL = start.negate) (hbound : ∀ cref clause lit,
+    st.clauses.getClauseRaw cref = some clause → clause.deleted = false → lit ∈ clause.lits.toList →
+    lit.x < reach.size) (hfront : ReachFrontierInvariant start worklist reach expl) (hproc :
+    ReachProcessedInvariant st lvar negL reach expl) (hback : ReachBackpointerInvariant worklist
+    reach expl) (hprevNeg_lt : prev.negate.x < expl.size) (hprevReach : reach.getD prev.x false =
+    true) (hget : st.clauses.getClause cref = some clause) (hprev : prev.negate ∈
+    clause.lits.toList) (hnoNeg : negL ∉ clause.lits.toList) (hmem : target ∈ clause.lits.toList)
+    (hne : target ≠ prev.negate) (hexi : st.formula.isVarExistential target.var = true) (hdep :
+    (st.formula.depset.getD target.var #[]).contains lvar = true) (hlt : target.x < reach.size) :
+    (getReachable.go st lvar negL worklist reach expl).getD target.x false = true`. -/
 theorem getReachable_go_current_reachable_clause_marks_reach_true_of_invariants
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -1907,6 +2283,20 @@ theorem getReachable_go_current_reachable_clause_marks_reach_true_of_invariants
         hocc hraw hdel hnoNegArr hmem hne hexi hdep hlt
     exact getReachable_go_preserves_reach_true st lvar negL worklist reach expl hreach
 
+/-- `getReachable_go_final_reachable_clause_marks_reach_true_of_invariants` states `{dqbf : DQBF}
+    {cs : ClauseStore} {st : CheckState} (hfull : CheckState.FullCorrect dqbf cs st) {lvar : Var}
+    {negL start prev target : Literal} {worklist : Array Literal} {reach expl : Array Bool} {cref :
+    CRef} {clause : Clause} (hnegL : negL = start.negate) (hbound : ∀ cref clause lit,
+    st.clauses.getClauseRaw cref = some clause → clause.deleted = false → lit ∈ clause.lits.toList →
+    lit.x < reach.size) (hfront : ReachFrontierInvariant start worklist reach expl) (hproc :
+    ReachProcessedInvariant st lvar negL reach expl) (hback : ReachBackpointerInvariant worklist
+    reach expl) (hprevNeg_lt : prev.negate.x < expl.size) (hfinalPrev : (getReachable.go st lvar
+    negL worklist reach expl).getD prev.x false = true) (hget : st.clauses.getClause cref = some
+    clause) (hprev : prev.negate ∈ clause.lits.toList) (hnoNeg : negL ∉ clause.lits.toList) (hmem :
+    target ∈ clause.lits.toList) (hne : target ≠ prev.negate) (hexi : st.formula.isVarExistential
+    target.var = true) (hdep : (st.formula.depset.getD target.var #[]).contains lvar = true) (hlt :
+    target.x < reach.size) : (getReachable.go st lvar negL worklist reach expl).getD target.x false
+    = true`. -/
 theorem getReachable_go_final_reachable_clause_marks_reach_true_of_invariants
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -2157,6 +2547,14 @@ theorem getReachable_go_final_reachable_clause_marks_reach_true_of_invariants
       exact ih hbound hfront' hproc hback' hprevNeg_lt hfinalPrev hlt)
     worklist reach expl hbound hfront hproc hback hprevNeg_lt hfinalPrev hlt
 
+/-- `getReachable_first_marks_reach_true` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st) {start target : Literal} {cref : CRef} {clause :
+    Clause} (hon_univ : st.formula.isVarExistential start.var = false) (hstart_lt : start.x <
+    st.formula.maxVar * 2 + 2) (hget : st.clauses.getClause cref = some clause) (hstart : start ∈
+    clause.lits.toList) (hnoStartNeg : start.negate ∉ clause.lits.toList) (hmem : target ∈
+    clause.lits.toList) (hne : target ≠ start) (hexi : st.formula.isVarExistential target.var =
+    true) (hdep : (st.formula.depset.getD target.var #[]).contains start.var = true) (htarget_lt :
+    target.x < st.formula.maxVar * 2 + 2) : (getReachable st start).getD target.x false = true`. -/
 theorem getReachable_first_marks_reach_true
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -2238,6 +2636,14 @@ theorem getReachable_first_marks_reach_true
   exact getReachable_go_preserves_reach_true st start.var start.negate wl2 rch2
     (expl0.set start.x true hstart_lt_expl0) hmark'
 
+/-- `getReachable_complete_first_mkLit` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st) {on_ : Var} {pos : Bool} {target : Literal} {cref :
+    CRef} {clause : Clause} (hon_le : on_ ≤ st.formula.maxVar) (hon_univ :
+    st.formula.isVarExistential on_ = false) (hget : st.clauses.getClause cref = some clause)
+    (hstart : mkLit on_ pos ∈ clause.lits.toList) (hnoStartNeg : (mkLit on_ pos).negate ∉
+    clause.lits.toList) (hmem : target ∈ clause.lits.toList) (hne : target ≠ mkLit on_ pos) (hexi :
+    st.formula.isVarExistential target.var = true) (hdep : (st.formula.depset.getD target.var
+    #[]).contains on_ = true) : (getReachable st (mkLit on_ pos)).getD target.x false = true`. -/
 theorem getReachable_complete_first_mkLit
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -2267,6 +2673,10 @@ theorem getReachable_complete_first_mkLit
     (by simpa [mkLit_var_early] using hdep)
     (literal_x_lt_numLits_of_var_le_maxVar target htarget_le)
 
+/-- `getReachable_complete_mkLit` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState} (hfull
+    : CheckState.FullCorrect dqbf cs st) {on_ : Var} {pos : Bool} {target : Literal} (hon_le : on_ ≤
+    st.formula.maxVar) (hon_univ : st.formula.isVarExistential on_ = false) (hpath : DeletePurePath
+    st on_ (mkLit on_ pos) target) : (getReachable st (mkLit on_ pos)).getD target.x false = true`. -/
 theorem getReachable_complete_mkLit
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -2327,11 +2737,18 @@ theorem getReachable_complete_mkLit
             simpa [reach0, numLits] using htarget_lt_num)
       simpa [getReachable, mkLit_var_early, hon_univ, reach0, expl0, numLits] using hmark
 
+/-- `DeletePurePathComplete` defines `(st : CheckState) (on_ : Var) (start : Literal) : Prop := (st
+    : CheckState) (on_ : Var) (start : Literal) : Prop := ∀ target, DeletePurePath st on_ start
+    target → (getReachable st start).getD target.x false = true`. -/
 def DeletePurePathComplete
     (st : CheckState) (on_ : Var) (start : Literal) : Prop :=
   ∀ target, DeletePurePath st on_ start target →
     (getReachable st start).getD target.x false = true
 
+/-- `deletePurePathComplete_mkLit` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState} (hfull
+    : CheckState.FullCorrect dqbf cs st) {on_ : Var} {pos : Bool} (hon_le : on_ ≤ st.formula.maxVar)
+    (hon_univ : st.formula.isVarExistential on_ = false) : DeletePurePathComplete st on_ (mkLit on_
+    pos)`. -/
 theorem deletePurePathComplete_mkLit
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -2343,6 +2760,11 @@ theorem deletePurePathComplete_mkLit
   exact getReachable_complete_mkLit
     (hfull := hfull) (hon_le := hon_le) (hon_univ := hon_univ) hpath
 
+/-- `noDeleteCrossPaths_not_deletePurePath_pair` states `{st : CheckState} {on_ of_ : Var} {pos :
+    Bool} (hpaths : NoDeleteCrossPaths st on_ of_) (hcompletePos : DeletePurePathComplete st on_
+    (mkLit on_ true)) (hcompleteNeg : DeletePurePathComplete st on_ (mkLit on_ false)) (hposPath :
+    DeletePurePath st on_ (mkLit on_ true) (mkLit of_ pos)) (hnegPath : DeletePurePath st on_ (mkLit
+    on_ false) (mkLit of_ (!pos))) : False`. -/
 theorem noDeleteCrossPaths_not_deletePurePath_pair
     {st : CheckState} {on_ of_ : Var} {pos : Bool}
     (hpaths : NoDeleteCrossPaths st on_ of_)
@@ -2355,6 +2777,12 @@ theorem noDeleteCrossPaths_not_deletePurePath_pair
     ⟨hcompletePos (mkLit of_ pos) hposPath,
       hcompleteNeg (mkLit of_ (!pos)) hnegPath⟩
 
+/-- `noDeleteCrossPaths_not_deletePurePath_pair_of_fullCorrect` states `{dqbf : DQBF} {cs :
+    ClauseStore} {st : CheckState} {on_ of_ : Var} {pos : Bool} (hfull : CheckState.FullCorrect dqbf
+    cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ : st.formula.isVarExistential on_ = false)
+    (hpaths : NoDeleteCrossPaths st on_ of_) (hposPath : DeletePurePath st on_ (mkLit on_ true)
+    (mkLit of_ pos)) (hnegPath : DeletePurePath st on_ (mkLit on_ false) (mkLit of_ (!pos))) :
+    False`. -/
 theorem noDeleteCrossPaths_not_deletePurePath_pair_of_fullCorrect
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {on_ of_ : Var} {pos : Bool}
@@ -2372,6 +2800,12 @@ theorem noDeleteCrossPaths_not_deletePurePath_pair_of_fullCorrect
       (hfull := hfull) (pos := false) hon_le hon_univ)
     hposPath hnegPath
 
+/-- `noDeleteCrossPathsSet_not_deletePurePath_pair` states `{st : CheckState} {vars : Array Var}
+    {on_ of_ : Var} {pos : Bool} (hpaths : NoDeleteCrossPathsSet st vars on_) (hof : of_ ∈
+    vars.toList) (hcompletePos : DeletePurePathComplete st on_ (mkLit on_ true)) (hcompleteNeg :
+    DeletePurePathComplete st on_ (mkLit on_ false)) (hposPath : DeletePurePath st on_ (mkLit on_
+    true) (mkLit of_ pos)) (hnegPath : DeletePurePath st on_ (mkLit on_ false) (mkLit of_ (!pos))) :
+    False`. -/
 theorem noDeleteCrossPathsSet_not_deletePurePath_pair
     {st : CheckState} {vars : Array Var} {on_ of_ : Var} {pos : Bool}
     (hpaths : NoDeleteCrossPathsSet st vars on_)
@@ -2384,6 +2818,12 @@ theorem noDeleteCrossPathsSet_not_deletePurePath_pair
   noDeleteCrossPaths_not_deletePurePath_pair (hpaths of_ hof)
     hcompletePos hcompleteNeg hposPath hnegPath
 
+/-- `noDeleteCrossPathsSet_not_deletePurePath_pair_of_fullCorrect` states `{dqbf : DQBF} {cs :
+    ClauseStore} {st : CheckState} {vars : Array Var} {on_ of_ : Var} {pos : Bool} (hfull :
+    CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ :
+    st.formula.isVarExistential on_ = false) (hpaths : NoDeleteCrossPathsSet st vars on_) (hof : of_
+    ∈ vars.toList) (hposPath : DeletePurePath st on_ (mkLit on_ true) (mkLit of_ pos)) (hnegPath :
+    DeletePurePath st on_ (mkLit on_ false) (mkLit of_ (!pos))) : False`. -/
 theorem noDeleteCrossPathsSet_not_deletePurePath_pair_of_fullCorrect
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {vars : Array Var} {on_ of_ : Var} {pos : Bool}
@@ -2398,6 +2838,11 @@ theorem noDeleteCrossPathsSet_not_deletePurePath_pair_of_fullCorrect
   noDeleteCrossPaths_not_deletePurePath_pair_of_fullCorrect
     hfull hon_le hon_univ (hpaths of_ hof) hposPath hnegPath
 
+/-- `complementary_start_paths_to_forbidden_pair` states `{st : CheckState} {on_ badOf : Var}
+    {startPos badPos : Bool} (hpath : DeletePurePath st on_ (mkLit on_ startPos) (mkLit badOf
+    badPos)) (hpathCompl : DeletePurePath st on_ (mkLit on_ (!startPos)) (mkLit badOf (!badPos))) :
+    ∃ pos : Bool, DeletePurePath st on_ (mkLit on_ true) (mkLit badOf pos) ∧ DeletePurePath st on_
+    (mkLit on_ false) (mkLit badOf (!pos))`. -/
 theorem complementary_start_paths_to_forbidden_pair
     {st : CheckState} {on_ badOf : Var} {startPos badPos : Bool}
     (hpath : DeletePurePath st on_ (mkLit on_ startPos) (mkLit badOf badPos))
@@ -2414,6 +2859,12 @@ theorem complementary_start_paths_to_forbidden_pair
     · simpa using hpath
     · simpa using hpathCompl
 
+/-- `noDeleteCrossPathsSet_complement_start_path_forces_start_nonpath` states `{dqbf : DQBF} {cs :
+    ClauseStore} {st : CheckState} {vars : Array Var} {on_ of_ : Var} {startPos pos : Bool} (hfull :
+    CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ :
+    st.formula.isVarExistential on_ = false) (hpaths : NoDeleteCrossPathsSet st vars on_) (hof : of_
+    ∈ vars.toList) (hpathCompl : DeletePurePath st on_ (mkLit on_ (!startPos)) (mkLit of_ (!pos))) :
+    ¬ DeletePurePath st on_ (mkLit on_ startPos) (mkLit of_ pos)`. -/
 theorem noDeleteCrossPathsSet_complement_start_path_forces_start_nonpath
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {vars : Array Var} {on_ of_ : Var} {startPos pos : Bool}
@@ -2435,6 +2886,12 @@ theorem noDeleteCrossPathsSet_complement_start_path_forces_start_nonpath
     (on_ := on_) (of_ := of_) (pos := badPos)
     hfull hon_le hon_univ hpaths hof hposPath hnegPath
 
+/-- `noDeleteCrossPathsSet_orients_seed` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {vars : Array Var} {on_ of_ : Var} {σ : UnivAssignment} {pos : Bool} (hfull :
+    CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ :
+    st.formula.isVarExistential on_ = false) (hpaths : NoDeleteCrossPathsSet st vars on_) (hof : of_
+    ∈ vars.toList) : (¬ DeletePurePath st on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos)) ∨ (¬
+    DeletePurePath st on_ (mkLit on_ (σ on_)) (mkLit of_ (!pos)))`. -/
 theorem noDeleteCrossPathsSet_orients_seed
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {vars : Array Var} {on_ of_ : Var} {σ : UnivAssignment} {pos : Bool}
@@ -2463,6 +2920,12 @@ theorem noDeleteCrossPathsSet_orients_seed
       hfull hon_le hon_univ hpaths hof hposPath hnegPath
   · exact Or.inl hleft
 
+/-- `noDeleteCrossPathsSet_path_forces_complement_nonpath` states `{dqbf : DQBF} {cs : ClauseStore}
+    {st : CheckState} {vars : Array Var} {on_ of_ : Var} {σ : UnivAssignment} {pos : Bool} (hfull :
+    CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ :
+    st.formula.isVarExistential on_ = false) (hpaths : NoDeleteCrossPathsSet st vars on_) (hof : of_
+    ∈ vars.toList) (hpath : ∃ startPos, startPos = !(σ on_) ∧ DeletePurePath st on_ (mkLit on_
+    startPos) (mkLit of_ pos)) : ¬ DeletePurePath st on_ (mkLit on_ (σ on_)) (mkLit of_ (!pos))`. -/
 theorem noDeleteCrossPathsSet_path_forces_complement_nonpath
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {vars : Array Var} {on_ of_ : Var} {σ : UnivAssignment} {pos : Bool}
@@ -2489,6 +2952,12 @@ theorem noDeleteCrossPathsSet_path_forces_complement_nonpath
   · exact False.elim (hleft hpath')
   · exact hright
 
+/-- `noDeleteCrossPathsSet_complement_path_forces_seed_nonpath` states `{dqbf : DQBF} {cs :
+    ClauseStore} {st : CheckState} {vars : Array Var} {on_ of_ : Var} {σ : UnivAssignment} {pos :
+    Bool} (hfull : CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ :
+    st.formula.isVarExistential on_ = false) (hpaths : NoDeleteCrossPathsSet st vars on_) (hof : of_
+    ∈ vars.toList) (hpath : DeletePurePath st on_ (mkLit on_ (σ on_)) (mkLit of_ (!pos))) : ¬
+    DeletePurePath st on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos)`. -/
 theorem noDeleteCrossPathsSet_complement_path_forces_seed_nonpath
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {vars : Array Var} {on_ of_ : Var} {σ : UnivAssignment} {pos : Bool}
@@ -2508,6 +2977,13 @@ theorem noDeleteCrossPathsSet_complement_path_forces_seed_nonpath
   · exact hleft
   · exact False.elim (hright hpath)
 
+/-- `deletePurePath_step_from_opposite_target_tail` states `{st : CheckState} {on_ of_ nextOf : Var}
+    {startPos pos nextPos : Bool} {cref : CRef} {clause : Clause} (hprev : DeletePurePath st on_
+    (mkLit on_ startPos) (mkLit of_ (!pos))) (hget : st.clauses.getClause cref = some clause)
+    (htarget : mkLit of_ pos ∈ clause.lits.toList) (hnoStartNeg : (mkLit on_ startPos).negate ∉
+    clause.lits.toList) (hnext : mkLit nextOf nextPos ∈ clause.lits.toList) (hnext_ne : nextOf ≠
+    of_) (hexi : st.formula.isVarExistential nextOf = true) (hdep : (st.formula.depset.getD nextOf
+    #[]).contains on_ = true) : DeletePurePath st on_ (mkLit on_ startPos) (mkLit nextOf nextPos)`. -/
 theorem deletePurePath_step_from_opposite_target_tail
     {st : CheckState} {on_ of_ nextOf : Var}
     {startPos pos nextPos : Bool}
@@ -2527,6 +3003,11 @@ theorem deletePurePath_step_from_opposite_target_tail
   exact deletePurePath_step_mkLit_of_var_ne
     hprev hget hcur hnoStartNeg hnext hnext_ne hexi hdep
 
+/-- `noStartNeg_of_false_other_literals` states `{s : CheckState} {on_ of_ : Var} {startPos pos :
+    Bool} {c : Clause} (σ : UnivAssignment) (sk : SkolemAssignment) (hof_ne : of_ ≠ on_)
+    (hstartNeg_true : s.formula.litValue σ sk (mkLit on_ startPos).negate = true) (hothers : ∀ l ∈
+    c.lits.toList, l ≠ mkLit of_ pos → s.formula.litValue σ sk l = false) : (mkLit on_
+    startPos).negate ∉ c.lits.toList`. -/
 theorem noStartNeg_of_false_other_literals
     {s : CheckState} {on_ of_ : Var}
     {startPos pos : Bool} {c : Clause}
@@ -2548,6 +3029,10 @@ theorem noStartNeg_of_false_other_literals
   rw [hstartNeg_true] at hfalse
   cases hfalse
 
+/-- `litValue_start_neg_true_of_start_eq_not_sigma` states `{s : CheckState} {on_ : Var} {startPos :
+    Bool} (σ : UnivAssignment) (sk : SkolemAssignment) (hon_univ : s.formula.isVarExistential on_ =
+    false) (hstart : startPos = !(σ on_)) : s.formula.litValue σ sk (mkLit on_ startPos).negate =
+    true`. -/
 theorem litValue_start_neg_true_of_start_eq_not_sigma
     {s : CheckState} {on_ : Var} {startPos : Bool}
     (σ : UnivAssignment) (sk : SkolemAssignment)
@@ -2559,6 +3044,16 @@ theorem litValue_start_neg_true_of_start_eq_not_sigma
     simp [mkLit_negate, litValue_mkLit_true, litValue_mkLit_false,
       DQBF.varValue, hon_univ, hσ]
 
+/-- `oriented_dependent_tail_forces_next_old_lit_nonpath` states `{s : CheckState} {vars : Array
+    Var} {on_ of_ nextOf : Var} {sk : SkolemAssignment} {σ : UnivAssignment} {cref : CRef} {c :
+    Clause} {pos nextPos : Bool} (hon_univ : s.formula.isVarExistential on_ = false) (hexi : ∀ x ∈
+    vars.toList, s.formula.isVarExistential x = true) (hcontains : ∀ x ∈ vars.toList,
+    (s.formula.depset.getD x #[]).contains on_ = true) (hof : of_ ∈ vars.toList) (hget :
+    s.clauses.getClause cref = some c) (hmem : mkLit of_ pos ∈ c.lits.toList) (hno_oriented : ¬
+    DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit of_ pos)) (hnext_ne : nextOf ≠ of_)
+    (hnext_mem : mkLit nextOf nextPos ∈ c.lits.toList) (hothers : ∀ l ∈ c.lits.toList, l ≠ mkLit of_
+    pos → s.formula.litValue σ sk l = false) : ¬ DeletePurePath s on_ (mkLit on_ (!(σ on_))) (mkLit
+    nextOf (!nextPos))`. -/
 theorem oriented_dependent_tail_forces_next_old_lit_nonpath
     {s : CheckState} {vars : Array Var} {on_ of_ nextOf : Var}
     {sk : SkolemAssignment} {σ : UnivAssignment}

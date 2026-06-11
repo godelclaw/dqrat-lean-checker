@@ -1,5 +1,14 @@
 import DqratLean
 
+/-!
+# Main CLI
+
+Command-line entry point for the default non-watched parser and checker.
+
+Trust status: user-facing executable on the certified default path, with the
+`s VERIFIED` branches justified in `Soundness.lean`.
+-/
+/-- `main` runs the default non-watched checker on a formula/proof pair. -/
 def main : List String → IO UInt32
   | [formulaFile, proofFile] => do
       let formulaContent ← IO.FS.readFile formulaFile

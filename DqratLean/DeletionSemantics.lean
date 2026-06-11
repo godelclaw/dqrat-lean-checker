@@ -8,9 +8,14 @@ Semantic layer for the dependency-deletion (negative-`e`) rule:
 `DeleteIndependenceBridge`/`SetBridge` model-repair interface, the
 `flipUniv` characterization lemma family, and the witness lift/project
 chain culminating in `DQBFTrue_forceDelDeps_of_setBridge`.
+
+Trust status: certified proof module on the default non-watched path.
 -/
 open Std.Do
 
+/-- `clauseValue_of_matrixValue` states `(f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk :
+    SkolemAssignment) (cref : CRef) (c : Clause) (hmat : cs.matrixValue f σ sk = true) (hget :
+    cs.getClause cref = some c) : f.clauseValue σ sk c.lits = true`. -/
 theorem clauseValue_of_matrixValue
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
     (cref : CRef) (c : Clause)
@@ -29,6 +34,8 @@ theorem clauseValue_of_matrixValue
   rw [heq, hget] at key
   exact key
 
+/-- `litValue_negate_early` states `(f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (l :
+    Literal) : f.litValue σ sk l.negate = !(f.litValue σ sk l)`. -/
 theorem litValue_negate_early
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal) :
     f.litValue σ sk l.negate = !(f.litValue σ sk l) := by
@@ -55,6 +62,7 @@ theorem litValue_negate_early
   rw [hvar, hpos]
   cases h : (l.x % 2 == 1) <;> simp
 
+/-- `lit_raw` states `(lx px : Nat) (hvar : lx / 2 = px / 2) (hne : lx ≠ px) : lx = px ^^^ 1`. -/
 theorem lit_raw (lx px : Nat)
     (hvar : lx / 2 = px / 2) (hne : lx ≠ px) : lx = px ^^^ 1 := by
   apply Nat.eq_of_testBit_eq; intro i
@@ -70,12 +78,16 @@ theorem lit_raw (lx px : Nat)
     simp only [Nat.testBit_succ]
     simp [hvar]
 
+/-- `lit_ne_pivot_of_same_var` states `(l pivot : Literal) (hvar : l.var = pivot.var) (hne : l ≠
+    pivot) : l = pivot.negate`. -/
 theorem lit_ne_pivot_of_same_var (l pivot : Literal)
     (hvar : l.var = pivot.var) (hne : l ≠ pivot) : l = pivot.negate := by
   cases l; cases pivot
   simp only [Literal.var, Literal.negate, ne_eq, Literal.mk.injEq] at *
   exact lit_raw _ _ hvar hne
 
+/-- `literal_eq_or_negate_of_same_var` states `(l pivot : Literal) (h : l.var = pivot.var) : l =
+    pivot ∨ l = pivot.negate`. -/
 theorem literal_eq_or_negate_of_same_var (l pivot : Literal)
     (h : l.var = pivot.var) : l = pivot ∨ l = pivot.negate := by
   by_cases heq : l.x = pivot.x
@@ -86,6 +98,8 @@ theorem literal_eq_or_negate_of_same_var (l pivot : Literal)
 def ClauseLitsWellFormed (f : DQBF) (lits : Array Literal) : Prop :=
   ∀ l ∈ lits.toList, 0 < l.var ∧ l.var ≤ f.maxVar
 
+/-- `ClauseLitsWellFormed.filter` states `{f : DQBF} {lits : Array Literal} {p : Literal → Bool}
+    (hwf : ClauseLitsWellFormed f lits) : ClauseLitsWellFormed f (lits.filter p)`. -/
 theorem ClauseLitsWellFormed.filter
     {f : DQBF} {lits : Array Literal} {p : Literal → Bool}
     (hwf : ClauseLitsWellFormed f lits) :
@@ -93,6 +107,9 @@ theorem ClauseLitsWellFormed.filter
   intro l hl
   exact hwf l (Array.mem_filter.mp (Array.mem_toList_iff.mp hl) |>.1 |> Array.mem_toList_iff.mpr)
 
+/-- `deleteDepArgs` defines `(f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) : Array Bool := (f :
+    DQBF) (of_ on_ : Var) (σ : UnivAssignment) : Array Bool := ((f.depset.getD of_ #[]).filter (· ≠
+    on_)).map σ`. -/
 def deleteDepArgs
     (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) : Array Bool :=
   ((f.depset.getD of_ #[]).filter (· ≠ on_)).map σ
@@ -109,6 +126,10 @@ def ExhibitsDeleteIndependence
   ∀ σ₁ σ₂, AgreeOnDeleteDeps f of_ on_ σ₁ σ₂ →
     f.varValue σ₁ sk of_ = f.varValue σ₂ sk of_
 
+/-- `DeleteIndependenceBridge` defines `(st : CheckState) (of_ on_ : Var) : Prop := (st :
+    CheckState) (of_ on_ : Var) : Prop := DQBFTrue st.formula st.clauses → ∃ sk, (∀ σ,
+    st.clauses.matrixValue st.formula σ sk = true) ∧ ExhibitsDeleteIndependence st.formula of_ on_
+    sk`. -/
 def DeleteIndependenceBridge
     (st : CheckState) (of_ on_ : Var) : Prop :=
   DQBFTrue st.formula st.clauses →
@@ -116,10 +137,17 @@ def DeleteIndependenceBridge
       (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
       ExhibitsDeleteIndependence st.formula of_ on_ sk
 
+/-- `ExhibitsDeleteIndependenceSet` defines `(f : DQBF) (vars : Array Var) (on_ : Var) (sk :
+    SkolemAssignment) : Prop := (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment) :
+    Prop := ∀ of_ ∈ vars.toList, ExhibitsDeleteIndependence f of_ on_ sk`. -/
 def ExhibitsDeleteIndependenceSet
     (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment) : Prop :=
   ∀ of_ ∈ vars.toList, ExhibitsDeleteIndependence f of_ on_ sk
 
+/-- `DeleteIndependenceSetBridge` defines `(st : CheckState) (vars : Array Var) (on_ : Var) : Prop
+    := (st : CheckState) (vars : Array Var) (on_ : Var) : Prop := DQBFTrue st.formula st.clauses → ∃
+    sk, (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧ ExhibitsDeleteIndependenceSet
+    st.formula vars on_ sk`. -/
 def DeleteIndependenceSetBridge
     (st : CheckState) (vars : Array Var) (on_ : Var) : Prop :=
   DQBFTrue st.formula st.clauses →
@@ -127,6 +155,9 @@ def DeleteIndependenceSetBridge
       (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
       ExhibitsDeleteIndependenceSet st.formula vars on_ sk
 
+/-- `deleteDepArgs_eq_of_dep_agree` states `(f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
+    (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂) : deleteDepArgs f of_ on_ σ₁ = deleteDepArgs f of_
+    on_ σ₂`. -/
 theorem deleteDepArgs_eq_of_dep_agree
     (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
     (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂) :
@@ -149,9 +180,13 @@ def fullDepArgs
     (f : DQBF) (of_ : Var) (σ : UnivAssignment) : Array Bool :=
   (f.depset.getD of_ #[]).map σ
 
+/-- `flipUniv` defines `(u : Var) (σ : UnivAssignment) : UnivAssignment := fun w => if w == u then
+    !σ w else σ w`. -/
 def flipUniv (u : Var) (σ : UnivAssignment) : UnivAssignment :=
   fun w => if w == u then !σ w else σ w
 
+/-- `agreeOnDeleteDeps_flipUniv` states `(f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) :
+    AgreeOnDeleteDeps f of_ on_ σ (flipUniv on_ σ)`. -/
 theorem agreeOnDeleteDeps_flipUniv
     (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) :
     AgreeOnDeleteDeps f of_ on_ σ (flipUniv on_ σ) := by
@@ -160,6 +195,9 @@ theorem agreeOnDeleteDeps_flipUniv
     simpa using (Array.mem_filter.mp hu).2
   simp [flipUniv, hne]
 
+/-- `varValue_eq_of_fullDepArgs_eq` states `(f : DQBF) (of_ : Var) (σ₁ σ₂ : UnivAssignment) (sk :
+    SkolemAssignment) (hexi : f.isVarExistential of_ = true) (hargs : fullDepArgs f of_ σ₁ =
+    fullDepArgs f of_ σ₂) : f.varValue σ₁ sk of_ = f.varValue σ₂ sk of_`. -/
 theorem varValue_eq_of_fullDepArgs_eq
     (f : DQBF) (of_ : Var) (σ₁ σ₂ : UnivAssignment)
     (sk : SkolemAssignment)
@@ -169,6 +207,9 @@ theorem varValue_eq_of_fullDepArgs_eq
   simpa [DQBF.varValue, hexi, DQBF.exiValue, fullDepArgs] using
     congrArg (sk of_) hargs
 
+/-- `fullDepArgs_eq_of_agreeOnDeleteDeps_same_on` states `(f : DQBF) (of_ on_ : Var) (σ₁ σ₂ :
+    UnivAssignment) (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂) (hon : σ₁ on_ = σ₂ on_) :
+    fullDepArgs f of_ σ₁ = fullDepArgs f of_ σ₂`. -/
 theorem fullDepArgs_eq_of_agreeOnDeleteDeps_same_on
     (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
     (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂)
@@ -194,6 +235,9 @@ theorem fullDepArgs_eq_of_agreeOnDeleteDeps_same_on
       exact Array.mem_filter.mpr ⟨hu_mem, by simpa using hu⟩
     exact hagree _ hu_filter
 
+/-- `fullDepArgs_flipUniv_eq_of_agreeOnDeleteDeps` states `(f : DQBF) (of_ on_ : Var) (σ₁ σ₂ :
+    UnivAssignment) (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂) (hneq : σ₁ on_ ≠ σ₂ on_) :
+    fullDepArgs f of_ (flipUniv on_ σ₁) = fullDepArgs f of_ σ₂`. -/
 theorem fullDepArgs_flipUniv_eq_of_agreeOnDeleteDeps
     (f : DQBF) (of_ on_ : Var) (σ₁ σ₂ : UnivAssignment)
     (hagree : AgreeOnDeleteDeps f of_ on_ σ₁ σ₂)
@@ -238,6 +282,9 @@ theorem fullDepArgs_flipUniv_eq_of_agreeOnDeleteDeps
             rw [if_neg hbeq]
       _ = σ₂ ((f.depset.getD of_ #[])[i]) := hagree _ hu_filter
 
+/-- `fullDepArgs_eq_flipUniv_of_not_contains` states `(f : DQBF) (of_ on_ : Var) (σ :
+    UnivAssignment) (hcontains : (f.depset.getD of_ #[]).contains on_ = false) : fullDepArgs f of_
+    (flipUniv on_ σ) = fullDepArgs f of_ σ`. -/
 theorem fullDepArgs_eq_flipUniv_of_not_contains
     (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment)
     (hcontains : (f.depset.getD of_ #[]).contains on_ = false) :
@@ -264,6 +311,9 @@ theorem fullDepArgs_eq_flipUniv_of_not_contains
   change (if w == on_ then !σ w else σ w) = σ w
   simp [hbeq]
 
+/-- `varValue_flipUniv_eq_of_contains_false` states `(f : DQBF) (v on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (hexi : f.isVarExistential v = true) (hcontains : (f.depset.getD v
+    #[]).contains on_ = false) : f.varValue (flipUniv on_ σ) sk v = f.varValue σ sk v`. -/
 theorem varValue_flipUniv_eq_of_contains_false
     (f : DQBF) (v on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hexi : f.isVarExistential v = true)
@@ -272,6 +322,9 @@ theorem varValue_flipUniv_eq_of_contains_false
   rw [DQBF.varValue, hexi, DQBF.varValue, hexi, DQBF.exiValue, DQBF.exiValue]
   exact congrArg (sk v) (fullDepArgs_eq_flipUniv_of_not_contains f v on_ σ hcontains)
 
+/-- `varValue_flipUniv_eq_of_universal_ne` states `(f : DQBF) (v on_ : Var) (σ : UnivAssignment) (sk
+    : SkolemAssignment) (huniv : f.isVarExistential v = false) (hneq : v ≠ on_) : f.varValue
+    (flipUniv on_ σ) sk v = f.varValue σ sk v`. -/
 theorem varValue_flipUniv_eq_of_universal_ne
     (f : DQBF) (v on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
     (huniv : f.isVarExistential v = false)
@@ -280,6 +333,9 @@ theorem varValue_flipUniv_eq_of_universal_ne
   rw [DQBF.varValue, huniv, DQBF.varValue, huniv]
   simp [flipUniv, hneq]
 
+/-- `litValue_flipUniv_eq_of_universal_ne` states `(f : DQBF) (on_ : Var) (σ : UnivAssignment) (sk :
+    SkolemAssignment) (l : Literal) (huniv : f.isVarExistential l.var = false) (hne : l.var ≠ on_) :
+    f.litValue (flipUniv on_ σ) sk l = f.litValue σ sk l`. -/
 theorem litValue_flipUniv_eq_of_universal_ne
     (f : DQBF) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment) (l : Literal)
@@ -289,6 +345,10 @@ theorem litValue_flipUniv_eq_of_universal_ne
   simp [DQBF.litValue,
     varValue_flipUniv_eq_of_universal_ne f l.var on_ σ sk huniv hne]
 
+/-- `litValue_flipUniv_eq_of_existential_not_contains` states `(f : DQBF) (on_ : Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (l : Literal) (hexi : f.isVarExistential l.var = true)
+    (hcontains : (f.depset.getD l.var #[]).contains on_ = false) : f.litValue (flipUniv on_ σ) sk l
+    = f.litValue σ sk l`. -/
 theorem litValue_flipUniv_eq_of_existential_not_contains
     (f : DQBF) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment) (l : Literal)
@@ -298,6 +358,9 @@ theorem litValue_flipUniv_eq_of_existential_not_contains
   simp [DQBF.litValue,
     varValue_flipUniv_eq_of_contains_false f l.var on_ σ sk hexi hcontains]
 
+/-- `exhibitsDeleteIndependence_iff_flipUniv` states `(f : DQBF) (of_ on_ : Var) (sk :
+    SkolemAssignment) (hexi : f.isVarExistential of_ = true) : ExhibitsDeleteIndependence f of_ on_
+    sk ↔ ∀ σ, f.varValue σ sk of_ = f.varValue (flipUniv on_ σ) sk of_`. -/
 theorem exhibitsDeleteIndependence_iff_flipUniv
     (f : DQBF) (of_ on_ : Var) (sk : SkolemAssignment)
     (hexi : f.isVarExistential of_ = true) :
@@ -318,6 +381,9 @@ theorem exhibitsDeleteIndependence_iff_flipUniv
               f of_ (flipUniv on_ σ₁) σ₂ sk hexi
               (fullDepArgs_flipUniv_eq_of_agreeOnDeleteDeps f of_ on_ σ₁ σ₂ hagree hon)
 
+/-- `litValue_false_true_flip_universal_eq_on` states `(f : DQBF) (on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (l : Literal) (huniv : f.isVarExistential l.var = false) (hfalse :
+    f.litValue σ sk l = false) (htrue : f.litValue (flipUniv on_ σ) sk l = true) : l.var = on_`. -/
 theorem litValue_false_true_flip_universal_eq_on
     (f : DQBF) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment) (l : Literal)
@@ -332,6 +398,10 @@ theorem litValue_false_true_flip_universal_eq_on
     rw [hsame, hfalse] at htrue
     cases htrue
 
+/-- `litValue_false_true_flip_existential_contains` states `(f : DQBF) (on_ : Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (l : Literal) (hexi : f.isVarExistential l.var = true)
+    (hfalse : f.litValue σ sk l = false) (htrue : f.litValue (flipUniv on_ σ) sk l = true) :
+    (f.depset.getD l.var #[]).contains on_ = true`. -/
 theorem litValue_false_true_flip_existential_contains
     (f : DQBF) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment) (l : Literal)
@@ -349,6 +419,9 @@ theorem litValue_false_true_flip_existential_contains
   | true =>
       rfl
 
+/-- `fullDepArgs_eq_implies_on_eq_of_contains` states `(f : DQBF) (of_ on_ : Var) (σ σ₀ :
+    UnivAssignment) (hcontains : (f.depset.getD of_ #[]).contains on_ = true) (hfull : fullDepArgs f
+    of_ σ = fullDepArgs f of_ σ₀) : σ on_ = σ₀ on_`. -/
 theorem fullDepArgs_eq_implies_on_eq_of_contains
     (f : DQBF) (of_ on_ : Var) (σ σ₀ : UnivAssignment)
     (hcontains : (f.depset.getD of_ #[]).contains on_ = true)
@@ -372,6 +445,9 @@ theorem fullDepArgs_eq_implies_on_eq_of_contains
     _ = σ₀ ((f.depset.getD of_ #[])[i]) := hget
     _ = σ₀ on_ := by rw [hi_on]
 
+/-- `lit_eq_mkLit_varValue_of_var_and_true` states `(f : DQBF) (of_ : Var) (σ : UnivAssignment) (sk
+    : SkolemAssignment) (l : Literal) (hvar : l.var = of_) (htrue : f.litValue σ sk l = true) : l =
+    mkLit of_ (f.varValue σ sk of_)`. -/
 theorem lit_eq_mkLit_varValue_of_var_and_true
     (f : DQBF) (of_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment) (l : Literal)
@@ -392,6 +468,9 @@ theorem lit_eq_mkLit_varValue_of_var_and_true
     · rw [hNeg, litValue_negate_early, litValue_mkLit_true, hval] at htrue
       cases htrue
 
+/-- `matrixValue_false_implies_exists_false_clause` states `(f : DQBF) (cs : ClauseStore) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (hfalse : cs.matrixValue f σ sk = false) : ∃ cref c,
+    cs.getClause cref = some c ∧ f.clauseValue σ sk c.lits = false`. -/
 theorem matrixValue_false_implies_exists_false_clause
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment)
     (sk : SkolemAssignment)
@@ -408,6 +487,9 @@ theorem matrixValue_false_implies_exists_false_clause
         cases hval : f.clauseValue σ sk c.lits <;> simp [hget, hval] at hnot ⊢
       exact ⟨i + 1, c, hget, hclause⟩
 
+/-- `matrixValue_false_of_false_clause` states `(f : DQBF) (cs : ClauseStore) (σ : UnivAssignment)
+    (sk : SkolemAssignment) {cref : CRef} {c : Clause} (hget : cs.getClause cref = some c) (hfalse :
+    f.clauseValue σ sk c.lits = false) : cs.matrixValue f σ sk = false`. -/
 theorem matrixValue_false_of_false_clause
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment)
     (sk : SkolemAssignment) {cref : CRef} {c : Clause}
@@ -428,6 +510,8 @@ def projectDeleteArgs
   (((List.zip deps.toList args.toList).filterMap fun
       | (u, b) => if u = on_ then none else some b)).toArray
 
+/-- `projectDeleteArgs_of_map` states `(deps : Array Var) (on_ : Var) (σ : UnivAssignment) :
+    projectDeleteArgs deps on_ (deps.map σ) = (deps.filter (· ≠ on_)).map σ`. -/
 theorem projectDeleteArgs_of_map
     (deps : Array Var) (on_ : Var) (σ : UnivAssignment) :
     projectDeleteArgs deps on_ (deps.map σ) = (deps.filter (· ≠ on_)).map σ := by
@@ -447,6 +531,8 @@ def forceDelDepsList
     (f : DQBF) (vars : List Var) (on_ : Var) : DQBF :=
   vars.foldl (fun g of_ => g.forceDelDep of_ on_) f
 
+/-- `forceDelDeps` defines `(f : DQBF) (vars : Array Var) (on_ : Var) : DQBF := (f : DQBF) (vars :
+    Array Var) (on_ : Var) : DQBF := forceDelDepsList f vars.toList on_`. -/
 def forceDelDeps
     (f : DQBF) (vars : Array Var) (on_ : Var) : DQBF :=
   forceDelDepsList f vars.toList on_
@@ -462,16 +548,23 @@ def liftForceDelDepsWitnessList
     else
       sk v args
 
+/-- `liftForceDelDepsWitness` defines `(f : DQBF) (vars : Array Var) (on_ : Var) (sk :
+    SkolemAssignment) : SkolemAssignment := (f : DQBF) (vars : Array Var) (on_ : Var) (sk :
+    SkolemAssignment) : SkolemAssignment := liftForceDelDepsWitnessList f vars.toList on_ sk`. -/
 def liftForceDelDepsWitness
     (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment) :
     SkolemAssignment :=
   liftForceDelDepsWitnessList f vars.toList on_ sk
 
+/-- `array_filter_ne_idem` states `(xs : Array Var) (on_ : Var) : (xs.filter (· ≠ on_)).filter (· ≠
+    on_) = xs.filter (· ≠ on_)`. -/
 theorem array_filter_ne_idem (xs : Array Var) (on_ : Var) :
     (xs.filter (· ≠ on_)).filter (· ≠ on_) = xs.filter (· ≠ on_) := by
   apply Array.ext'
   simp
 
+/-- `forceDelDep_depset_getD_self` states `(f : DQBF) (of_ on_ : Var) : (f.forceDelDep of_
+    on_).depset.getD of_ #[] = (f.depset.getD of_ #[]).filter (· ≠ on_)`. -/
 theorem forceDelDep_depset_getD_self
     (f : DQBF) (of_ on_ : Var) :
     (f.forceDelDep of_ on_).depset.getD of_ #[] =
@@ -481,6 +574,8 @@ theorem forceDelDep_depset_getD_self
   · simp [Array.setIfInBounds_def, hlt]
   · simp [Array.setIfInBounds_def, hlt]
 
+/-- `forceDelDep_depset_getD_of_ne` states `(f : DQBF) (of_ on_ v : Var) (hneq : v ≠ of_) :
+    (f.forceDelDep of_ on_).depset.getD v #[] = f.depset.getD v #[]`. -/
 theorem forceDelDep_depset_getD_of_ne
     (f : DQBF) (of_ on_ v : Var) (hneq : v ≠ of_) :
     (f.forceDelDep of_ on_).depset.getD v #[] = f.depset.getD v #[] := by
@@ -490,6 +585,8 @@ theorem forceDelDep_depset_getD_of_ne
     rw [Array.getElem?_set_ne hlt (Ne.symm hneq)]
   · simp [Array.setIfInBounds_def, hlt]
 
+/-- `forceDelDepsList_isVarExistential` states `(f : DQBF) (vars : List Var) (on_ v : Var) :
+    (forceDelDepsList f vars on_).isVarExistential v = f.isVarExistential v`. -/
 theorem forceDelDepsList_isVarExistential
     (f : DQBF) (vars : List Var) (on_ v : Var) :
     (forceDelDepsList f vars on_).isVarExistential v = f.isVarExistential v := by
@@ -500,11 +597,16 @@ theorem forceDelDepsList_isVarExistential
       simpa [forceDelDepsList, DQBF.forceDelDep, DQBF.isVarExistential] using
         ih (f := f.forceDelDep of_ on_)
 
+/-- `forceDelDeps_isVarExistential` states `(f : DQBF) (vars : Array Var) (on_ v : Var) :
+    (forceDelDeps f vars on_).isVarExistential v = f.isVarExistential v`. -/
 theorem forceDelDeps_isVarExistential
     (f : DQBF) (vars : Array Var) (on_ v : Var) :
     (forceDelDeps f vars on_).isVarExistential v = f.isVarExistential v := by
   simp [forceDelDeps, forceDelDepsList_isVarExistential]
 
+/-- `forceDelDepsList_depset_getD` states `(f : DQBF) (vars : List Var) (on_ v : Var) :
+    (forceDelDepsList f vars on_).depset.getD v #[] = if v ∈ vars then (f.depset.getD v #[]).filter
+    (· ≠ on_) else f.depset.getD v #[]`. -/
 theorem forceDelDepsList_depset_getD
     (f : DQBF) (vars : List Var) (on_ v : Var) :
     (forceDelDepsList f vars on_).depset.getD v #[] =
@@ -536,12 +638,18 @@ theorem forceDelDepsList_depset_getD
           rw [forceDelDep_depset_getD_of_ne _ _ _ _ hov] at hih
           simpa [forceDelDepsList, List.mem_cons, hov, hmem] using hih
 
+/-- `forceDelDeps_depset_getD` states `(f : DQBF) (vars : Array Var) (on_ v : Var) : (forceDelDeps f
+    vars on_).depset.getD v #[] = if v ∈ vars.toList then (f.depset.getD v #[]).filter (· ≠ on_)
+    else f.depset.getD v #[]`. -/
 theorem forceDelDeps_depset_getD
     (f : DQBF) (vars : Array Var) (on_ v : Var) :
     (forceDelDeps f vars on_).depset.getD v #[] =
       if v ∈ vars.toList then (f.depset.getD v #[]).filter (· ≠ on_) else f.depset.getD v #[] := by
   simpa [forceDelDeps] using forceDelDepsList_depset_getD f vars.toList on_ v
 
+/-- `varValue_liftForceDelDepsWitnessList` states `(f : DQBF) (vars : List Var) (on_ : Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (v : Var) : f.varValue σ (liftForceDelDepsWitnessList f
+    vars on_ sk) v = (forceDelDepsList f vars on_).varValue σ sk v`. -/
 theorem varValue_liftForceDelDepsWitnessList
     (f : DQBF) (vars : List Var) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment) (v : Var) :
@@ -560,6 +668,9 @@ theorem varValue_liftForceDelDepsWitnessList
       simpa [forceDelDepsList_isVarExistential] using hex
     simp [DQBF.varValue, hex, hex']
 
+/-- `varValue_liftForceDelDepsWitness` states `(f : DQBF) (vars : Array Var) (on_ : Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (v : Var) : f.varValue σ (liftForceDelDepsWitness f vars
+    on_ sk) v = (forceDelDeps f vars on_).varValue σ sk v`. -/
 theorem varValue_liftForceDelDepsWitness
     (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment) (v : Var) :
@@ -568,6 +679,9 @@ theorem varValue_liftForceDelDepsWitness
   simpa [forceDelDeps, liftForceDelDepsWitness] using
     varValue_liftForceDelDepsWitnessList f vars.toList on_ σ sk v
 
+/-- `litValue_liftForceDelDepsWitness` states `(f : DQBF) (vars : Array Var) (on_ : Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (l : Literal) : f.litValue σ (liftForceDelDepsWitness f
+    vars on_ sk) l = (forceDelDeps f vars on_).litValue σ sk l`. -/
 theorem litValue_liftForceDelDepsWitness
     (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment) (l : Literal) :
@@ -575,6 +689,9 @@ theorem litValue_liftForceDelDepsWitness
       (forceDelDeps f vars on_).litValue σ sk l := by
   simp [DQBF.litValue, varValue_liftForceDelDepsWitness f vars on_ σ sk l.var]
 
+/-- `clauseValue_liftForceDelDepsWitness` states `(f : DQBF) (vars : Array Var) (on_ : Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal) : f.clauseValue σ
+    (liftForceDelDepsWitness f vars on_ sk) lits = (forceDelDeps f vars on_).clauseValue σ sk lits`. -/
 theorem clauseValue_liftForceDelDepsWitness
     (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment) (lits : Array Literal) :
@@ -586,6 +703,9 @@ theorem clauseValue_liftForceDelDepsWitness
       (h := fun l => litValue_liftForceDelDepsWitness f vars on_ σ sk l)
       (wstart := rfl) (wstop := rfl))
 
+/-- `matrixValue_liftForceDelDepsWitness` states `(f : DQBF) (cs : ClauseStore) (vars : Array Var)
+    (on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment) : cs.matrixValue f σ
+    (liftForceDelDepsWitness f vars on_ sk) = cs.matrixValue (forceDelDeps f vars on_) σ sk`. -/
 theorem matrixValue_liftForceDelDepsWitness
     (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var)
     (σ : UnivAssignment) (sk : SkolemAssignment) :
@@ -600,6 +720,9 @@ theorem matrixValue_liftForceDelDepsWitness
   | some c =>
       simp [clauseValue_liftForceDelDepsWitness f vars on_ σ sk c.lits]
 
+/-- `exhibitsDeleteIndependenceSet_liftForceDelDepsWitness` states `(f : DQBF) (vars : Array Var)
+    (on_ : Var) (sk : SkolemAssignment) (hexi : ∀ of_ ∈ vars.toList, f.isVarExistential of_ = true)
+    : ExhibitsDeleteIndependenceSet f vars on_ (liftForceDelDepsWitness f vars on_ sk)`. -/
 theorem exhibitsDeleteIndependenceSet_liftForceDelDepsWitness
     (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment)
     (hexi : ∀ of_ ∈ vars.toList, f.isVarExistential of_ = true) :
@@ -614,6 +737,9 @@ theorem exhibitsDeleteIndependenceSet_liftForceDelDepsWitness
     liftForceDelDepsWitnessList, hof, projectDeleteArgs_of_map, deleteDepArgs] using
     congrArg (sk of_) hargs
 
+/-- `exhibitsDeleteIndependence_liftForceDelDepsWitness` states `(f : DQBF) (vars : Array Var) (on_
+    : Var) (sk : SkolemAssignment) {of_ : Var} (hmem : of_ ∈ vars.toList) (hexi : f.isVarExistential
+    of_ = true) : ExhibitsDeleteIndependence f of_ on_ (liftForceDelDepsWitness f vars on_ sk)`. -/
 theorem exhibitsDeleteIndependence_liftForceDelDepsWitness
     (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment)
     {of_ : Var}
@@ -628,6 +754,10 @@ theorem exhibitsDeleteIndependence_liftForceDelDepsWitness
     liftForceDelDepsWitnessList, hmem, projectDeleteArgs_of_map, deleteDepArgs] using
     congrArg (sk of_) hargs
 
+/-- `deleteIndependenceBridge_of_forceDelDepsTrue` states `(f : DQBF) (cs : ClauseStore) (vars :
+    Array Var) (of_ on_ : Var) (hmem : of_ ∈ vars.toList) (hexi : f.isVarExistential of_ = true)
+    (htrueDel : DQBFTrue (forceDelDeps f vars on_) cs) : DQBFTrue f cs → ∃ sk, (∀ σ, cs.matrixValue
+    f σ sk = true) ∧ ExhibitsDeleteIndependence f of_ on_ sk`. -/
 theorem deleteIndependenceBridge_of_forceDelDepsTrue
     (f : DQBF) (cs : ClauseStore) (vars : Array Var) (of_ on_ : Var)
     (hmem : of_ ∈ vars.toList)
@@ -646,6 +776,10 @@ theorem deleteIndependenceBridge_of_forceDelDepsTrue
   · exact exhibitsDeleteIndependence_liftForceDelDepsWitness
       f vars on_ sk hmem hexi
 
+/-- `deleteIndependenceSetBridge_of_forceDelDepsTrue` states `(f : DQBF) (cs : ClauseStore) (vars :
+    Array Var) (on_ : Var) (hexi : ∀ of_ ∈ vars.toList, f.isVarExistential of_ = true) (htrueDel :
+    DQBFTrue (forceDelDeps f vars on_) cs) : DQBFTrue f cs → ∃ sk, (∀ σ, cs.matrixValue f σ sk =
+    true) ∧ ExhibitsDeleteIndependenceSet f vars on_ sk`. -/
 theorem deleteIndependenceSetBridge_of_forceDelDepsTrue
     (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var)
     (hexi : ∀ of_ ∈ vars.toList, f.isVarExistential of_ = true)
@@ -662,6 +796,10 @@ theorem deleteIndependenceSetBridge_of_forceDelDepsTrue
     exact hsk σ
   · exact exhibitsDeleteIndependenceSet_liftForceDelDepsWitness f vars on_ sk hexi
 
+/-- `DeleteIndependenceSetBridge.of_forceDelDepsTrue` states `{st : CheckState} {vars : Array Var}
+    {on_ : Var} (hexi : ∀ of_ ∈ vars.toList, st.formula.isVarExistential of_ = true) (htrueDel :
+    DQBFTrue (forceDelDeps st.formula vars on_) st.clauses) : DeleteIndependenceSetBridge st vars
+    on_`. -/
 theorem DeleteIndependenceSetBridge.of_forceDelDepsTrue
     {st : CheckState} {vars : Array Var} {on_ : Var}
     (hexi : ∀ of_ ∈ vars.toList, st.formula.isVarExistential of_ = true)
@@ -670,6 +808,10 @@ theorem DeleteIndependenceSetBridge.of_forceDelDepsTrue
   deleteIndependenceSetBridge_of_forceDelDepsTrue
     st.formula st.clauses vars on_ hexi htrueDel
 
+/-- `DeleteIndependenceBridge.of_forceDelDepsTrue` states `{st : CheckState} {vars : Array Var} {of_
+    on_ : Var} (hmem : of_ ∈ vars.toList) (hexi : st.formula.isVarExistential of_ = true) (htrueDel
+    : DQBFTrue (forceDelDeps st.formula vars on_) st.clauses) : DeleteIndependenceBridge st of_
+    on_`. -/
 theorem DeleteIndependenceBridge.of_forceDelDepsTrue
     {st : CheckState} {vars : Array Var} {of_ on_ : Var}
     (hmem : of_ ∈ vars.toList)
@@ -690,10 +832,16 @@ def insertDeleteArgsList : List Var → Var → List Bool → List Bool
         | [] => false :: insertDeleteArgsList us on_ []
         | b :: bs => b :: insertDeleteArgsList us on_ bs
 
+/-- `insertDeleteArgs` defines `(deps : Array Var) (on_ : Var) (args : Array Bool) : Array Bool :=
+    (deps : Array Var) (on_ : Var) (args : Array Bool) : Array Bool := (insertDeleteArgsList
+    deps.toList on_ args.toList).toArray`. -/
 def insertDeleteArgs
     (deps : Array Var) (on_ : Var) (args : Array Bool) : Array Bool :=
   (insertDeleteArgsList deps.toList on_ args.toList).toArray
 
+/-- `insertDeleteArgsList_of_filter_map` states `(deps : List Var) (on_ : Var) (σ : UnivAssignment)
+    : insertDeleteArgsList deps on_ ((deps.filter fun x => !decide (x = on_)).map σ) = deps.map (fun
+    u => (!decide (u = on_)) && σ u)`. -/
 theorem insertDeleteArgsList_of_filter_map
     (deps : List Var) (on_ : Var) (σ : UnivAssignment) :
     insertDeleteArgsList deps on_ ((deps.filter fun x => !decide (x = on_)).map σ) =
@@ -706,6 +854,9 @@ theorem insertDeleteArgsList_of_filter_map
       · simp [insertDeleteArgsList, hu, ih]
       · simp [insertDeleteArgsList, hu, ih]
 
+/-- `insertDeleteArgs_of_filter_map` states `(deps : Array Var) (on_ : Var) (σ : UnivAssignment) :
+    insertDeleteArgs deps on_ ((deps.filter (· ≠ on_)).map σ) = deps.map (fun u => (!decide (u =
+    on_)) && σ u)`. -/
 theorem insertDeleteArgs_of_filter_map
     (deps : Array Var) (on_ : Var) (σ : UnivAssignment) :
     insertDeleteArgs deps on_ ((deps.filter (· ≠ on_)).map σ) =
@@ -726,6 +877,10 @@ def projectForceDelDepsWitness
     else
       sk v args
 
+/-- `varValue_projectForceDelDepsWitness` states `(f : DQBF) (vars : Array Var) (on_ : Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (hexhibit : ExhibitsDeleteIndependenceSet f vars on_ sk)
+    (v : Var) : (forceDelDeps f vars on_).varValue σ (projectForceDelDepsWitness f vars on_ sk) v =
+    f.varValue σ sk v`. -/
 theorem varValue_projectForceDelDepsWitness
     (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment)
@@ -776,6 +931,10 @@ theorem varValue_projectForceDelDepsWitness
       simpa [hex] using forceDelDeps_isVarExistential f vars on_ v
     simp [DQBF.varValue, hex', hex]
 
+/-- `litValue_projectForceDelDepsWitness` states `(f : DQBF) (vars : Array Var) (on_ : Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (hexhibit : ExhibitsDeleteIndependenceSet f vars on_ sk)
+    (l : Literal) : (forceDelDeps f vars on_).litValue σ (projectForceDelDepsWitness f vars on_ sk)
+    l = f.litValue σ sk l`. -/
 theorem litValue_projectForceDelDepsWitness
     (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment)
@@ -786,6 +945,10 @@ theorem litValue_projectForceDelDepsWitness
       f.litValue σ sk l := by
   simp [DQBF.litValue, varValue_projectForceDelDepsWitness f vars on_ σ sk hexhibit l.var]
 
+/-- `clauseValue_projectForceDelDepsWitness` states `(f : DQBF) (vars : Array Var) (on_ : Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (hexhibit : ExhibitsDeleteIndependenceSet f vars on_ sk)
+    (lits : Array Literal) : (forceDelDeps f vars on_).clauseValue σ (projectForceDelDepsWitness f
+    vars on_ sk) lits = f.clauseValue σ sk lits`. -/
 theorem clauseValue_projectForceDelDepsWitness
     (f : DQBF) (vars : Array Var) (on_ : Var) (σ : UnivAssignment)
     (sk : SkolemAssignment)
@@ -801,6 +964,10 @@ theorem clauseValue_projectForceDelDepsWitness
       (h := fun l => litValue_projectForceDelDepsWitness f vars on_ σ sk hexhibit l)
       (wstart := rfl) (wstop := rfl))
 
+/-- `matrixValue_projectForceDelDepsWitness` states `(f : DQBF) (cs : ClauseStore) (vars : Array
+    Var) (on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment) (hexhibit :
+    ExhibitsDeleteIndependenceSet f vars on_ sk) : cs.matrixValue (forceDelDeps f vars on_) σ
+    (projectForceDelDepsWitness f vars on_ sk) = cs.matrixValue f σ sk`. -/
 theorem matrixValue_projectForceDelDepsWitness
     (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var)
     (σ : UnivAssignment) (sk : SkolemAssignment)
@@ -817,6 +984,9 @@ theorem matrixValue_projectForceDelDepsWitness
   | some c =>
       simp [clauseValue_projectForceDelDepsWitness f vars on_ σ sk hexhibit c.lits]
 
+/-- `DQBFTrue_forceDelDeps_of_setBridge` states `{st : CheckState} {vars : Array Var} {on_ : Var}
+    (hbridge : DeleteIndependenceSetBridge st vars on_) (htrue : DQBFTrue st.formula st.clauses) :
+    DQBFTrue (forceDelDeps st.formula vars on_) st.clauses`. -/
 theorem DQBFTrue_forceDelDeps_of_setBridge
     {st : CheckState} {vars : Array Var} {on_ : Var}
     (hbridge : DeleteIndependenceSetBridge st vars on_)
@@ -828,6 +998,9 @@ theorem DQBFTrue_forceDelDeps_of_setBridge
   rw [matrixValue_projectForceDelDepsWitness st.formula st.clauses vars on_ σ sk hexhibit]
   exact hall σ
 
+/-- `varValue_forceDelDeps_filter_existential_eq` states `(f : DQBF) (vars : Array Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (v : Var) : (forceDelDeps f vars on_).varValue σ sk
+    v = (forceDelDeps f (vars.filter f.isVarExistential) on_).varValue σ sk v`. -/
 theorem varValue_forceDelDeps_filter_existential_eq
     (f : DQBF) (vars : Array Var) (on_ : Var)
     (σ : UnivAssignment) (sk : SkolemAssignment) (v : Var) :
@@ -872,6 +1045,9 @@ theorem varValue_forceDelDeps_filter_existential_eq
       simpa [forceDelDeps_isVarExistential] using hex
     simp [DQBF.varValue, hex_all, hex_exi]
 
+/-- `litValue_forceDelDeps_filter_existential_eq` states `(f : DQBF) (vars : Array Var) (on_ : Var)
+    (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal) : (forceDelDeps f vars on_).litValue
+    σ sk l = (forceDelDeps f (vars.filter f.isVarExistential) on_).litValue σ sk l`. -/
 theorem litValue_forceDelDeps_filter_existential_eq
     (f : DQBF) (vars : Array Var) (on_ : Var)
     (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal) :
@@ -880,6 +1056,10 @@ theorem litValue_forceDelDeps_filter_existential_eq
   simp [DQBF.litValue, varValue_forceDelDeps_filter_existential_eq
     f vars on_ σ sk l.var]
 
+/-- `clauseValue_forceDelDeps_filter_existential_eq` states `(f : DQBF) (vars : Array Var) (on_ :
+    Var) (σ : UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal) : (forceDelDeps f vars
+    on_).clauseValue σ sk lits = (forceDelDeps f (vars.filter f.isVarExistential) on_).clauseValue σ
+    sk lits`. -/
 theorem clauseValue_forceDelDeps_filter_existential_eq
     (f : DQBF) (vars : Array Var) (on_ : Var)
     (σ : UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal) :
@@ -892,6 +1072,10 @@ theorem clauseValue_forceDelDeps_filter_existential_eq
       (h := fun l => litValue_forceDelDeps_filter_existential_eq f vars on_ σ sk l)
       (wstart := rfl) (wstop := rfl))
 
+/-- `matrixValue_forceDelDeps_filter_existential_eq` states `(f : DQBF) (cs : ClauseStore) (vars :
+    Array Var) (on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment) : cs.matrixValue
+    (forceDelDeps f vars on_) σ sk = cs.matrixValue (forceDelDeps f (vars.filter f.isVarExistential)
+    on_) σ sk`. -/
 theorem matrixValue_forceDelDeps_filter_existential_eq
     (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var)
     (σ : UnivAssignment) (sk : SkolemAssignment) :
@@ -907,6 +1091,9 @@ theorem matrixValue_forceDelDeps_filter_existential_eq
       simp [clauseValue_forceDelDeps_filter_existential_eq
         f vars on_ σ sk c.lits]
 
+/-- `DQBFTrue_forceDelDeps_filter_existential_iff` states `(f : DQBF) (cs : ClauseStore) (vars :
+    Array Var) (on_ : Var) : DQBFTrue (forceDelDeps f vars on_) cs ↔ DQBFTrue (forceDelDeps f
+    (vars.filter f.isVarExistential) on_) cs`. -/
 theorem DQBFTrue_forceDelDeps_filter_existential_iff
     (f : DQBF) (cs : ClauseStore) (vars : Array Var) (on_ : Var) :
     DQBFTrue (forceDelDeps f vars on_) cs ↔
@@ -925,6 +1112,9 @@ theorem DQBFTrue_forceDelDeps_filter_existential_iff
     simpa [matrixValue_forceDelDeps_filter_existential_eq f cs vars on_ σ sk]
       using hall σ
 
+/-- `clauseValue_false_implies_all_lits_false_early` states `(f : DQBF) (σ : UnivAssignment) (sk :
+    SkolemAssignment) (lits : Array Literal) (hfalse : f.clauseValue σ sk lits = false) : ∀ l ∈
+    lits.toList, f.litValue σ sk l = false`. -/
 theorem clauseValue_false_implies_all_lits_false_early
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal)
     (hfalse : f.clauseValue σ sk lits = false) :
@@ -941,6 +1131,10 @@ theorem clauseValue_false_implies_all_lits_false_early
     cases hfalse
   · exact hl_false
 
+/-- `clauseValue_true_false_implies_exists_true_false_lit` states `(f : DQBF) (σ : UnivAssignment)
+    (skTrue skFalse : SkolemAssignment) (lits : Array Literal) (htrue : f.clauseValue σ skTrue lits
+    = true) (hfalse : f.clauseValue σ skFalse lits = false) : ∃ l ∈ lits.toList, f.litValue σ skTrue
+    l = true ∧ f.litValue σ skFalse l = false`. -/
 theorem clauseValue_true_false_implies_exists_true_false_lit
     (f : DQBF) (σ : UnivAssignment)
     (skTrue skFalse : SkolemAssignment)

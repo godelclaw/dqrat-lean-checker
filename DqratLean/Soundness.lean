@@ -32,6 +32,8 @@ A DQRAT refutation demonstrates that a formula Ψ is false by:
 
 The development is complete; the dependency-deletion semantic theorem
 lives in `DqratLean/DeletionExhibition.lean`.
+
+Trust status: certified proof module for the default non-watched checker path.
 -/
 
 -- ─── Section 2: DEL Rule Soundness ──────────────────────────────────────────
@@ -128,6 +130,9 @@ theorem exiValue_indep_of_non_dep
 -- ─── Section 5: UR Soundness ─────────────────────────────────────────────────
 
 -- Helper: extract clauseValue from matrixValue
+/-- `clauseValue_true_of_mem_lit_and_negate` states `(f : DQBF) (σ : UnivAssignment) (sk :
+    SkolemAssignment) {lits : Array Literal} {l : Literal} (hlit : l ∈ lits.toList) (hneg : l.negate
+    ∈ lits.toList) : f.clauseValue σ sk lits = true`. -/
 theorem clauseValue_true_of_mem_lit_and_negate
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
     {lits : Array Literal} {l : Literal}
@@ -147,6 +152,9 @@ theorem clauseValue_true_of_mem_lit_and_negate
     simp only [DQBF.clauseValue, Array.any_eq_true]
     exact ⟨i, hi, by simpa [hget] using hval⟩
 
+/-- `clauseValue_perm` states `(f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) {lits₁ lits₂
+    : Array Literal} (hperm : Array.Perm lits₁ lits₂) : f.clauseValue σ sk lits₁ = f.clauseValue σ
+    sk lits₂`. -/
 theorem clauseValue_perm
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
     {lits₁ lits₂ : Array Literal}
@@ -183,6 +191,9 @@ private theorem clauseValue_true_implies_exists_true_lit
   exact ⟨lits[i], Array.mem_toList_iff.mpr (Array.getElem_mem hi), hli_true⟩
 
 -- Helper: matrixValue after addClause when both old and new clauses are satisfied
+/-- `matrixValue_addClause_of_both` states `(f : DQBF) (cs : ClauseStore) (lits : Array Literal) (σ
+    : UnivAssignment) (sk : SkolemAssignment) (hold : cs.matrixValue f σ sk = true) (hnew :
+    f.clauseValue σ sk lits = true) : (cs.addClause lits).1.matrixValue f σ sk = true`. -/
 theorem matrixValue_addClause_of_both
     (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
     (σ : UnivAssignment) (sk : SkolemAssignment)
@@ -202,6 +213,9 @@ theorem matrixValue_addClause_of_both
       rw [heq]; exact ClauseStore.getClause_addClause_new cs lits hpos]
     simpa
 
+/-- `matrixValue_addClause_false_of_old_false` states `(f : DQBF) (cs : ClauseStore) (lits : Array
+    Literal) (σ : UnivAssignment) (sk : SkolemAssignment) (hold : cs.matrixValue f σ sk = false) :
+    (cs.addClause lits).1.matrixValue f σ sk = false`. -/
 theorem matrixValue_addClause_false_of_old_false
     (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
     (σ : UnivAssignment) (sk : SkolemAssignment)
@@ -211,6 +225,9 @@ theorem matrixValue_addClause_false_of_old_false
   have hmono := matrixValue_addClause_mono f cs lits σ sk h
   simp [hold] at hmono
 
+/-- `matrixValue_addClause_false_of_new_false` states `(f : DQBF) (cs : ClauseStore) (lits : Array
+    Literal) (σ : UnivAssignment) (sk : SkolemAssignment) (hpos : 0 < cs.clauses.size) (hnew :
+    f.clauseValue σ sk lits = false) : (cs.addClause lits).1.matrixValue f σ sk = false`. -/
 theorem matrixValue_addClause_false_of_new_false
     (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
     (σ : UnivAssignment) (sk : SkolemAssignment)
@@ -240,6 +257,10 @@ private theorem noCompl_other_lit_var_ne
 
 -- litValue is unchanged when flipping σ at u, provided l.var ≠ u
 -- (for existentials, pivot.var must not be in the dep-set)
+/-- `litValue_flip_indep` states `(f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (l :
+    Literal) (u : Var) (hvar_ne : l.var ≠ u) (hdep : f.isVarExistential l.var → u ∉ (f.depset.getD
+    l.var #[]).toList) : f.litValue σ sk l = f.litValue (fun w => if w == u then !σ w else σ w) sk
+    l`. -/
 theorem litValue_flip_indep
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
     (l : Literal) (u : Var)
@@ -268,6 +289,8 @@ def URCondition (f : DQBF) (lits : Array Literal) (pivot : Literal) : Prop :=
   ∀ l ∈ lits.toList, f.isVarExistential l.var →
     pivot.var ∉ (f.depset.getD l.var #[]).toList
 
+/-- `URCondition.perm` states `{f : DQBF} {lits₁ lits₂ : Array Literal} {pivot : Literal} (hperm :
+    Array.Perm lits₁ lits₂) (hcond : URCondition f lits₁ pivot) : URCondition f lits₂ pivot`. -/
 theorem URCondition.perm
     {f : DQBF} {lits₁ lits₂ : Array Literal} {pivot : Literal}
     (hperm : Array.Perm lits₁ lits₂)
@@ -285,6 +308,10 @@ theorem URCondition.perm
       exact (Array.Perm.mem_iff hperm).mpr (Array.mem_toList_iff.mp hl₂)
     exact hcond.2.2 l hl₁ hex
 
+/-- `urCondition_of_pivotReducible` states `{f : DQBF} {lits : Array Literal} {pivot : Literal}
+    (hpivot_univ : f.isVarExistential pivot.var = false) (hpivotReducible : (!lits.any (· =
+    pivot.negate) && lits.all (fun l => !f.isVarExistential l.var || !f.isVarOuterOfExivar pivot.var
+    l.var)) = true) : URCondition f lits pivot`. -/
 theorem urCondition_of_pivotReducible
     {f : DQBF} {lits : Array Literal} {pivot : Literal}
     (hpivot_univ : f.isVarExistential pivot.var = false)
@@ -320,6 +347,10 @@ theorem urCondition_of_pivotReducible
     rw [hcontains] at houter_false
     cases houter_false
 
+/-- `urCondition_of_pivotReducible_prop` states `{f : DQBF} {lits : Array Literal} {pivot : Literal}
+    (hpivot_univ : f.isVarExistential pivot.var = false) (hpivotReducible : (∀ i (h : i <
+    lits.size), ¬lits[i] = pivot.negate) ∧ ∀ i (h : i < lits.size), f.isVarExistential lits[i].var =
+    false ∨ f.isVarOuterOfExivar pivot.var lits[i].var = false) : URCondition f lits pivot`. -/
 theorem urCondition_of_pivotReducible_prop
     {f : DQBF} {lits : Array Literal} {pivot : Literal}
     (hpivot_univ : f.isVarExistential pivot.var = false)
@@ -451,6 +482,10 @@ theorem UR_soundness (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot
       simp only [DQBF.clauseValue, Array.any_eq_true]
       exact ⟨j, hj, hj_eq ▸ (hsame ▸ hl'_val)⟩
 
+/-- `UR_soundness_perm` states `(f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot :
+    Literal) (hcond : URCondition f lits pivot) (hmem : ∃ cref, ∃ c, cs.getClause cref = some c ∧
+    Array.Perm c.lits lits) (h : DQBFTrue f cs) : DQBFTrue f (cs.addClause (lits.filter (fun l =>
+    !(l == pivot)))).1`. -/
 theorem UR_soundness_perm (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot : Literal)
     (hcond : URCondition f lits pivot)
     (hmem : ∃ cref, ∃ c, cs.getClause cref = some c ∧ Array.Perm c.lits lits)
@@ -523,6 +558,9 @@ theorem UR_soundness_perm (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (
       simp only [DQBF.clauseValue, Array.any_eq_true]
       exact ⟨j, hj, hj_eq ▸ (hsame ▸ hl'_val)⟩
 
+/-- `DQBFTrue.addClause_of_located_perm` states `(f : DQBF) (cs : ClauseStore) (lits : Array
+    Literal) (hmem : ∃ cref, ∃ c, cs.getClause cref = some c ∧ Array.Perm c.lits lits) (h : DQBFTrue
+    f cs) : DQBFTrue f (cs.addClause lits).1`. -/
 theorem DQBFTrue.addClause_of_located_perm
     (f : DQBF) (cs : ClauseStore) (lits : Array Literal)
     (hmem : ∃ cref, ∃ c, cs.getClause cref = some c ∧ Array.Perm c.lits lits)
@@ -555,6 +593,8 @@ theorem SemanticConsequence_soundness (f : DQBF) (cs : ClauseStore) (lits : Arra
 
 -- ─── State validity predicates ───────────────────────────────────────────────
 
+/-- `ClauseLitsWellFormed.mono` states `{f g : DQBF} {lits : Array Literal} (hwf :
+    ClauseLitsWellFormed f lits) (hmax : f.maxVar ≤ g.maxVar) : ClauseLitsWellFormed g lits`. -/
 theorem ClauseLitsWellFormed.mono
     {f g : DQBF} {lits : Array Literal}
     (hwf : ClauseLitsWellFormed f lits)
@@ -564,6 +604,9 @@ theorem ClauseLitsWellFormed.mono
   rcases hwf l hl with ⟨hpos, hle⟩
   exact ⟨hpos, Nat.le_trans hle hmax⟩
 
+/-- `ClauseLitsWellFormed.push` states `{f : DQBF} {lits : Array Literal} {l : Literal} (hwf :
+    ClauseLitsWellFormed f lits) (hl : 0 < l.var ∧ l.var ≤ f.maxVar) : ClauseLitsWellFormed f
+    (lits.push l)`. -/
 theorem ClauseLitsWellFormed.push
     {f : DQBF} {lits : Array Literal} {l : Literal}
     (hwf : ClauseLitsWellFormed f lits)
@@ -574,6 +617,9 @@ theorem ClauseLitsWellFormed.push
   · exact hwf l' (Array.mem_toList_iff.mpr hl')
   · exact hl
 
+/-- `ClauseLitsWellFormed.append` states `{f : DQBF} {lits₁ lits₂ : Array Literal} (h₁ :
+    ClauseLitsWellFormed f lits₁) (h₂ : ClauseLitsWellFormed f lits₂) : ClauseLitsWellFormed f
+    (lits₁ ++ lits₂)`. -/
 theorem ClauseLitsWellFormed.append
     {f : DQBF} {lits₁ lits₂ : Array Literal}
     (h₁ : ClauseLitsWellFormed f lits₁)
@@ -584,6 +630,8 @@ theorem ClauseLitsWellFormed.append
   · exact h₁ l (Array.mem_toList_iff.mpr hl)
   · exact h₂ l (Array.mem_toList_iff.mpr hl)
 
+/-- `ClauseLitsWellFormed.sortLits` states `{f : DQBF} {lits : Array Literal} (hwf :
+    ClauseLitsWellFormed f lits) : ClauseLitsWellFormed f (ClauseStore.sortLits lits)`. -/
 theorem ClauseLitsWellFormed.sortLits
     {f : DQBF} {lits : Array Literal}
     (hwf : ClauseLitsWellFormed f lits) :
@@ -592,6 +640,8 @@ theorem ClauseLitsWellFormed.sortLits
   have hl' : l ∈ lits := (ClauseStore.mem_sortLits).mp (Array.mem_toList_iff.mp hl)
   exact hwf l (Array.mem_toList_iff.mpr hl')
 
+/-- `ClausesWellFormed.mono` states `{f g : DQBF} {cs : ClauseStore} (hwf : ClausesWellFormed f cs)
+    (hmax : f.maxVar ≤ g.maxVar) : ClausesWellFormed g cs`. -/
 theorem ClausesWellFormed.mono
     {f g : DQBF} {cs : ClauseStore}
     (hwf : ClausesWellFormed f cs)
@@ -601,6 +651,9 @@ theorem ClausesWellFormed.mono
   rcases hwf cref c hget l hl with ⟨hpos, hle⟩
   exact ⟨hpos, Nat.le_trans hle hmax⟩
 
+/-- `ClausesWellFormed.addClause` states `{f : DQBF} {cs : ClauseStore} {lits : Array Literal} (hwf
+    : ClausesWellFormed f cs) (hlits : ClauseLitsWellFormed f lits) : ClausesWellFormed f
+    (cs.addClause lits).1`. -/
 theorem ClausesWellFormed.addClause
     {f : DQBF} {cs : ClauseStore} {lits : Array Literal}
     (hwf : ClausesWellFormed f cs)
@@ -623,6 +676,8 @@ theorem ClausesWellFormed.addClause
     cases hget
     exact hlits l hl
 
+/-- `ClausesWellFormed.deleteClause` states `{f : DQBF} {cs : ClauseStore} {cref : CRef} (hwf :
+    ClausesWellFormed f cs) : ClausesWellFormed f (cs.deleteClause cref)`. -/
 theorem ClausesWellFormed.deleteClause
     {f : DQBF} {cs : ClauseStore} {cref : CRef}
     (hwf : ClausesWellFormed f cs) :
@@ -640,6 +695,8 @@ theorem ClausesWellFormed.deleteClause
   · rw [ClauseStore.getClause_deleteClause_ne cs cref cref' hsame] at hget
     exact hwf cref' c hget l hl
 
+/-- `DQBFFalse.of_sound_extension` states `{f₀ f₁ : DQBF} {cs₀ cs₁ : ClauseStore} (hsem : DQBFTrue
+    f₀ cs₀ → DQBFTrue f₁ cs₁) (hfalse : DQBFFalse f₁ cs₁) : DQBFFalse f₀ cs₀`. -/
 theorem DQBFFalse.of_sound_extension
     {f₀ f₁ : DQBF} {cs₀ cs₁ : ClauseStore}
     (hsem : DQBFTrue f₀ cs₀ → DQBFTrue f₁ cs₁)
@@ -659,6 +716,8 @@ theorem DQBFFalse.of_sound_extension
     rw [htrue₁ σ] at hfalse₁
     simp at hfalse₁
 
+/-- `DQBFFalse.of_not_true` states `{f : DQBF} {cs : ClauseStore} (hnot : ¬ DQBFTrue f cs) :
+    DQBFFalse f cs`. -/
 theorem DQBFFalse.of_not_true
     {f : DQBF} {cs : ClauseStore}
     (hnot : ¬ DQBFTrue f cs) :
@@ -674,6 +733,10 @@ theorem DQBFFalse.of_not_true
     cases h : cs.matrixValue f σ sk <;> simp at h ⊢
     exact False.elim (hex ⟨σ, h⟩)
 
+/-- `addForallFormula` defines `(f : DQBF) (ext : Nat) : DQBF := let v := f.maxVar + 1 { f with
+    maxVar := v internalName := f.internalName.push (ext, v) externalName := f.externalName.push ext
+    isExistential := f.isExistential.push false univars := f.univars.push v depset := f.depset.push
+    #[] }`. -/
 def addForallFormula (f : DQBF) (ext : Nat) : DQBF :=
   let v := f.maxVar + 1
   { f with
@@ -684,6 +747,10 @@ def addForallFormula (f : DQBF) (ext : Nat) : DQBF :=
     univars := f.univars.push v
     depset := f.depset.push #[] }
 
+/-- `addExistsFormula` defines `(f : DQBF) (ext : Nat) (deps : Array Var) : DQBF := let v :=
+    f.maxVar + 1 { f with maxVar := v internalName := f.internalName.push (ext, v) externalName :=
+    f.externalName.push ext isExistential := f.isExistential.push true exivars := f.exivars.push v
+    depset := f.depset.push deps }`. -/
 def addExistsFormula (f : DQBF) (ext : Nat) (deps : Array Var) : DQBF :=
   let v := f.maxVar + 1
   { f with
@@ -694,15 +761,22 @@ def addExistsFormula (f : DQBF) (ext : Nat) (deps : Array Var) : DQBF :=
     exivars := f.exivars.push v
     depset := f.depset.push deps }
 
+/-- `arrayGetD_push_lt` states `{α : Type} (a : Array α) (x fallback : α) {i : Nat} (hi : i <
+    a.size) : (a.push x).getD i fallback = a.getD i fallback`. -/
 theorem arrayGetD_push_lt {α : Type} (a : Array α) (x fallback : α) {i : Nat}
     (hi : i < a.size) :
     (a.push x).getD i fallback = a.getD i fallback := by
   simp [Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt hi]
 
+/-- `arrayGetD_push_eq` states `{α : Type} (a : Array α) (x fallback : α) : (a.push x).getD a.size
+    fallback = x`. -/
 theorem arrayGetD_push_eq {α : Type} (a : Array α) (x fallback : α) :
     (a.push x).getD a.size fallback = x := by
   simp [Array.getD, Array.getElem_push_eq]
 
+/-- `lookupInternal_addForallFormula_self` states `(f : DQBF) (ext : Nat) (hfresh :
+    f.externalVarExists ext = false) : (addForallFormula f ext).lookupInternal ext = some (f.maxVar
+    + 1)`. -/
 theorem lookupInternal_addForallFormula_self
     (f : DQBF) (ext : Nat)
     (hfresh : f.externalVarExists ext = false) :
@@ -720,6 +794,8 @@ theorem lookupInternal_addForallFormula_self
       cases hfresh
     simp [hneq]
 
+/-- `lookupInternal_addForallFormula_ne` states `(f : DQBF) (ext ext' : Nat) (hne : ext' ≠ ext) :
+    (addForallFormula f ext).lookupInternal ext' = f.lookupInternal ext'`. -/
 theorem lookupInternal_addForallFormula_ne
     (f : DQBF) (ext ext' : Nat)
     (hne : ext' ≠ ext) :
@@ -729,6 +805,10 @@ theorem lookupInternal_addForallFormula_ne
     simp [hne.symm]
   simp [hif]
 
+/-- `varValue_addForallFormula_old` states `(f : DQBF) (ext : Nat) (σ : UnivAssignment) (sk :
+    SkolemAssignment) {v : Var} (his : f.isExistential.size = f.maxVar + 1) (hdeps : f.depset.size =
+    f.maxVar + 1) (hle : v ≤ f.maxVar) : (addForallFormula f ext).varValue σ sk v = f.varValue σ sk
+    v`. -/
 theorem varValue_addForallFormula_old
     (f : DQBF) (ext : Nat) (σ : UnivAssignment) (sk : SkolemAssignment)
     {v : Var}
@@ -747,6 +827,10 @@ theorem varValue_addForallFormula_old
     arrayGetD_push_lt f.depset #[] #[] hvdeps
   simp [DQBF.isVarExistential, his', hdeps']
 
+/-- `litValue_addForallFormula_old` states `(f : DQBF) (ext : Nat) (σ : UnivAssignment) (sk :
+    SkolemAssignment) {l : Literal} (his : f.isExistential.size = f.maxVar + 1) (hdeps :
+    f.depset.size = f.maxVar + 1) (hwf : 0 < l.var ∧ l.var ≤ f.maxVar) : (addForallFormula f
+    ext).litValue σ sk l = f.litValue σ sk l`. -/
 theorem litValue_addForallFormula_old
     (f : DQBF) (ext : Nat) (σ : UnivAssignment) (sk : SkolemAssignment)
     {l : Literal}
@@ -758,6 +842,10 @@ theorem litValue_addForallFormula_old
   simpa using congrArg (fun b => if l.isPos then b else !b)
     (varValue_addForallFormula_old f ext σ sk his hdeps hwf.2)
 
+/-- `clauseValue_addForallFormula_old` states `(f : DQBF) (ext : Nat) (σ : UnivAssignment) (sk :
+    SkolemAssignment) (lits : Array Literal) (his : f.isExistential.size = f.maxVar + 1) (hdeps :
+    f.depset.size = f.maxVar + 1) (hwf : ∀ l ∈ lits.toList, 0 < l.var ∧ l.var ≤ f.maxVar) :
+    (addForallFormula f ext).clauseValue σ sk lits = f.clauseValue σ sk lits`. -/
 theorem clauseValue_addForallFormula_old
     (f : DQBF) (ext : Nat) (σ : UnivAssignment) (sk : SkolemAssignment)
     (lits : Array Literal)
@@ -777,6 +865,10 @@ theorem clauseValue_addForallFormula_old
       simpa [litValue_addForallFormula_old f ext σ sk his hdeps
         (hwf _ (Array.mem_toList_iff.mpr (Array.getElem_mem hi)))] using hli⟩
 
+/-- `matrixValue_addForallFormula_old` states `(f : DQBF) (cs : ClauseStore) (ext : Nat) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (his : f.isExistential.size = f.maxVar + 1) (hdeps :
+    f.depset.size = f.maxVar + 1) (hwf : ClausesWellFormed f cs) : cs.matrixValue (addForallFormula
+    f ext) σ sk = cs.matrixValue f σ sk`. -/
 theorem matrixValue_addForallFormula_old
     (f : DQBF) (cs : ClauseStore) (ext : Nat)
     (σ : UnivAssignment) (sk : SkolemAssignment)
@@ -793,6 +885,9 @@ theorem matrixValue_addForallFormula_old
     simp [hc, clauseValue_addForallFormula_old f ext σ sk c.lits his hdeps
       (hwf (i + 1) c hc)]
 
+/-- `DQBFTrue_addForallFormula` states `(f : DQBF) (cs : ClauseStore) (ext : Nat) (his :
+    f.isExistential.size = f.maxVar + 1) (hdeps : f.depset.size = f.maxVar + 1) (hwf :
+    ClausesWellFormed f cs) (htrue : DQBFTrue f cs) : DQBFTrue (addForallFormula f ext) cs`. -/
 theorem DQBFTrue_addForallFormula
     (f : DQBF) (cs : ClauseStore) (ext : Nat)
     (his : f.isExistential.size = f.maxVar + 1)
@@ -806,6 +901,9 @@ theorem DQBFTrue_addForallFormula
   rw [matrixValue_addForallFormula_old f cs ext σ sk his hdeps hwf]
   exact hsk σ
 
+/-- `lookupInternal_addExistsFormula_self` states `(f : DQBF) (ext : Nat) (deps : Array Var) (hfresh
+    : f.externalVarExists ext = false) : (addExistsFormula f ext deps).lookupInternal ext = some
+    (f.maxVar + 1)`. -/
 theorem lookupInternal_addExistsFormula_self
     (f : DQBF) (ext : Nat) (deps : Array Var)
     (hfresh : f.externalVarExists ext = false) :
@@ -823,6 +921,8 @@ theorem lookupInternal_addExistsFormula_self
       cases hfresh
     simp [hneq]
 
+/-- `lookupInternal_addExistsFormula_ne` states `(f : DQBF) (ext ext' : Nat) (deps : Array Var) (hne
+    : ext' ≠ ext) : (addExistsFormula f ext deps).lookupInternal ext' = f.lookupInternal ext'`. -/
 theorem lookupInternal_addExistsFormula_ne
     (f : DQBF) (ext ext' : Nat) (deps : Array Var)
     (hne : ext' ≠ ext) :
@@ -832,6 +932,10 @@ theorem lookupInternal_addExistsFormula_ne
     simp [hne.symm]
   simp [hif]
 
+/-- `varValue_addExistsFormula_old` states `(f : DQBF) (ext : Nat) (deps : Array Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) {v : Var} (his : f.isExistential.size = f.maxVar + 1)
+    (hdeps : f.depset.size = f.maxVar + 1) (hle : v ≤ f.maxVar) : (addExistsFormula f ext
+    deps).varValue σ sk v = f.varValue σ sk v`. -/
 theorem varValue_addExistsFormula_old
     (f : DQBF) (ext : Nat) (deps : Array Var) (σ : UnivAssignment) (sk : SkolemAssignment)
     {v : Var}
@@ -850,6 +954,10 @@ theorem varValue_addExistsFormula_old
     arrayGetD_push_lt f.depset deps #[] hvdeps
   simp [DQBF.isVarExistential, his', hdeps']
 
+/-- `litValue_addExistsFormula_old` states `(f : DQBF) (ext : Nat) (deps : Array Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) {l : Literal} (his : f.isExistential.size = f.maxVar +
+    1) (hdeps : f.depset.size = f.maxVar + 1) (hwf : 0 < l.var ∧ l.var ≤ f.maxVar) :
+    (addExistsFormula f ext deps).litValue σ sk l = f.litValue σ sk l`. -/
 theorem litValue_addExistsFormula_old
     (f : DQBF) (ext : Nat) (deps : Array Var) (σ : UnivAssignment) (sk : SkolemAssignment)
     {l : Literal}
@@ -861,6 +969,10 @@ theorem litValue_addExistsFormula_old
   simpa using congrArg (fun b => if l.isPos then b else !b)
     (varValue_addExistsFormula_old f ext deps σ sk his hdeps hwf.2)
 
+/-- `clauseValue_addExistsFormula_old` states `(f : DQBF) (ext : Nat) (deps : Array Var) (σ :
+    UnivAssignment) (sk : SkolemAssignment) (lits : Array Literal) (his : f.isExistential.size =
+    f.maxVar + 1) (hdeps : f.depset.size = f.maxVar + 1) (hwf : ∀ l ∈ lits.toList, 0 < l.var ∧ l.var
+    ≤ f.maxVar) : (addExistsFormula f ext deps).clauseValue σ sk lits = f.clauseValue σ sk lits`. -/
 theorem clauseValue_addExistsFormula_old
     (f : DQBF) (ext : Nat) (deps : Array Var) (σ : UnivAssignment) (sk : SkolemAssignment)
     (lits : Array Literal)
@@ -880,6 +992,10 @@ theorem clauseValue_addExistsFormula_old
       simpa [litValue_addExistsFormula_old f ext deps σ sk his hdeps
         (hwf _ (Array.mem_toList_iff.mpr (Array.getElem_mem hi)))] using hli⟩
 
+/-- `matrixValue_addExistsFormula_old` states `(f : DQBF) (cs : ClauseStore) (ext : Nat) (deps :
+    Array Var) (σ : UnivAssignment) (sk : SkolemAssignment) (his : f.isExistential.size = f.maxVar +
+    1) (hdeps : f.depset.size = f.maxVar + 1) (hwf : ClausesWellFormed f cs) : cs.matrixValue
+    (addExistsFormula f ext deps) σ sk = cs.matrixValue f σ sk`. -/
 theorem matrixValue_addExistsFormula_old
     (f : DQBF) (cs : ClauseStore) (ext : Nat) (deps : Array Var)
     (σ : UnivAssignment) (sk : SkolemAssignment)
@@ -896,6 +1012,9 @@ theorem matrixValue_addExistsFormula_old
     simp [hc, clauseValue_addExistsFormula_old f ext deps σ sk c.lits his hdeps
       (hwf (i + 1) c hc)]
 
+/-- `DQBFTrue_addExistsFormula` states `(f : DQBF) (cs : ClauseStore) (ext : Nat) (deps : Array Var)
+    (his : f.isExistential.size = f.maxVar + 1) (hdeps : f.depset.size = f.maxVar + 1) (hwf :
+    ClausesWellFormed f cs) (htrue : DQBFTrue f cs) : DQBFTrue (addExistsFormula f ext deps) cs`. -/
 theorem DQBFTrue_addExistsFormula
     (f : DQBF) (cs : ClauseStore) (ext : Nat) (deps : Array Var)
     (his : f.isExistential.size = f.maxVar + 1)
@@ -913,11 +1032,15 @@ private def extendSkolemIgnoreLast
     (sk : SkolemAssignment) (of_ : Var) : SkolemAssignment :=
   fun v args => if v = of_ then sk v args.pop else sk v args
 
+/-- `lookupInternal_addDependencyFormula` states `(f : DQBF) (of_ on_ : Var) (ext : Nat) :
+    (f.addDependencyFormula of_ on_).lookupInternal ext = f.lookupInternal ext`. -/
 theorem lookupInternal_addDependencyFormula
     (f : DQBF) (of_ on_ : Var) (ext : Nat) :
     (f.addDependencyFormula of_ on_).lookupInternal ext = f.lookupInternal ext := by
   simp [DQBF.addDependencyFormula, DQBF.lookupInternal]
 
+/-- `lookupInternal_forceDelDep` states `(f : DQBF) (of_ on_ : Var) (ext : Nat) : (f.forceDelDep of_
+    on_).lookupInternal ext = f.lookupInternal ext`. -/
 theorem lookupInternal_forceDelDep
     (f : DQBF) (of_ on_ : Var) (ext : Nat) :
     (f.forceDelDep of_ on_).lookupInternal ext = f.lookupInternal ext := by
@@ -2028,6 +2151,10 @@ private theorem no_both_bad_of_exhibits_delete_independence
   rw [hvar_true, hvar_false] at hindep
   cases hindep
 
+/-- `DQBFTrue_forceDelDep_of_exhibiting_bridge` states `(f : DQBF) (cs : ClauseStore) (of_ on_ :
+    Var) (hexi : f.isVarExistential of_ = true) (hbridge : DQBFTrue f cs → ∃ sk, (∀ σ,
+    cs.matrixValue f σ sk = true) ∧ ExhibitsDeleteIndependence f of_ on_ sk) (htrue : DQBFTrue f cs)
+    : DQBFTrue (f.forceDelDep of_ on_) cs`. -/
 theorem DQBFTrue_forceDelDep_of_exhibiting_bridge
     (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
     (hexi : f.isVarExistential of_ = true)
@@ -2043,6 +2170,10 @@ theorem DQBFTrue_forceDelDep_of_exhibiting_bridge
     f cs of_ on_ sk hexi
     (no_both_bad_of_exhibits_delete_independence f cs of_ on_ sk hexi hall hexhibit)
 
+/-- `DQBFTrue_forceDelDep_of_bridge` states `(f : DQBF) (cs : ClauseStore) (of_ on_ : Var) (hexi :
+    f.isVarExistential of_ = true) (hbridge : DQBFTrue f cs → ∃ sk, (∀ σ, cs.matrixValue f σ sk =
+    true) ∧ (∀ args, ¬ (BadDeletePattern f cs of_ on_ sk args false ∧ BadDeletePattern f cs of_ on_
+    sk args true))) (htrue : DQBFTrue f cs) : DQBFTrue (f.forceDelDep of_ on_) cs`. -/
 theorem DQBFTrue_forceDelDep_of_bridge
     (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
     (hexi : f.isVarExistential of_ = true)
@@ -2130,6 +2261,10 @@ private theorem matrixValue_true_false_changed_lit
     litValue_true_false_implies_varValue_ne
       f σ skTrue skFalse l hltrue hlfalse⟩
 
+/-- `varValue_addDependencyFormula_old` states `(f : DQBF) (of_ on_ v : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (hdeps : f.depset.size = f.maxVar + 1) (hof : 0 < of_) (hof_le : of_ ≤
+    f.maxVar) : (f.addDependencyFormula of_ on_).varValue σ (extendSkolemIgnoreLast sk of_) v =
+    f.varValue σ sk v`. -/
 theorem varValue_addDependencyFormula_old
     (f : DQBF) (of_ on_ v : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
     (hdeps : f.depset.size = f.maxVar + 1)
@@ -2164,6 +2299,10 @@ theorem varValue_addDependencyFormula_old
     rw [DQBF.varValue, DQBF.varValue, hex', hex_false]
     simp
 
+/-- `litValue_addDependencyFormula_old` states `(f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) (sk
+    : SkolemAssignment) (l : Literal) (hdeps : f.depset.size = f.maxVar + 1) (hof : 0 < of_) (hof_le
+    : of_ ≤ f.maxVar) : (f.addDependencyFormula of_ on_).litValue σ (extendSkolemIgnoreLast sk of_)
+    l = f.litValue σ sk l`. -/
 theorem litValue_addDependencyFormula_old
     (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
     (l : Literal)
@@ -2173,6 +2312,10 @@ theorem litValue_addDependencyFormula_old
       f.litValue σ sk l := by
   simp [DQBF.litValue, varValue_addDependencyFormula_old f of_ on_ l.var σ sk hdeps hof hof_le]
 
+/-- `clauseValue_addDependencyFormula_old` states `(f : DQBF) (of_ on_ : Var) (σ : UnivAssignment)
+    (sk : SkolemAssignment) (lits : Array Literal) (hdeps : f.depset.size = f.maxVar + 1) (hof : 0 <
+    of_) (hof_le : of_ ≤ f.maxVar) : (f.addDependencyFormula of_ on_).clauseValue σ
+    (extendSkolemIgnoreLast sk of_) lits = f.clauseValue σ sk lits`. -/
 theorem clauseValue_addDependencyFormula_old
     (f : DQBF) (of_ on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
     (lits : Array Literal)
@@ -2186,6 +2329,10 @@ theorem clauseValue_addDependencyFormula_old
       (h := fun l => litValue_addDependencyFormula_old f of_ on_ σ sk l hdeps hof hof_le)
       (wstart := rfl) (wstop := rfl))
 
+/-- `matrixValue_addDependencyFormula_old` states `(f : DQBF) (cs : ClauseStore) (of_ on_ : Var) (σ
+    : UnivAssignment) (sk : SkolemAssignment) (hdeps : f.depset.size = f.maxVar + 1) (hof : 0 < of_)
+    (hof_le : of_ ≤ f.maxVar) : cs.matrixValue (f.addDependencyFormula of_ on_) σ
+    (extendSkolemIgnoreLast sk of_) = cs.matrixValue f σ sk`. -/
 theorem matrixValue_addDependencyFormula_old
     (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
     (σ : UnivAssignment) (sk : SkolemAssignment)
@@ -2201,6 +2348,9 @@ theorem matrixValue_addDependencyFormula_old
   | some c =>
       simp [hclause, clauseValue_addDependencyFormula_old f of_ on_ σ sk c.lits hdeps hof hof_le]
 
+/-- `DQBFTrue_addDependencyFormula` states `(f : DQBF) (cs : ClauseStore) (of_ on_ : Var) (hdeps :
+    f.depset.size = f.maxVar + 1) (hof : 0 < of_) (hof_le : of_ ≤ f.maxVar) (htrue : DQBFTrue f cs)
+    : DQBFTrue (f.addDependencyFormula of_ on_) cs`. -/
 theorem DQBFTrue_addDependencyFormula
     (f : DQBF) (cs : ClauseStore) (of_ on_ : Var)
     (hdeps : f.depset.size = f.maxVar + 1)
@@ -2274,6 +2424,8 @@ theorem CheckState.Correct.to_consistentWith
     assigned_model := fun v hpos hassign => hcorr.preserves_models v hpos hassign sk σ hmat
     queue_model  := by simp [hcorr.propQueue_empty] }
 
+/-- `CheckState.Correct.toPropStruct` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hcorr : CheckState.Correct dqbf cs st) : CheckState.PropStruct st`. -/
 theorem CheckState.Correct.toPropStruct
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hcorr : CheckState.Correct dqbf cs st) :
@@ -2282,10 +2434,15 @@ theorem CheckState.Correct.toPropStruct
     clauses_wf := hcorr.clauses_wf
     trail_single_level := hcorr.trail_single_level }
 
+/-- `CheckState.empty_fullCorrect` states `CheckState.FullCorrect CheckState.empty.formula
+    CheckState.empty.clauses CheckState.empty`. -/
 theorem CheckState.empty_fullCorrect :
     CheckState.FullCorrect CheckState.empty.formula CheckState.empty.clauses CheckState.empty := by
   exact ⟨CheckState.empty_correct, ClauseStore.liveOccurrencesComplete_empty⟩
 
+/-- `liveOccurrencesComplete_of_sameFC` states `{s₀ s₁ : CheckState} (hsame : SameFC s₀ s₁) (hocc :
+    ClauseStore.LiveOccurrencesComplete s₀.clauses) : ClauseStore.LiveOccurrencesComplete
+    s₁.clauses`. -/
 theorem liveOccurrencesComplete_of_sameFC
     {s₀ s₁ : CheckState}
     (hsame : SameFC s₀ s₁)
@@ -2300,6 +2457,9 @@ theorem liveOccurrencesComplete_of_sameFC
     hocc (cref := cref) (c := c) (l := l) hget₀ hmem₀
   simpa [hclauses] using hocc₀
 
+/-- `CheckState.FullCorrect.ofCorrectSameFC` states `{dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ :
+    CheckState} (hfull : CheckState.FullCorrect dqbf cs s₀) (hcorr : CheckState.Correct dqbf cs s₁)
+    (hsame : SameFC s₀ s₁) : CheckState.FullCorrect dqbf cs s₁`. -/
 theorem CheckState.FullCorrect.ofCorrectSameFC
     {dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs s₀)
@@ -2308,6 +2468,9 @@ theorem CheckState.FullCorrect.ofCorrectSameFC
     CheckState.FullCorrect dqbf cs s₁ := by
   exact ⟨hcorr, liveOccurrencesComplete_of_sameFC hsame hfull.liveOccurrencesComplete⟩
 
+/-- `CheckState.FullCorrect.ofCorrectClausesEq` states `{dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ :
+    CheckState} (hfull : CheckState.FullCorrect dqbf cs s₀) (hcorr : CheckState.Correct dqbf cs s₁)
+    (hclauses : s₁.clauses = s₀.clauses) : CheckState.FullCorrect dqbf cs s₁`. -/
 theorem CheckState.FullCorrect.ofCorrectClausesEq
     {dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs s₀)
@@ -2328,6 +2491,9 @@ private theorem PrefixState.isAssigned_false
     st.isAssigned.getD (v - 1) false = false :=
   hpref.2.2 v hpos hle
 
+/-- `PrefixState.withSetDepset` states `{st : CheckState} (hpref : PrefixState st) (iv : Var) (deps
+    : Array Var) : PrefixState { st with formula := { st.formula with depset :=
+    st.formula.depset.setIfInBounds iv deps } }`. -/
 theorem PrefixState.withSetDepset
     {st : CheckState} (hpref : PrefixState st) (iv : Var) (deps : Array Var) :
     PrefixState
@@ -2394,6 +2560,8 @@ theorem PrefixState.withSetDepset
       simpa [st'] using hle
     simpa [st'] using hallFalse v hpos hle_old
 
+/-- `PrefixState.toMatrixCorrect` states `{st : CheckState} (hpref : PrefixState st) :
+    CheckState.Correct st.formula st.clauses st`. -/
 theorem PrefixState.toMatrixCorrect
     {st : CheckState} (hpref : PrefixState st) :
     CheckState.Correct st.formula st.clauses st := by
@@ -2417,6 +2585,8 @@ theorem PrefixState.toMatrixCorrect
     rw [hallFalse v hpos hle] at hassign
     cases hassign
 
+/-- `PrefixState.toMatrixFullCorrect` states `{st : CheckState} (hpref : PrefixState st) :
+    CheckState.FullCorrect st.formula st.clauses st`. -/
 theorem PrefixState.toMatrixFullCorrect
     {st : CheckState} (hpref : PrefixState st) :
     CheckState.FullCorrect st.formula st.clauses st := by
@@ -2879,6 +3049,10 @@ theorem CheckState.Correct.withResetPropagationState
     · simp [st', hlt] at hassign
     · simp [st', hlt] at hassign
 
+/-- `PrefixState.withIndepCaches` states `{st : CheckState} (hpref : PrefixState st) (indepKnown :
+    Array Bool) (indepOf : Array (Array Var)) (hknown : indepKnown.size = st.formula.maxVar) (hof :
+    indepOf.size = st.formula.maxVar) : PrefixState { st with indepKnown := indepKnown, indepOf :=
+    indepOf }`. -/
 theorem PrefixState.withIndepCaches
     {st : CheckState} (hpref : PrefixState st)
     (indepKnown : Array Bool) (indepOf : Array (Array Var))
@@ -2891,6 +3065,9 @@ theorem PrefixState.withIndepCaches
   · intro v hpos hle
     simpa using hallFalse v hpos hle
 
+/-- `PrefixState.withAddVarForall` states `{st : CheckState} (hpref : PrefixState st) (ext : Nat)
+    (hfresh : st.formula.externalVarExists ext = false) : PrefixState { st with formula :=
+    addForallFormula st.formula ext`. -/
 theorem PrefixState.withAddVarForall
     {st : CheckState} (hpref : PrefixState st)
     (ext : Nat) (hfresh : st.formula.externalVarExists ext = false) :
@@ -2931,6 +3108,9 @@ theorem PrefixState.withAddVarForall
       simpa [arrayGetD_push_lt st.isAssigned false false hlt] using
         hallFalse v hpos hle_old
 
+/-- `PrefixState.withAddVarExists` states `{st : CheckState} (hpref : PrefixState st) (ext : Nat)
+    (deps : Array Var) (hfresh : st.formula.externalVarExists ext = false) : PrefixState { st with
+    formula := addExistsFormula st.formula ext deps`. -/
 theorem PrefixState.withAddVarExists
     {st : CheckState} (hpref : PrefixState st)
     (ext : Nat) (deps : Array Var) (hfresh : st.formula.externalVarExists ext = false) :
@@ -2971,6 +3151,8 @@ theorem PrefixState.withAddVarExists
       simpa [arrayGetD_push_lt st.isAssigned false false hlt] using
         hallFalse v hpos hle_old
 
+/-- `resetPropagationState_run` states `(s : CheckState) : resetPropagationState s = .ok () { s with
+    isAssigned := Array.replicate s.formula.maxVar false`. -/
 theorem resetPropagationState_run (s : CheckState) :
     resetPropagationState s =
       .ok () { s with
@@ -2980,6 +3162,8 @@ theorem resetPropagationState_run (s : CheckState) :
         propQueue := #[] } := by
   rfl
 
+/-- `resetPropagationState_sameFC_spec` states `(s₀ : CheckState) : ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (resetPropagationState : CheckM Unit) ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄`. -/
 theorem resetPropagationState_sameFC_spec (s₀ : CheckState) :
     ⦃fun s => ⌜SameFC s₀ s⌝⦄
     (resetPropagationState : CheckM Unit)
@@ -2989,6 +3173,9 @@ theorem resetPropagationState_sameFC_spec (s₀ : CheckState) :
   rw [resetPropagationState_run]
   simpa [SameFC] using hsame
 
+/-- `resetPropagationState_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) : ⦃fun s =>
+    ⌜CheckState.Correct dqbf cs s⌝⦄ (resetPropagationState : CheckM Unit) ⦃⇓ _ s' =>
+    ⌜CheckState.Correct dqbf cs s'⌝⦄`. -/
 @[spec]
 theorem resetPropagationState_correct_spec (dqbf : DQBF) (cs : ClauseStore) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
@@ -2999,6 +3186,9 @@ theorem resetPropagationState_correct_spec (dqbf : DQBF) (cs : ClauseStore) :
   rw [resetPropagationState_run]
   exact CheckState.Correct.withResetPropagationState hcorr
 
+/-- `resetPropagationState_correct_sameFC_spec` states `(dqbf : DQBF) (cs : ClauseStore) (s₀ :
+    CheckState) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄ (resetPropagationState :
+    CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ SameFC s₀ s'⌝⦄`. -/
 theorem resetPropagationState_correct_sameFC_spec
     (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄
@@ -3010,6 +3200,9 @@ theorem resetPropagationState_correct_sameFC_spec
       (resetPropagationState_sameFC_spec s₀))
     (by simp [PostCond.entails, SPred.entails, ExceptConds.entails])
 
+/-- `resetPropagationState_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) : ⦃fun s =>
+    ⌜CheckState.FullCorrect dqbf cs s⌝⦄ (resetPropagationState : CheckM Unit) ⦃⇓ _ s' =>
+    ⌜CheckState.FullCorrect dqbf cs s'⌝⦄`. -/
 theorem resetPropagationState_full_correct_spec
     (dqbf : DQBF) (cs : ClauseStore) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
@@ -3038,6 +3231,9 @@ private theorem resetPropagationState_full_correct_lookup_spec
       hfull (CheckState.Correct.withResetPropagationState hfull.toCorrect) rfl,
     by simpa using hlookup⟩
 
+/-- `makeIndepUnknown_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var) : ⦃fun s =>
+    ⌜CheckState.Correct dqbf cs s⌝⦄ (makeIndepUnknown u : CheckM Unit) ⦃⇓ _ s' =>
+    ⌜CheckState.Correct dqbf cs s'⌝⦄`. -/
 @[spec]
 theorem makeIndepUnknown_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (u : Var) :
@@ -3056,6 +3252,8 @@ theorem makeIndepUnknown_correct_spec (dqbf : DQBF) (cs : ClauseStore)
       (by simp [Array.size_setIfInBounds, hcorr.toSound.indepKnown_size])
       (by simp [Array.size_setIfInBounds, hcorr.toSound.indepOf_size])
 
+/-- `makeIndepUnknown_prefix_spec` states `(u : Var) : ⦃fun s => ⌜PrefixState s⌝⦄ (makeIndepUnknown
+    u : CheckM Unit) ⦃⇓ _ s' => ⌜PrefixState s'⌝⦄`. -/
 @[spec]
 theorem makeIndepUnknown_prefix_spec (u : Var) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -3076,6 +3274,9 @@ theorem makeIndepUnknown_prefix_spec (u : Var) :
       (by simp [Array.size_setIfInBounds, hcorr.toSound.indepKnown_size])
       (by simp [Array.size_setIfInBounds, hcorr.toSound.indepOf_size])
 
+/-- `makeIndepUnknown_correct_sameFC_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var) (s₀ :
+    CheckState) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄ (makeIndepUnknown u :
+    CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ SameFC s₀ s'⌝⦄`. -/
 theorem makeIndepUnknown_correct_sameFC_spec
     (dqbf : DQBF) (cs : ClauseStore) (u : Var) (s₀ : CheckState) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄
@@ -3087,6 +3288,10 @@ theorem makeIndepUnknown_correct_sameFC_spec
       (makeIndepUnknown_sameFC_spec u s₀))
     (by simp [PostCond.entails, SPred.entails, ExceptConds.entails])
 
+/-- `makeIndepUnknown_correct_lookup_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext :
+    Nat) (v : Var) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some
+    v⌝⦄ (makeIndepUnknown u : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧
+    s'.formula.lookupInternal ext = some v⌝⦄`. -/
 @[spec]
 theorem makeIndepUnknown_correct_lookup_spec
     (dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext : Nat) (v : Var) :
@@ -3107,6 +3312,9 @@ theorem makeIndepUnknown_correct_lookup_spec
     rcases hsame with ⟨hformula, _⟩
     exact ⟨hcorr', by simpa [hformula] using hlookup⟩
 
+/-- `makeIndepUnknown_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var) : ⦃fun s
+    => ⌜CheckState.FullCorrect dqbf cs s⌝⦄ (makeIndepUnknown u : CheckM Unit) ⦃⇓ _ s' =>
+    ⌜CheckState.FullCorrect dqbf cs s'⌝⦄`. -/
 theorem makeIndepUnknown_full_correct_spec
     (dqbf : DQBF) (cs : ClauseStore) (u : Var) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
@@ -3125,6 +3333,10 @@ theorem makeIndepUnknown_full_correct_spec
       rcases hspec with ⟨hcorr', hsame⟩
       exact CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame
 
+/-- `makeIndepUnknown_full_correct_lookup_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var)
+    (ext : Nat) (v : Var) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal
+    ext = some v⌝⦄ (makeIndepUnknown u : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s'
+    ∧ s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem makeIndepUnknown_full_correct_lookup_spec
     (dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
@@ -3147,6 +3359,8 @@ theorem makeIndepUnknown_full_correct_lookup_spec
       exact ⟨CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame',
         by simpa [hformula] using hlookup⟩
 
+/-- `computeDeps_sameFC_spec` states `(u : Var) (s₀ : CheckState) : ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (computeDeps u : CheckM Unit) ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄`. -/
 theorem computeDeps_sameFC_spec (u : Var) (s₀ : CheckState) :
     ⦃fun s => ⌜SameFC s₀ s⌝⦄
     (computeDeps u : CheckM Unit)
@@ -3162,6 +3376,9 @@ theorem computeDeps_sameFC_spec (u : Var) (s₀ : CheckState) :
       simpa [hformula] using hu
     simp [hu, hu₀, SameFC, hformula, hclauses]
 
+/-- `computeDeps_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var) : ⦃fun s =>
+    ⌜CheckState.Correct dqbf cs s⌝⦄ (computeDeps u : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.Correct
+    dqbf cs s'⌝⦄`. -/
 @[spec]
 theorem computeDeps_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (u : Var) :
@@ -3190,6 +3407,9 @@ theorem computeDeps_correct_spec (dqbf : DQBF) (cs : ClauseStore)
         (by simp [Array.size_setIfInBounds, hcorr.toSound.indepKnown_size])
         (by simp [Array.size_setIfInBounds, hcorr.toSound.indepOf_size]))
 
+/-- `computeDeps_correct_sameFC_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var) (s₀ :
+    CheckState) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄ (computeDeps u : CheckM
+    Unit) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ SameFC s₀ s'⌝⦄`. -/
 theorem computeDeps_correct_sameFC_spec
     (dqbf : DQBF) (cs : ClauseStore) (u : Var) (s₀ : CheckState) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄
@@ -3201,6 +3421,10 @@ theorem computeDeps_correct_sameFC_spec
       (computeDeps_sameFC_spec u s₀))
     (by simp [PostCond.entails, SPred.entails, ExceptConds.entails])
 
+/-- `computeDeps_correct_lookup_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext : Nat)
+    (v : Var) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (computeDeps u : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧
+    s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem computeDeps_correct_lookup_spec
     (dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
@@ -3220,6 +3444,9 @@ theorem computeDeps_correct_lookup_spec
       rcases hsame with ⟨hformula, _⟩
       exact ⟨hcorr', by simpa [hformula] using hlookup⟩
 
+/-- `computeDeps_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var) : ⦃fun s =>
+    ⌜CheckState.FullCorrect dqbf cs s⌝⦄ (computeDeps u : CheckM Unit) ⦃⇓ _ s' =>
+    ⌜CheckState.FullCorrect dqbf cs s'⌝⦄`. -/
 theorem computeDeps_full_correct_spec
     (dqbf : DQBF) (cs : ClauseStore) (u : Var) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
@@ -3238,6 +3465,10 @@ theorem computeDeps_full_correct_spec
       rcases hspec with ⟨hcorr', hsame⟩
       exact CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame
 
+/-- `computeDeps_full_correct_lookup_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext :
+    Nat) (v : Var) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal ext =
+    some v⌝⦄ (computeDeps u : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧
+    s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem computeDeps_full_correct_lookup_spec
     (dqbf : DQBF) (cs : ClauseStore) (u : Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
@@ -3260,6 +3491,10 @@ theorem computeDeps_full_correct_lookup_spec
       exact ⟨CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame',
         by simpa [hformula] using hlookup⟩
 
+/-- `notDependsOn_correct_lookup_spec` states `(dqbf : DQBF) (cs : ClauseStore) (exiVar univar :
+    Var) (ext : Nat) (v : Var) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal
+    ext = some v⌝⦄ (notDependsOn exiVar univar : CheckM Bool) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs
+    s' ∧ s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem notDependsOn_correct_lookup_spec
     (dqbf : DQBF) (cs : ClauseStore) (exiVar univar : Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
@@ -3280,6 +3515,10 @@ theorem notDependsOn_correct_lookup_spec
       simp [EStateM.get, hrun]
       exact ⟨hcorr', hlookup'⟩
 
+/-- `notDependsOn_full_correct_lookup_spec` states `(dqbf : DQBF) (cs : ClauseStore) (exiVar univar
+    : Var) (ext : Nat) (v : Var) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+    s.formula.lookupInternal ext = some v⌝⦄ (notDependsOn exiVar univar : CheckM Bool) ⦃⇓ _ s' =>
+    ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem notDependsOn_full_correct_lookup_spec
     (dqbf : DQBF) (cs : ClauseStore) (exiVar univar : Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
@@ -3300,6 +3539,8 @@ theorem notDependsOn_full_correct_lookup_spec
       simp [EStateM.get, hrun]
       exact ⟨hfull', hlookup'⟩
 
+/-- `notDependsOn_sameFC_spec` states `(exiVar univar : Var) (s₀ : CheckState) : ⦃fun s => ⌜SameFC
+    s₀ s⌝⦄ (notDependsOn exiVar univar : CheckM Bool) ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄`. -/
 theorem notDependsOn_sameFC_spec
     (exiVar univar : Var) (s₀ : CheckState) :
     ⦃fun s => ⌜SameFC s₀ s⌝⦄
@@ -3318,6 +3559,9 @@ theorem notDependsOn_sameFC_spec
       simp [EStateM.get, hrun]
       exact hdeps
 
+/-- `notDependsOn_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (exiVar univar : Var)
+    : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄ (notDependsOn exiVar univar : CheckM Bool) ⦃⇓ _
+    s' => ⌜CheckState.FullCorrect dqbf cs s'⌝⦄`. -/
 theorem notDependsOn_full_correct_spec
     (dqbf : DQBF) (cs : ClauseStore) (exiVar univar : Var) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
@@ -3336,6 +3580,10 @@ theorem notDependsOn_full_correct_spec
       simp [EStateM.get, hrun]
       exact hdeps
 
+/-- `notDependsOn_full_correct_sameFC_spec` states `(dqbf : DQBF) (cs : ClauseStore) (exiVar univar
+    : Var) (s₀ : CheckState) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ SameFC s₀ s⌝⦄
+    (notDependsOn exiVar univar : CheckM Bool) ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧
+    SameFC s₀ s'⌝⦄`. -/
 theorem notDependsOn_full_correct_sameFC_spec
     (dqbf : DQBF) (cs : ClauseStore) (exiVar univar : Var) (s₀ : CheckState) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ SameFC s₀ s⌝⦄
@@ -3386,6 +3634,9 @@ private theorem DeleteIndependenceBridge.of_notDependsOn_true_forceDelDepsTrue
     (of_ := exiVar) (on_ := univar)
     (notDependsOn_true_member_indepOf hrun) hexi htrueDel
 
+/-- `makeIndepUnknown_prefix_lookup_spec` states `(u : Var) (ext : Nat) (v : Var) : ⦃fun s =>
+    ⌜PrefixState s ∧ s.formula.lookupInternal ext = some v⌝⦄ (makeIndepUnknown u : CheckM Unit) ⦃⇓ _
+    s' => ⌜PrefixState s' ∧ s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem makeIndepUnknown_prefix_lookup_spec
     (u : Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜PrefixState s ∧ s.formula.lookupInternal ext = some v⌝⦄
@@ -3405,6 +3656,9 @@ theorem makeIndepUnknown_prefix_lookup_spec
       rcases hsame with ⟨hformula, _⟩
       exact ⟨hprefix, by simpa [hformula] using hlookup⟩
 
+/-- `setDepset_prefix_spec` states `(iv : Var) (deps : Array Var) : ⦃fun s => ⌜PrefixState s⌝⦄
+    (modify fun st => { st with formula := { st.formula with depset :=
+    st.formula.depset.setIfInBounds iv deps } } :`. -/
 theorem setDepset_prefix_spec (iv : Var) (deps : Array Var) :
     ⦃fun s => ⌜PrefixState s⌝⦄
     (modify fun st =>
@@ -3416,6 +3670,9 @@ theorem setDepset_prefix_spec (iv : Var) (deps : Array Var) :
   simp only [WP.wp, PredTrans.apply, EStateM.run, modify]
   exact PrefixState.withSetDepset hpref iv deps
 
+/-- `makeIndepUnknown_prefix_loop_spec` states `(deps : Array Var) : ⦃fun s => ⌜PrefixState s⌝⦄
+    (forIn deps PUnit.unit (fun u _ => do makeIndepUnknown u pure (ForInStep.yield PUnit.unit)) :
+    CheckM PUnit) ⦃⇓ _ s' => ⌜PrefixState s'⌝⦄`. -/
 theorem makeIndepUnknown_prefix_loop_spec
     (deps : Array Var) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -3444,22 +3701,31 @@ theorem makeIndepUnknown_prefix_loop_spec
       mspec (makeIndepUnknown_prefix_spec u)
       mleave)
 
+/-- `getFormula_run` states `(s : CheckState) : (((fun x => x.formula) <$> (get : CheckM
+    CheckState)) s) = .ok s.formula s`. -/
 theorem getFormula_run (s : CheckState) :
     (((fun x => x.formula) <$> (get : CheckM CheckState)) s) = .ok s.formula s := by
   rfl
 
+/-- `ensureWithinMaxVar_ok_run` states `(declaredMaxVar extVar : Nat) (h : extVar ≤ declaredMaxVar)
+    (s : CheckState) : ensureWithinMaxVar declaredMaxVar extVar s = .ok () s`. -/
 theorem ensureWithinMaxVar_ok_run
     (declaredMaxVar extVar : Nat) (h : extVar ≤ declaredMaxVar) (s : CheckState) :
     ensureWithinMaxVar declaredMaxVar extVar s = .ok () s := by
   have h' : ¬ declaredMaxVar < extVar := Nat.not_lt_of_ge h
   simp [ensureWithinMaxVar, h', Pure.pure, EStateM.pure]
 
+/-- `ensureWithinMaxVar_error_run` states `(declaredMaxVar extVar : Nat) (h : extVar >
+    declaredMaxVar) (s : CheckState) : ensureWithinMaxVar declaredMaxVar extVar s = .error
+    s!"Variable {extVar} exceeds maximum declared variable" s`. -/
 theorem ensureWithinMaxVar_error_run
     (declaredMaxVar extVar : Nat) (h : extVar > declaredMaxVar) (s : CheckState) :
     ensureWithinMaxVar declaredMaxVar extVar s =
       .error s!"Variable {extVar} exceeds maximum declared variable" s := by
   simp [ensureWithinMaxVar, h, throw, throwThe, MonadExceptOf.throw, EStateM.throw]
 
+/-- `ensureWithinMaxVar_prefix_spec` states `(declaredMaxVar extVar : Nat) : ⦃fun s => ⌜PrefixState
+    s⌝⦄ (ensureWithinMaxVar declaredMaxVar extVar : CheckM Unit) ⦃⇓? _ s' => ⌜PrefixState s'⌝⦄`. -/
 theorem ensureWithinMaxVar_prefix_spec
     (declaredMaxVar extVar : Nat) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -3472,6 +3738,9 @@ theorem ensureWithinMaxVar_prefix_spec
   · simp [hgt]
     exact hpref
 
+/-- `addVarForall_prefix_spec` states `(ext : Nat) : ⦃fun s => ⌜PrefixState s ∧
+    s.formula.externalVarExists ext = false⌝⦄ (addVarForall ext : CheckM Var) ⦃⇓ _ s' =>
+    ⌜PrefixState s'⌝⦄`. -/
 theorem addVarForall_prefix_spec
     (ext : Nat) :
     ⦃fun s => ⌜PrefixState s ∧ s.formula.externalVarExists ext = false⌝⦄
@@ -3482,6 +3751,9 @@ theorem addVarForall_prefix_spec
   simp only [WP.wp, PredTrans.apply, EStateM.run, addVarForall]
   exact PrefixState.withAddVarForall hpref ext hfresh
 
+/-- `addVarExists_prefix_spec` states `(ext : Nat) (deps : Array Var) : ⦃fun s => ⌜PrefixState s ∧
+    s.formula.externalVarExists ext = false⌝⦄ (addVarExists ext deps : CheckM Var) ⦃⇓ _ s' =>
+    ⌜PrefixState s'⌝⦄`. -/
 theorem addVarExists_prefix_spec
     (ext : Nat) (deps : Array Var) :
     ⦃fun s => ⌜PrefixState s ∧ s.formula.externalVarExists ext = false⌝⦄
@@ -3617,6 +3889,9 @@ private theorem readUniVarsM_prefix_run
                           ih (start + 1) (acc.push v) s1 r s2 hpref1 hmeasure' hrec
                         simpa [hrun'.2] using hpref2
 
+/-- `readUniVarsM_prefix_spec` states `(declaredMaxVar : Nat) (toks : Array String) (start : Nat)
+    (acc : Array Var) : ⦃fun s => ⌜PrefixState s⌝⦄ (readUniVarsM declaredMaxVar toks start acc :
+    CheckM ({p : Nat // start ≤ p} × Array Var)) ⦃⇓? _ s' => ⌜PrefixState s'⌝⦄`. -/
 theorem readUniVarsM_prefix_spec
     (declaredMaxVar : Nat) (toks : Array String) (start : Nat) (acc : Array Var) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -3698,6 +3973,9 @@ private theorem readExiVarsM_prefix_run
                               ih (start + 1) s1 r s2 hpref1 hmeasure' hrec
                             simpa [hrun'.2] using hpref2
 
+/-- `readExiVarsM_prefix_spec` states `(declaredMaxVar : Nat) (toks : Array String) (allUnivs :
+    Array Var) (start : Nat) : ⦃fun s => ⌜PrefixState s⌝⦄ (readExiVarsM declaredMaxVar toks allUnivs
+    start : CheckM {p : Nat // start ≤ p}) ⦃⇓? _ s' => ⌜PrefixState s'⌝⦄`. -/
 theorem readExiVarsM_prefix_spec
     (declaredMaxVar : Nat) (toks : Array String) (allUnivs : Array Var) (start : Nat) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -3801,6 +4079,9 @@ private theorem readDepsM_prefix_run
                               ih (start + 1) (acc.push iv) s r s1 hpref hmeasure' hrec
                             simpa [hrun'.2] using hpref1
 
+/-- `readDepsM_prefix_spec` states `(declaredMaxVar : Nat) (toks : Array String) (start : Nat) (acc
+    : Array Var) : ⦃fun s => ⌜PrefixState s⌝⦄ (readDepsM declaredMaxVar toks start acc : CheckM ({p
+    : Nat // start ≤ p} × Array Var)) ⦃⇓? _ s' => ⌜PrefixState s'⌝⦄`. -/
 theorem readDepsM_prefix_spec
     (declaredMaxVar : Nat) (toks : Array String) (start : Nat) (acc : Array Var) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -3853,6 +4134,9 @@ private theorem resolvePrefixDepVarM_prefix_run
             simp [hex, hlookup, EStateM.bind, EStateM.pure, Pure.pure] at hrun'
             simpa [hrun'.2] using hpref
 
+/-- `resolvePrefixDepVarM_prefix_spec` states `(declaredMaxVar extExi : Nat) : ⦃fun s =>
+    ⌜PrefixState s⌝⦄ (resolvePrefixDepVarM declaredMaxVar extExi : CheckM Var) ⦃⇓? _ s' =>
+    ⌜PrefixState s'⌝⦄`. -/
 theorem resolvePrefixDepVarM_prefix_spec
     (declaredMaxVar extExi : Nat) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -3937,6 +4221,9 @@ private theorem readPrefixDepLineM_prefix_run
                           cases hrun'
                           exact hpref4
 
+/-- `readPrefixDepLineM_prefix_spec` states `(declaredMaxVar : Nat) (toks : Array String) (pos :
+    Nat) : ⦃fun s => ⌜PrefixState s⌝⦄ (readPrefixDepLineM declaredMaxVar toks pos : CheckM {p : Nat
+    // pos < p}) ⦃⇓? _ s' => ⌜PrefixState s'⌝⦄`. -/
 theorem readPrefixDepLineM_prefix_spec
     (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -4046,6 +4333,9 @@ private theorem readPrefixM_prefix_run
               simp [Pure.pure, EStateM.pure] at hrun
               simpa [hrun.2] using hpref
 
+/-- `readPrefixM_prefix_spec` states `(declaredMaxVar : Nat) (toks : Array String) (pos : Nat)
+    (univs : Array Var) : ⦃fun s => ⌜PrefixState s⌝⦄ (readPrefixM declaredMaxVar toks pos univs :
+    CheckM (Nat × Array Var)) ⦃⇓? _ s' => ⌜PrefixState s'⌝⦄`. -/
 theorem readPrefixM_prefix_spec
     (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) (univs : Array Var) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -4060,6 +4350,11 @@ theorem readPrefixM_prefix_spec
         readPrefixM_prefix_run declaredMaxVar toks
           (toks.size - pos) pos univs s result s' hpref (by omega) hrun
 
+/-- `makeIndepUnknown_correct_lookup_wf_spec` states `(dqbf : DQBF) (cs : ClauseStore) (u : Var)
+    (acc : Array Literal) (ext : Nat) (v : Var) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧
+    ClauseLitsWellFormed s.formula acc ∧ s.formula.lookupInternal ext = some v⌝⦄ (makeIndepUnknown u
+    : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ ClauseLitsWellFormed s'.formula acc ∧
+    s'.formula.lookupInternal ext = some v⌝⦄`. -/
 @[spec]
 theorem makeIndepUnknown_correct_lookup_wf_spec
     (dqbf : DQBF) (cs : ClauseStore) (u : Var)
@@ -4087,6 +4382,11 @@ theorem makeIndepUnknown_correct_lookup_wf_spec
     rcases hsame with ⟨hformula, _⟩
     exact ⟨hcorr', by simpa [hformula] using hacc, by simpa [hformula] using hlookup⟩
 
+/-- `addVarExists_loop_spec` states `(dqbf : DQBF) (cs : ClauseStore) (deps : Array Var) (ext : Nat)
+    (v : Var) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
+    (forIn deps PUnit.unit (fun u _ => do makeIndepUnknown u pure (ForInStep.yield PUnit.unit)) :
+    CheckM PUnit) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some
+    v⌝⦄`. -/
 @[spec]
 theorem addVarExists_loop_spec
     (dqbf : DQBF) (cs : ClauseStore) (deps : Array Var) (ext : Nat) (v : Var) :
@@ -4116,6 +4416,11 @@ theorem addVarExists_loop_spec
       mspec (makeIndepUnknown_correct_lookup_spec dqbf cs u ext v)
       mleave)
 
+/-- `addVarExists_loop_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (deps : Array
+    Var) (ext : Nat) (v : Var) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+    s.formula.lookupInternal ext = some v⌝⦄ (forIn deps PUnit.unit (fun u _ => do makeIndepUnknown u
+    pure (ForInStep.yield PUnit.unit)) : CheckM PUnit) ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s'
+    ∧ s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem addVarExists_loop_full_correct_spec
     (dqbf : DQBF) (cs : ClauseStore) (deps : Array Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.lookupInternal ext = some v⌝⦄
@@ -4145,6 +4450,12 @@ theorem addVarExists_loop_full_correct_spec
       mspec (makeIndepUnknown_full_correct_lookup_spec dqbf cs u ext v)
       mleave)
 
+/-- `addVarExists_loop_wf_spec` states `(dqbf : DQBF) (cs : ClauseStore) (deps : Array Var) (acc :
+    Array Literal) (ext : Nat) (v : Var) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧
+    ClauseLitsWellFormed s.formula acc ∧ s.formula.lookupInternal ext = some v⌝⦄ (forIn deps
+    PUnit.unit (fun u _ => do makeIndepUnknown u pure (ForInStep.yield PUnit.unit)) : CheckM PUnit)
+    ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ ClauseLitsWellFormed s'.formula acc ∧
+    s'.formula.lookupInternal ext = some v⌝⦄`. -/
 @[spec]
 theorem addVarExists_loop_wf_spec
     (dqbf : DQBF) (cs : ClauseStore) (deps : Array Var)
@@ -4190,6 +4501,10 @@ theorem addVarExists_loop_wf_spec
       mspec (makeIndepUnknown_correct_lookup_wf_spec dqbf cs u acc ext v)
       mleave)
 
+/-- `addVarForall_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (ext : Nat) : ⦃fun s =>
+    ⌜CheckState.Correct dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄ (addVarForall ext :
+    CheckM Var) ⦃⇓ v s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some
+    v⌝⦄`. -/
 @[spec]
 theorem addVarForall_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (ext : Nat) :
@@ -4223,6 +4538,10 @@ theorem addVarForall_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     simpa [f, v] using lookupInternal_addForallFormula_self s.formula ext hfresh
   simpa [addVarForall] using hprefix
 
+/-- `addVarForall_correct_grow_spec` states `(dqbf : DQBF) (cs : ClauseStore) (ext : Nat) (n : Nat)
+    : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.externalVarExists ext = false ∧ n ≤
+    s.formula.maxVar⌝⦄ (addVarForall ext : CheckM Var) ⦃⇓ v s' => ⌜CheckState.Correct dqbf cs s' ∧ n
+    ≤ s'.formula.maxVar ∧ s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem addVarForall_correct_grow_spec (dqbf : DQBF) (cs : ClauseStore)
     (ext : Nat) (n : Nat) :
     ⦃fun s =>
@@ -4269,6 +4588,11 @@ theorem addVarForall_correct_grow_spec (dqbf : DQBF) (cs : ClauseStore)
     · simpa [f, v] using lookupInternal_addForallFormula_self s.formula ext hfresh
   simpa [addVarForall] using hprefix
 
+/-- `addVarForall_correct_lookup_spec` states `(dqbf : DQBF) (cs : ClauseStore) (extNew extKeep :
+    Nat) (vKeep : Var) (hkeep : extKeep ≠ extNew) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧
+    s.formula.externalVarExists extNew = false ∧ s.formula.lookupInternal extKeep = some vKeep⌝⦄
+    (addVarForall extNew : CheckM Var) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧
+    s'.formula.lookupInternal extKeep = some vKeep⌝⦄`. -/
 theorem addVarForall_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
     (extNew extKeep : Nat) (vKeep : Var) (hkeep : extKeep ≠ extNew) :
     ⦃fun s =>
@@ -4313,6 +4637,10 @@ theorem addVarForall_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
     exact hlookupKeep
   simpa [addVarForall] using hprefix
 
+/-- `addVarForall_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (ext : Nat) : ⦃fun s
+    => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄ (addVarForall
+    ext : CheckM Var) ⦃⇓ v s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext
+    = some v⌝⦄`. -/
 theorem addVarForall_full_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (ext : Nat) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
@@ -4351,6 +4679,11 @@ theorem addVarForall_full_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     · simpa [f, v] using lookupInternal_addForallFormula_self s.formula ext hfresh
   simpa [addVarForall] using hprefix
 
+/-- `addVarForall_full_correct_lookup_spec` states `(dqbf : DQBF) (cs : ClauseStore) (extNew extKeep
+    : Nat) (vKeep : Var) (hkeep : extKeep ≠ extNew) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+    s.formula.externalVarExists extNew = false ∧ s.formula.lookupInternal extKeep = some vKeep⌝⦄
+    (addVarForall extNew : CheckM Var) ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧
+    s'.formula.lookupInternal extKeep = some vKeep⌝⦄`. -/
 theorem addVarForall_full_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
     (extNew extKeep : Nat) (vKeep : Var) (hkeep : extKeep ≠ extNew) :
     ⦃fun s =>
@@ -4397,6 +4730,10 @@ theorem addVarForall_full_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
       exact hlookupKeep
   simpa [addVarForall] using hprefix
 
+/-- `addVarExists_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (ext : Nat) (deps : Array
+    Var) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄
+    (addVarExists ext deps : CheckM Var) ⦃⇓ v s' => ⌜CheckState.Correct dqbf cs s' ∧
+    s'.formula.lookupInternal ext = some v⌝⦄`. -/
 @[spec]
 theorem addVarExists_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (ext : Nat) (deps : Array Var) :
@@ -4459,6 +4796,10 @@ theorem addVarExists_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     mleave
   simpa [addVarExists] using hbody
 
+/-- `addVarExists_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (ext : Nat) (deps :
+    Array Var) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.externalVarExists ext =
+    false⌝⦄ (addVarExists ext deps : CheckM Var) ⦃⇓ v s' => ⌜CheckState.FullCorrect dqbf cs s' ∧
+    s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem addVarExists_full_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (ext : Nat) (deps : Array Var) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ s.formula.externalVarExists ext = false⌝⦄
@@ -4522,6 +4863,11 @@ theorem addVarExists_full_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     mleave
   simpa [addVarExists] using hbody
 
+/-- `addVarExists_correct_wf_spec` states `(dqbf : DQBF) (cs : ClauseStore) (ext : Nat) (deps :
+    Array Var) (acc : Array Literal) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧
+    ClauseLitsWellFormed s.formula acc ∧ s.formula.externalVarExists ext = false⌝⦄ (addVarExists ext
+    deps : CheckM Var) ⦃⇓ v s' => ⌜CheckState.Correct dqbf cs s' ∧ ClauseLitsWellFormed s'.formula
+    acc ∧ s'.formula.lookupInternal ext = some v⌝⦄`. -/
 @[spec]
 theorem addVarExists_correct_wf_spec (dqbf : DQBF) (cs : ClauseStore)
     (ext : Nat) (deps : Array Var) (acc : Array Literal) :
@@ -4619,6 +4965,11 @@ theorem addVarExists_correct_wf_spec (dqbf : DQBF) (cs : ClauseStore)
     mleave
   simpa [addVarExists] using hbody
 
+/-- `addVarExists_full_correct_wf_spec` states `(dqbf : DQBF) (cs : ClauseStore) (ext : Nat) (deps :
+    Array Var) (acc : Array Literal) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
+    ClauseLitsWellFormed s.formula acc ∧ s.formula.externalVarExists ext = false⌝⦄ (addVarExists ext
+    deps : CheckM Var) ⦃⇓ v s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ ClauseLitsWellFormed
+    s'.formula acc ∧ s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem addVarExists_full_correct_wf_spec (dqbf : DQBF) (cs : ClauseStore)
     (ext : Nat) (deps : Array Var) (acc : Array Literal) :
     ⦃fun s =>
@@ -4646,6 +4997,10 @@ theorem addVarExists_full_correct_wf_spec (dqbf : DQBF) (cs : ClauseStore)
       rcases hcorrRun with ⟨_, hacc', _⟩
       exact ⟨hfull', hacc', hlookup⟩
 
+/-- `translateExistingLits_spec` states `(dqbf : DQBF) (cs : ClauseStore) (extLits : List Int) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄ (translateExistingLits extLits : CheckM (Array
+    Literal)) ⦃⇓ lits s' => ⌜CheckState.Correct dqbf cs s' ∧ ClauseLitsWellFormed s'.formula
+    lits⌝⦄`. -/
 @[spec]
 theorem translateExistingLits_spec
     (dqbf : DQBF) (cs : ClauseStore) (extLits : List Int) :
@@ -4709,6 +5064,9 @@ private theorem translateExistingLitsStep_sameFC_spec
         EStateM.bind, hget, EStateM.get, EStateM.pure, Pure.pure, SameFC, hlookup] at *
       exact ⟨hformula, hclauses⟩
 
+/-- `translateExistingLits_sameFC_spec` states `(s₀ : CheckState) (extLits : List Int) : ⦃fun s =>
+    ⌜SameFC s₀ s⌝⦄ (translateExistingLits extLits : CheckM (Array Literal)) ⦃⇓ _ s' => ⌜SameFC s₀
+    s'⌝⦄`. -/
 theorem translateExistingLits_sameFC_spec
     (s₀ : CheckState) (extLits : List Int) :
     ⦃fun s => ⌜SameFC s₀ s⌝⦄
@@ -4733,6 +5091,10 @@ theorem translateExistingLits_sameFC_spec
         cases a <;> simpa using hs)
   simpa [translateExistingLits, translateExistingLitsStep] using hfor
 
+/-- `translateExistingLits_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (extLits :
+    List Int) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄ (translateExistingLits extLits :
+    CheckM (Array Literal)) ⦃⇓ lits s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ ClauseLitsWellFormed
+    s'.formula lits⌝⦄`. -/
 theorem translateExistingLits_full_correct_spec
     (dqbf : DQBF) (cs : ClauseStore) (extLits : List Int) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
@@ -4754,6 +5116,8 @@ theorem translateExistingLits_full_correct_spec
       rcases htrans with ⟨hcorr', hlits'⟩
       exact ⟨CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame, hlits'⟩
 
+/-- `lookupInternal_some_of_externalVarExists` states `(f : DQBF) (ext : Nat) (hex :
+    f.externalVarExists ext = true) : ∃ v, f.lookupInternal ext = some v`. -/
 theorem lookupInternal_some_of_externalVarExists
     (f : DQBF) (ext : Nat) (hex : f.externalVarExists ext = true) :
     ∃ v, f.lookupInternal ext = some v := by
@@ -4773,6 +5137,8 @@ theorem lookupInternal_some_of_externalVarExists
   | some v =>
       exact ⟨v, rfl⟩
 
+/-- `externalVarExists_of_lookupInternal_some` states `(f : DQBF) (ext : Nat) {v : Var} (hlookup :
+    f.lookupInternal ext = some v) : f.externalVarExists ext = true`. -/
 theorem externalVarExists_of_lookupInternal_some
     (f : DQBF) (ext : Nat) {v : Var}
     (hlookup : f.lookupInternal ext = some v) :
@@ -4790,6 +5156,10 @@ theorem externalVarExists_of_lookupInternal_some
   rw [DQBF.externalVarExists]
   exact Array.any_eq_true.mpr ⟨i, hi, by simpa [hget, hp_ext]⟩
 
+/-- `translateRatLitBasicStep_spec` states `(dqbf : DQBF) (cs : ClauseStore) (acc : Array Literal)
+    (lit : Int) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ ClauseLitsWellFormed s.formula acc⌝⦄
+    (translateRatLitBasicStep acc lit : CheckM (Array Literal)) ⦃⇓ acc' s' => ⌜CheckState.Correct
+    dqbf cs s' ∧ ClauseLitsWellFormed s'.formula acc'⌝⦄`. -/
 @[spec]
 theorem translateRatLitBasicStep_spec
     (dqbf : DQBF) (cs : ClauseStore) (acc : Array Literal) (lit : Int) :
@@ -4860,6 +5230,10 @@ theorem translateRatLitBasicStep_spec
     simpa [translateRatLitBasicStep, extVar, hmissing] using
       hbody s ⟨hcorr, hacc, hmissing⟩
 
+/-- `translateRatLitBasicStep_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (acc :
+    Array Literal) (lit : Int) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ ClauseLitsWellFormed
+    s.formula acc⌝⦄ (translateRatLitBasicStep acc lit : CheckM (Array Literal)) ⦃⇓ acc' s' =>
+    ⌜CheckState.FullCorrect dqbf cs s' ∧ ClauseLitsWellFormed s'.formula acc'⌝⦄`. -/
 @[spec]
 theorem translateRatLitBasicStep_full_correct_spec
     (dqbf : DQBF) (cs : ClauseStore) (acc : Array Literal) (lit : Int) :
@@ -4930,6 +5304,10 @@ theorem translateRatLitBasicStep_full_correct_spec
     simpa [translateRatLitBasicStep, extVar, hmissing] using
       hbody s ⟨hfull, hacc, hmissing⟩
 
+/-- `translateRatLitsBasic_spec` states `(dqbf : DQBF) (cs : ClauseStore) (extLits : List Int) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄ (translateRatLitsBasic extLits : CheckM (Array
+    Literal)) ⦃⇓ lits s' => ⌜CheckState.Correct dqbf cs s' ∧ ClauseLitsWellFormed s'.formula
+    lits⌝⦄`. -/
 @[spec]
 theorem translateRatLitsBasic_spec
     (dqbf : DQBF) (cs : ClauseStore) (extLits : List Int) :
@@ -4946,6 +5324,10 @@ theorem translateRatLitsBasic_spec
     subst acc
     exact ⟨hcorr, by simpa [ClauseLitsWellFormed]⟩
 
+/-- `translateRatLitsBasic_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (extLits :
+    List Int) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄ (translateRatLitsBasic extLits :
+    CheckM (Array Literal)) ⦃⇓ lits s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ ClauseLitsWellFormed
+    s'.formula lits⌝⦄`. -/
 theorem translateRatLitsBasic_full_correct_spec
     (dqbf : DQBF) (cs : ClauseStore) (extLits : List Int) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
@@ -4977,6 +5359,9 @@ theorem translateRatLitsBasic_full_correct_spec
   simpa [translateRatLitsBasic, WP.wp, PredTrans.apply, EStateM.run] using
     hfor s ⟨hfull, by simpa [ClauseLitsWellFormed]⟩
 
+/-- `invalidateDepCaches_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (lits : Array
+    Literal) : ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄ (invalidateDepCaches lits : CheckM Unit) ⦃⇓
+    _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄`. -/
 @[spec]
 theorem invalidateDepCaches_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (lits : Array Literal) :
@@ -5017,6 +5402,10 @@ theorem invalidateDepCaches_correct_spec (dqbf : DQBF) (cs : ClauseStore)
       with all_goals first | assumption | exact ‹CheckState.Correct dqbf cs _›
   simpa [invalidateDepCaches, Array.forIn_toList] using hfor s hcorr
 
+/-- `invalidateDepCaches_correct_sameFC_spec` states `(dqbf : DQBF) (cs : ClauseStore) (lits : Array
+    Literal) (s₀ : CheckState) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄
+    (invalidateDepCaches lits : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ SameFC s₀
+    s'⌝⦄`. -/
 theorem invalidateDepCaches_correct_sameFC_spec
     (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) (s₀ : CheckState) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ SameFC s₀ s⌝⦄
@@ -5035,6 +5424,9 @@ theorem invalidateDepCaches_correct_sameFC_spec
       rw [hrun] at hcorr' hsame'
       exact ⟨hcorr', hsame'⟩
 
+/-- `clauseLitsWellFormed_of_sameFC` states `{s₀ s₁ : CheckState} {lits : Array Literal} (hsame :
+    SameFC s₀ s₁) (hwf : ClauseLitsWellFormed s₀.formula lits) : ClauseLitsWellFormed s₁.formula
+    lits`. -/
 theorem clauseLitsWellFormed_of_sameFC
     {s₀ s₁ : CheckState} {lits : Array Literal}
     (hsame : SameFC s₀ s₁)
@@ -5043,6 +5435,10 @@ theorem clauseLitsWellFormed_of_sameFC
   rcases hsame with ⟨hformula, _⟩
   simpa [hformula] using hwf
 
+/-- `addClause_semantics_of_sameFC` states `{dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ : CheckState}
+    {lits : Array Literal} (hsame : SameFC s₀ s₁) (hsem : DQBFTrue dqbf cs → DQBFTrue s₀.formula
+    (s₀.clauses.addClause lits).1) : DQBFTrue dqbf cs → DQBFTrue s₁.formula (s₁.clauses.addClause
+    lits).1`. -/
 theorem addClause_semantics_of_sameFC
     {dqbf : DQBF} {cs : ClauseStore}
     {s₀ s₁ : CheckState} {lits : Array Literal}
@@ -5052,6 +5448,10 @@ theorem addClause_semantics_of_sameFC
   rcases hsame with ⟨hformula, hclauses⟩
   simpa [hformula, hclauses] using hsem
 
+/-- `CheckState.Correct.withAddClause` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    {lits : Array Literal} (hcorr : CheckState.Correct dqbf cs st) (hlits : ClauseLitsWellFormed
+    st.formula lits) (hsem : DQBFTrue dqbf cs → DQBFTrue st.formula (st.clauses.addClause lits).1) :
+    CheckState.Correct dqbf cs { st with clauses := (st.clauses.addClause lits).1 }`. -/
 theorem CheckState.Correct.withAddClause
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {lits : Array Literal}
     (hcorr : CheckState.Correct dqbf cs st)
@@ -5083,6 +5483,10 @@ theorem CheckState.Correct.withAddClause
     exact hcorr.preserves_models v hpos hassign sk σ
       (matrixValue_addClause_mono st.formula st.clauses lits σ sk hmat)
 
+/-- `CheckState.Correct.withSelfAddClause` states `{st : CheckState} {lits : Array Literal} (hcorr :
+    CheckState.Correct st.formula st.clauses st) (hlits : ClauseLitsWellFormed st.formula lits) :
+    CheckState.Correct st.formula (st.clauses.addClause lits).1 { st with clauses :=
+    (st.clauses.addClause lits).1 }`. -/
 theorem CheckState.Correct.withSelfAddClause
     {st : CheckState} {lits : Array Literal}
     (hcorr : CheckState.Correct st.formula st.clauses st)
@@ -5114,6 +5518,8 @@ theorem CheckState.Correct.withSelfAddClause
     exact hcorr.preserves_models v hpos hassign sk σ
       (matrixValue_addClause_mono st.formula st.clauses lits σ sk hmat)
 
+/-- `CheckState.Correct.toSelf` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState} (hcorr :
+    CheckState.Correct dqbf cs st) : CheckState.Correct st.formula st.clauses st`. -/
 theorem CheckState.Correct.toSelf
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hcorr : CheckState.Correct dqbf cs st) :
@@ -5130,12 +5536,18 @@ theorem CheckState.Correct.toSelf
         exact htrue
       lookupInternal_sound := hcorr.lookupInternal_sound }
 
+/-- `CheckState.FullCorrect.toSelf` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
+    (hfull : CheckState.FullCorrect dqbf cs st) : CheckState.FullCorrect st.formula st.clauses st`. -/
 theorem CheckState.FullCorrect.toSelf
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     (hfull : CheckState.FullCorrect dqbf cs st) :
     CheckState.FullCorrect st.formula st.clauses st := by
   exact ⟨hfull.toCorrect.toSelf, hfull.liveOccurrencesComplete⟩
 
+/-- `CheckState.FullCorrect.withSelfAddClause` states `{st : CheckState} {lits : Array Literal}
+    (hfull : CheckState.FullCorrect st.formula st.clauses st) (hlits : ClauseLitsWellFormed
+    st.formula lits) : CheckState.FullCorrect st.formula (st.clauses.addClause lits).1 { st with
+    clauses := (st.clauses.addClause lits).1 }`. -/
 theorem CheckState.FullCorrect.withSelfAddClause
     {st : CheckState} {lits : Array Literal}
     (hfull : CheckState.FullCorrect st.formula st.clauses st)
@@ -5146,6 +5558,9 @@ theorem CheckState.FullCorrect.withSelfAddClause
   exact ClauseStore.liveOccurrencesComplete_addClause
     hfull.toCorrect.toSound.clauses_nonempty hfull.liveOccurrencesComplete lits
 
+/-- `CheckState.Correct.withDeleteClauseReset` states `{dqbf : DQBF} {cs : ClauseStore} {st :
+    CheckState} {cref : CRef} (hcorr : CheckState.Correct dqbf cs st) : CheckState.Correct dqbf cs {
+    st with clauses := st.clauses.deleteClause cref`. -/
 theorem CheckState.Correct.withDeleteClauseReset
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {cref : CRef}
     (hcorr : CheckState.Correct dqbf cs st) :
@@ -5212,6 +5627,10 @@ theorem CheckState.Correct.withDeleteClauseReset
   · intro htrue
     exact DQBFTrue.delete_clause st.formula st.clauses cref (hcorr.formula_sound htrue)
 
+/-- `CheckState.Correct.withAddDependencyReset` states `{dqbf : DQBF} {cs : ClauseStore} {st :
+    CheckState} {of_ on_ : Var} (hcorr : CheckState.Correct dqbf cs st) (hof : 0 < of_) (hof_le :
+    of_ ≤ st.formula.maxVar) : CheckState.Correct dqbf cs { st with formula :=
+    st.formula.addDependencyFormula of_ on_`. -/
 theorem CheckState.Correct.withAddDependencyReset
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {of_ on_ : Var}
     (hcorr : CheckState.Correct dqbf cs st)
@@ -5283,6 +5702,13 @@ theorem CheckState.Correct.withAddDependencyReset
       hformula_sound₁
       hlookup₁)
 
+/-- `CheckState.Correct.withForceDelDepReset` states `{dqbf : DQBF} {cs : ClauseStore} {st :
+    CheckState} {of_ on_ : Var} (hcorr : CheckState.Correct dqbf cs st) (hexi :
+    st.formula.isVarExistential of_ = true) (hon : 0 < on_) (hbridge : DQBFTrue st.formula
+    st.clauses → ∃ sk, (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧ (∀ args, ¬
+    (BadDeletePattern st.formula st.clauses of_ on_ sk args false ∧ BadDeletePattern st.formula
+    st.clauses of_ on_ sk args true))) : CheckState.Correct dqbf cs { st with formula :=
+    st.formula.forceDelDep of_ on_`. -/
 theorem CheckState.Correct.withForceDelDepReset
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {of_ on_ : Var}
     (hcorr : CheckState.Correct dqbf cs st)
@@ -5364,6 +5790,12 @@ theorem CheckState.Correct.withForceDelDepReset
       hformula_sound₁
       hlookup₁)
 
+/-- `CheckState.Correct.withForceDelDepReset_of_exhibiting_bridge` states `{dqbf : DQBF} {cs :
+    ClauseStore} {st : CheckState} {of_ on_ : Var} (hcorr : CheckState.Correct dqbf cs st) (hexi :
+    st.formula.isVarExistential of_ = true) (hon : 0 < on_) (hbridge : DQBFTrue st.formula
+    st.clauses → ∃ sk, (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
+    ExhibitsDeleteIndependence st.formula of_ on_ sk) : CheckState.Correct dqbf cs { st with formula
+    := st.formula.forceDelDep of_ on_`. -/
 theorem CheckState.Correct.withForceDelDepReset_of_exhibiting_bridge
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {of_ on_ : Var}
     (hcorr : CheckState.Correct dqbf cs st)
@@ -5389,6 +5821,13 @@ theorem CheckState.Correct.withForceDelDepReset_of_exhibiting_bridge
       no_both_bad_of_exhibits_delete_independence
         st.formula st.clauses of_ on_ sk hexi hall hexhibit⟩)
 
+/-- `CheckState.FullCorrect.withForceDelDepReset` states `{dqbf : DQBF} {cs : ClauseStore} {st :
+    CheckState} {of_ on_ : Var} (hfull : CheckState.FullCorrect dqbf cs st) (hexi :
+    st.formula.isVarExistential of_ = true) (hon : 0 < on_) (hbridge : DQBFTrue st.formula
+    st.clauses → ∃ sk, (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧ (∀ args, ¬
+    (BadDeletePattern st.formula st.clauses of_ on_ sk args false ∧ BadDeletePattern st.formula
+    st.clauses of_ on_ sk args true))) : CheckState.FullCorrect dqbf cs { st with formula :=
+    st.formula.forceDelDep of_ on_`. -/
 theorem CheckState.FullCorrect.withForceDelDepReset
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {of_ on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -5415,6 +5854,12 @@ theorem CheckState.FullCorrect.withForceDelDepReset
     (CheckState.Correct.withForceDelDepReset hfull.toCorrect hexi hon hbridge)
     rfl
 
+/-- `CheckState.FullCorrect.withForceDelDepReset_of_exhibiting_bridge` states `{dqbf : DQBF} {cs :
+    ClauseStore} {st : CheckState} {of_ on_ : Var} (hfull : CheckState.FullCorrect dqbf cs st) (hexi
+    : st.formula.isVarExistential of_ = true) (hon : 0 < on_) (hbridge : DQBFTrue st.formula
+    st.clauses → ∃ sk, (∀ σ, st.clauses.matrixValue st.formula σ sk = true) ∧
+    ExhibitsDeleteIndependence st.formula of_ on_ sk) : CheckState.FullCorrect dqbf cs { st with
+    formula := st.formula.forceDelDep of_ on_`. -/
 theorem CheckState.FullCorrect.withForceDelDepReset_of_exhibiting_bridge
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {of_ on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -5440,6 +5885,9 @@ theorem CheckState.FullCorrect.withForceDelDepReset_of_exhibiting_bridge
       hfull.toCorrect hexi hon hbridge)
     rfl
 
+/-- `addDependencyReset_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (of_ on_ : Var) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ 0 < of_ ∧ of_ ≤ s.formula.maxVar ∧ 0 < on_⌝⦄
+    (addDependencyReset of_ on_ : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄`. -/
 @[spec]
 theorem addDependencyReset_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (of_ on_ : Var) :
@@ -5472,6 +5920,11 @@ theorem addDependencyReset_correct_spec (dqbf : DQBF) (cs : ClauseStore)
                 resetPropagationState_run]
               exact CheckState.Correct.withAddDependencyReset hcorr hof hof_le
 
+/-- `addDependencyReset_correct_lookup_spec` states `(dqbf : DQBF) (cs : ClauseStore) (of_ on_ :
+    Var) (ext : Nat) (v : Var) : ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ 0 < of_ ∧ of_ ≤
+    s.formula.maxVar ∧ 0 < on_ ∧ s.formula.lookupInternal ext = some v⌝⦄ (addDependencyReset of_ on_
+    : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s' ∧ s'.formula.lookupInternal ext = some
+    v⌝⦄`. -/
 theorem addDependencyReset_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
     (of_ on_ : Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧
@@ -5508,6 +5961,11 @@ theorem addDependencyReset_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
                 ⟨CheckState.Correct.withAddDependencyReset hcorr hof hof_le,
                   by simpa [lookupInternal_addDependencyFormula] using hlookup⟩
 
+/-- `addDependencyReset_full_correct_lookup_spec` states `(dqbf : DQBF) (cs : ClauseStore) (of_ on_
+    : Var) (ext : Nat) (v : Var) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ 0 < of_ ∧ of_ ≤
+    s.formula.maxVar ∧ 0 < on_ ∧ s.formula.lookupInternal ext = some v⌝⦄ (addDependencyReset of_ on_
+    : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext =
+    some v⌝⦄`. -/
 theorem addDependencyReset_full_correct_lookup_spec (dqbf : DQBF) (cs : ClauseStore)
     (of_ on_ : Var) (ext : Nat) (v : Var) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
@@ -5551,6 +6009,10 @@ theorem addDependencyReset_full_correct_lookup_spec (dqbf : DQBF) (cs : ClauseSt
                   hfull (CheckState.Correct.withAddDependencyReset hfull.toCorrect hof hof_le) rfl
               · simpa [lookupInternal_addDependencyFormula] using hlookup
 
+/-- `delDependencyReset_full_correct_spec_of_exhibiting_bridge` states `(dqbf : DQBF) (cs :
+    ClauseStore) (of_ on_ : Var) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ 0 < on_ ∧
+    DeleteIndependenceBridge s of_ on_⌝⦄ (delDependencyReset of_ on_ : CheckM Bool) ⦃⇓ _ s' =>
+    ⌜CheckState.FullCorrect dqbf cs s'⌝⦄`. -/
 theorem delDependencyReset_full_correct_spec_of_exhibiting_bridge
     (dqbf : DQBF) (cs : ClauseStore) (of_ on_ : Var) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧
@@ -5603,6 +6065,11 @@ theorem delDependencyReset_full_correct_spec_of_exhibiting_bridge
                     CheckState.FullCorrect.withForceDelDepReset_of_exhibiting_bridge
                       hfull₁ hexi₁ hon hbridge₁
 
+/-- `delDependencyReset_full_correct_lookup_spec_of_exhibiting_bridge` states `(dqbf : DQBF) (cs :
+    ClauseStore) (of_ on_ : Var) (ext : Nat) (v : Var) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s
+    ∧ s.formula.lookupInternal ext = some v ∧ 0 < on_ ∧ DeleteIndependenceBridge s of_ on_⌝⦄
+    (delDependencyReset of_ on_ : CheckM Bool) ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s' ∧
+    s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem delDependencyReset_full_correct_lookup_spec_of_exhibiting_bridge
     (dqbf : DQBF) (cs : ClauseStore)
     (of_ on_ : Var) (ext : Nat) (v : Var) :
@@ -5681,6 +6148,12 @@ theorem delDependencyReset_full_correct_lookup_spec_of_exhibiting_bridge
                     hof_exi, hon_exi, hrunND, hallowed, makeIndepUnknown, hon_ne,
                     resetPropagationState_run] using hpost
 
+/-- `delDependencyReset_full_correct_lookup_spec_of_notDependsOn_true_bridge` states `(dqbf : DQBF)
+    (cs : ClauseStore) (of_ on_ : Var) (ext : Nat) (v : Var) : ⦃fun s => ⌜CheckState.FullCorrect
+    dqbf cs s ∧ s.formula.lookupInternal ext = some v ∧ 0 < on_ ∧ (∀ s₁, notDependsOn of_ on_ s =
+    .ok true s₁ → s.formula.isVarExistential of_ = true → s.formula.isVarExistential on_ = false →
+    DeleteIndependenceBridge s₁ of_ on_)⌝⦄ (delDependencyReset of_ on_ : CheckM Bool) ⦃⇓ _ s' =>
+    ⌜CheckState.FullCorrect dqbf cs s' ∧ s'.formula.lookupInternal ext = some v⌝⦄`. -/
 theorem delDependencyReset_full_correct_lookup_spec_of_notDependsOn_true_bridge
     (dqbf : DQBF) (cs : ClauseStore)
     (of_ on_ : Var) (ext : Nat) (v : Var) :
@@ -5765,6 +6238,9 @@ theorem delDependencyReset_full_correct_lookup_spec_of_notDependsOn_true_bridge
                     hof_exi, hon_exi, hrunND, hallowed, makeIndepUnknown, hon_ne,
                     resetPropagationState_run] using hpost
 
+/-- `CheckState.PropStruct.withAddClause` states `{st : CheckState} {lits : Array Literal} (hprop :
+    CheckState.PropStruct st) (hlits : ClauseLitsWellFormed st.formula lits) : CheckState.PropStruct
+    { st with clauses := (st.clauses.addClause lits).1 }`. -/
 theorem CheckState.PropStruct.withAddClause
     {st : CheckState} {lits : Array Literal}
     (hprop : CheckState.PropStruct st)
@@ -5816,6 +6292,12 @@ theorem litValue_of_satisfied'
 
 -- If clauseValue = true, sat = false, unassigned.size = 1, all lits WF:
 -- the unique unassigned lit is model-true
+/-- `unit_lit_model_true` states `(f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (st :
+    CheckState) (hf : st.formula = f) (hcs : st.clauses = cs) (hassign : ∀ v, 0 < v →
+    st.isAssigned.getD (v - 1) false = true → f.varValue σ sk v = st.value.getD (v - 1) false)
+    (clause_lits : Array Literal) (hwf_lits : ∀ l ∈ clause_lits.toList, 0 < l.var ∧ l.var ≤
+    f.maxVar) (hclause_val : f.clauseValue σ sk clause_lits = true) (hsat_false : clause_lits.any
+    (fun lit => let v := lit.var`. -/
 theorem unit_lit_model_true
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
     (st : CheckState) (hf : st.formula = f) (hcs : st.clauses = cs)
@@ -5876,6 +6358,8 @@ theorem unit_lit_model_true
   exact heqj
 
 -- litValue of the negated literal is the Boolean negation of litValue.
+/-- `litValue_negate` states `(f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal)
+    : f.litValue σ sk l.negate = !(f.litValue σ sk l)`. -/
 theorem litValue_negate (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (l : Literal) :
     f.litValue σ sk l.negate = !(f.litValue σ sk l) := by
   simp only [DQBF.litValue, Literal.negate, Literal.var, Literal.isPos]
@@ -5900,6 +6384,9 @@ theorem litValue_negate (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment)
   cases h : (l.x % 2 == 1) <;> simp
 
 -- If a literal is model-false and the state is consistent, then `satisfied st l = false`.
+/-- `satisfied_false_of_model_false` states `{f : DQBF} {cs : ClauseStore} {σ : UnivAssignment} {sk
+    : SkolemAssignment} {st : CheckState} (h_con : CheckState.ConsistentWith f cs σ sk st) (l :
+    Literal) (hl : f.litValue σ sk l = false) : satisfied st l = false`. -/
 theorem satisfied_false_of_model_false
     {f : DQBF} {cs : ClauseStore} {σ : UnivAssignment} {sk : SkolemAssignment} {st : CheckState}
     (h_con : CheckState.ConsistentWith f cs σ sk st)
@@ -5915,6 +6402,8 @@ abbrev PropInv (f : DQBF) (cs : ClauseStore)
   CheckState.ConsistentWith f cs σ sk st
 
 -- Helper for setIfInBounds getD (positive case)
+/-- `arraySafeSet_getD_eq'` states `(a : Array Bool) (i : Nat) (v : Bool) (h : i < a.size) :
+    (a.setIfInBounds i v).getD i false = v`. -/
 theorem arraySafeSet_getD_eq' (a : Array Bool) (i : Nat) (v : Bool) (h : i < a.size) :
     (a.setIfInBounds i v).getD i false = v := by
   have hsize : (a.setIfInBounds i v).size = a.size := Array.size_setIfInBounds
@@ -5922,6 +6411,8 @@ theorem arraySafeSet_getD_eq' (a : Array Bool) (i : Nat) (v : Bool) (h : i < a.s
   simp [Array.getElem_setIfInBounds h]
 
 -- Helper for setIfInBounds getD (negative case)
+/-- `arraySafeSet_getD_ne'` states `(a : Array Bool) (i j : Nat) (v : Bool) (hij : i ≠ j) :
+    (a.setIfInBounds i v).getD j false = a.getD j false`. -/
 theorem arraySafeSet_getD_ne' (a : Array Bool) (i j : Nat) (v : Bool) (hij : i ≠ j) :
     (a.setIfInBounds i v).getD j false = a.getD j false := by
   have hsize : (a.setIfInBounds i v).size = a.size := Array.size_setIfInBounds
@@ -5932,6 +6423,8 @@ theorem arraySafeSet_getD_ne' (a : Array Bool) (i j : Nat) (v : Bool) (hij : i �
   · have hjlt' : ¬(j < a.size) := Nat.not_lt.mpr hjlt
     rw [dif_neg (hsize ▸ hjlt'), dif_neg hjlt']
 
+/-- `enqueue_sound_spec` states `(l : Literal) : ⦃fun s => ⌜CheckState.Sound s⌝⦄ (enqueue l : CheckM
+    Unit) ⦃⇓ _ s' => ⌜CheckState.Sound s'⌝⦄`. -/
 theorem enqueue_sound_spec
     (l : Literal) :
     ⦃fun s => ⌜CheckState.Sound s⌝⦄
@@ -6072,6 +6565,8 @@ theorem enqueue_sound_spec
           rw [hget] at hl'
           exact hl'
 
+/-- `enqueue_propStruct_spec` states `(l : Literal) : ⦃fun s => ⌜CheckState.PropStruct s⌝⦄ (enqueue
+    l : CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.PropStruct s'⌝⦄`. -/
 theorem enqueue_propStruct_spec
     (l : Literal) :
     ⦃fun s => ⌜CheckState.PropStruct s⌝⦄
@@ -6204,6 +6699,8 @@ theorem enqueue_propStruct_spec
           subst this
           exact arraySafeSet_getD_eq' _ _ _ hlt
 
+/-- `enqueue_sameFC_spec` states `(l : Literal) (s₀ : CheckState) : ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (enqueue l : CheckM Unit) ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄`. -/
 theorem enqueue_sameFC_spec (l : Literal) (s₀ : CheckState) :
     ⦃fun s => ⌜SameFC s₀ s⌝⦄
     (enqueue l : CheckM Unit)
@@ -6215,6 +6712,8 @@ theorem enqueue_sameFC_spec (l : Literal) (s₀ : CheckState) :
 section SoundProof
 attribute [local spec] enqueue_sound_spec
 
+/-- `propagateOne_sound_spec` states `(l : Literal) : ⦃fun s => ⌜CheckState.Sound s⌝⦄ (propagateOne
+    l : CheckM (Option CRef)) ⦃⇓ _ s' => ⌜CheckState.Sound s'⌝⦄`. -/
 theorem propagateOne_sound_spec (l : Literal) :
     ⦃fun s => ⌜CheckState.Sound s⌝⦄
     (propagateOne l : CheckM (Option CRef))
@@ -6246,6 +6745,8 @@ end PropStructProof
 section SameFCProof
 attribute [local spec] enqueue_sameFC_spec
 
+/-- `propagateOne_sameFC_spec` states `(l : Literal) (s₀ : CheckState) : ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (propagateOne l : CheckM (Option CRef)) ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄`. -/
 theorem propagateOne_sameFC_spec (l : Literal) (s₀ : CheckState) :
     ⦃fun s => ⌜SameFC s₀ s⌝⦄
     (propagateOne l : CheckM (Option CRef))
@@ -6900,6 +7401,8 @@ private theorem propagate_aux_none_queue_empty :
             omega
           exact ih s st' hn₂ hrun
 
+/-- `propagate_none_queue_empty` states `{st st' : CheckState} (hrun : propagate st = .ok none st')
+    : st'.propQueue = #[]`. -/
 theorem propagate_none_queue_empty {st st' : CheckState}
     (hrun : propagate st = .ok none st') :
     st'.propQueue = #[] := by
@@ -6982,6 +7485,8 @@ private theorem propagate_aux_sound :
             omega
           exact ih s st' hspec hn₂ hrun
 
+/-- `propagate_none_sound` states `{st st' : CheckState} (hsound : CheckState.Sound st) (hrun :
+    propagate st = .ok none st') : CheckState.Sound st'`. -/
 theorem propagate_none_sound {st st' : CheckState}
     (hsound : CheckState.Sound st)
     (hrun : propagate st = .ok none st') :
@@ -7066,6 +7571,8 @@ private theorem propagate_aux_sound_any :
             omega
           exact ih s r st' hspec hn₂ hrun
 
+/-- `propagate_sound_spec` states `⦃fun s => ⌜CheckState.Sound s⌝⦄ (propagate : CheckM (Option
+    CRef)) ⦃⇓? _ s' => ⌜CheckState.Sound s'⌝⦄`. -/
 theorem propagate_sound_spec :
     ⦃fun s => ⌜CheckState.Sound s⌝⦄
     (propagate : CheckM (Option CRef))
@@ -7159,6 +7666,8 @@ private theorem propagate_aux_propStruct :
             omega
           exact ih s st' hspec hn₂ hrun
 
+/-- `propagate_none_propStruct` states `{st st' : CheckState} (hprop : CheckState.PropStruct st)
+    (hrun : propagate st = .ok none st') : CheckState.PropStruct st'`. -/
 theorem propagate_none_propStruct {st st' : CheckState}
     (hprop : CheckState.PropStruct st)
     (hrun : propagate st = .ok none st') :
@@ -7231,6 +7740,8 @@ private theorem propagate_aux_sameFC :
             omega
           exact ih s₀ s st' hspec hn₂ hrun
 
+/-- `propagate_none_sameFC` states `{s₀ st st' : CheckState} (hsame : SameFC s₀ st) (hrun :
+    propagate st = .ok none st') : SameFC s₀ st'`. -/
 theorem propagate_none_sameFC {s₀ st st' : CheckState}
     (hsame : SameFC s₀ st)
     (hrun : propagate st = .ok none st') :
@@ -7304,6 +7815,8 @@ private theorem propagate_aux_sameFC_any :
             omega
           exact ih s₀ s r st' hspec hn₂ hrun
 
+/-- `propagate_sameFC_spec` states `(s₀ : CheckState) : ⦃fun s => ⌜SameFC s₀ s⌝⦄ (propagate : CheckM
+    (Option CRef)) ⦃⇓? _ s' => ⌜SameFC s₀ s'⌝⦄`. -/
 theorem propagate_sameFC_spec (s₀ : CheckState) :
     ⦃fun s => ⌜SameFC s₀ s⌝⦄
     (propagate : CheckM (Option CRef))
@@ -7335,6 +7848,9 @@ theorem propagate_consistent_spec
   simp only [WP.wp, PredTrans.apply, EStateM.run, propagate, haux]
   exact ⟨h_con', trivial⟩
 
+/-- `newDecisionLevel_consistent_spec` states `(f : DQBF) (cs : ClauseStore) (σ : UnivAssignment)
+    (sk : SkolemAssignment) : ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄ (newDecisionLevel :
+    CheckM Unit) ⦃⇓ _ s' => ⌜CheckState.ConsistentWith f cs σ sk s'⌝⦄`. -/
 @[spec]
 theorem newDecisionLevel_consistent_spec
     (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment) :
@@ -7389,6 +7905,8 @@ theorem newDecisionLevel_consistent_spec
           simp
           exact ⟨hl1, hl2⟩
 
+/-- `newDecisionLevel_sound_spec` states `⦃fun s => ⌜CheckState.Sound s⌝⦄ (newDecisionLevel : CheckM
+    Unit) ⦃⇓ _ s' => ⌜CheckState.Sound s'⌝⦄`. -/
 theorem newDecisionLevel_sound_spec :
     ⦃fun s => ⌜CheckState.Sound s⌝⦄
     (newDecisionLevel : CheckM Unit)
@@ -7446,6 +7964,8 @@ theorem newDecisionLevel_sound_spec :
           simp
           exact ⟨hl1, hl2⟩
 
+/-- `newDecisionLevel_sameFC_spec` states `(s₀ : CheckState) : ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (newDecisionLevel : CheckM Unit) ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄`. -/
 theorem newDecisionLevel_sameFC_spec (s₀ : CheckState) :
     ⦃fun s => ⌜SameFC s₀ s⌝⦄
     (newDecisionLevel : CheckM Unit)
@@ -7456,6 +7976,8 @@ theorem newDecisionLevel_sameFC_spec (s₀ : CheckState) :
              EStateM.set, SameFC]
   exact ⟨hformula, hclauses⟩
 
+/-- `backtrackBefore_sameFC_spec` states `(level : Nat) (s₀ : CheckState) : ⦃fun s => ⌜SameFC s₀ s⌝⦄
+    (backtrackBefore level : CheckM Unit) ⦃⇓ _ s' => ⌜SameFC s₀ s'⌝⦄`. -/
 theorem backtrackBefore_sameFC_spec (level : Nat) (s₀ : CheckState) :
     ⦃fun s => ⌜SameFC s₀ s⌝⦄
     (backtrackBefore level : CheckM Unit)
@@ -7643,12 +8165,17 @@ def dqrateResolvent (f : DQBF) (lits blockerLits : Array Literal) (pivot : Liter
     Array Literal :=
   lits.filter (· ≠ pivot) ++ outerClause f blockerLits pivot
 
+/-- `ClauseLitsWellFormed.outerClause` states `{f : DQBF} {lits : Array Literal} {pivot : Literal}
+    (hwf : ClauseLitsWellFormed f lits) : ClauseLitsWellFormed f (outerClause f lits pivot)`. -/
 theorem ClauseLitsWellFormed.outerClause
     {f : DQBF} {lits : Array Literal} {pivot : Literal}
     (hwf : ClauseLitsWellFormed f lits) :
     ClauseLitsWellFormed f (outerClause f lits pivot) :=
   ClauseLitsWellFormed.filter hwf
 
+/-- `ClauseLitsWellFormed.dqrateResolvent` states `{f : DQBF} {lits blockerLits : Array Literal}
+    {pivot : Literal} (hlits : ClauseLitsWellFormed f lits) (hblocker : ClauseLitsWellFormed f
+    blockerLits) : ClauseLitsWellFormed f (dqrateResolvent f lits blockerLits pivot)`. -/
 theorem ClauseLitsWellFormed.dqrateResolvent
     {f : DQBF} {lits blockerLits : Array Literal} {pivot : Literal}
     (hlits : ClauseLitsWellFormed f lits)
@@ -9158,6 +9685,9 @@ private theorem checkAddUniversalLoop_shape_spec
         cases a <;> simpa using hs)
   simpa [AddUniversalAccOk] using hfor
 
+/-- `checkAddUniversal_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat)
+    (extVars : List Int) : ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄ checkAddUniversal lineNum
+    extVars ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄`. -/
 @[spec]
 theorem checkAddUniversal_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extVars : List Int) :
@@ -9211,6 +9741,9 @@ private theorem checkAddUniversalLoop_full_correct_spec
       intro a s hs
       cases a <;> simpa using hs)
 
+/-- `checkAddUniversal_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat)
+    (extVars : List Int) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄ checkAddUniversal lineNum
+    extVars ⦃⇓? _ s' => ⌜CheckState.FullCorrect dqbf cs s'⌝⦄`. -/
 theorem checkAddUniversal_full_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extVars : List Int) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
@@ -9368,6 +9901,9 @@ private theorem checkAddUniversal_full_step_full_spec (dqbf : DQBF) (cs : Clause
               EStateM.pure, hres, hres', FullStepFullPost]
             exact hloop
 
+/-- `checkDeleteClause_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat)
+    (extLits : List Int) : ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄ checkDeleteClause lineNum
+    extLits ⦃⇓ _ s' => ⌜CheckState.Correct dqbf cs s'⌝⦄`. -/
 @[spec]
 theorem checkDeleteClause_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extLits : List Int) :
@@ -9395,6 +9931,9 @@ theorem checkDeleteClause_correct_spec (dqbf : DQBF) (cs : ClauseStore)
           simp [hfind, EStateM.get, EStateM.pure, resetPropagationState_run]
           exact CheckState.Correct.withDeleteClauseReset hcorr₁
 
+/-- `checkDeleteClause_full_correct_spec` states `(dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat)
+    (extLits : List Int) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄ checkDeleteClause lineNum
+    extLits ⦃⇓ _ s' => ⌜CheckState.FullCorrect dqbf cs s'⌝⦄`. -/
 theorem checkDeleteClause_full_correct_spec (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extLits : List Int) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
@@ -9545,6 +10084,10 @@ private theorem checkModifyExistentialAddOnlyCore_full_step_named_spec
   simpa [checkModifyExistentialAddOnlyCore] using
     (checkModifyExistentialAddOnlyCore_full_step_spec dqbf cs extExi depChanges)
 
+/-- `checkModifyExistentialAddOnly_sound` states `(dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat)
+    (extExi : Nat) (depChanges : List Int) : ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
+    checkModifyExistentialAddOnly lineNum extExi depChanges ⦃⇓? r s' => ⌜FullStepPost dqbf cs r
+    s'⌝⦄`. -/
 theorem checkModifyExistentialAddOnly_sound
     (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
@@ -9577,6 +10120,10 @@ theorem checkModifyExistentialAddOnly_sound
             rw [hrun] at hcore
             exact hcore.1
 
+/-- `checkModifyExistentialAddOnly_full_sound` states `(dqbf : DQBF) (cs : ClauseStore) (lineNum :
+    Nat) (extExi : Nat) (depChanges : List Int) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
+    checkModifyExistentialAddOnly lineNum extExi depChanges ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r
+    s'⌝⦄`. -/
 theorem checkModifyExistentialAddOnly_full_sound
     (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extExi : Nat) (depChanges : List Int) :
@@ -10126,6 +10673,9 @@ private theorem deletePurePath_first_of_universal_clause_lit
     deletePurePath_first_mkLit hget hstart_mem hnoStartNeg htarget
       hof_ne hexi hdep⟩
 
+/-- `universal_lit_false_eq_mkLit_not_sigma` states `(f : DQBF) (on_ : Var) (σ : UnivAssignment) (sk
+    : SkolemAssignment) (l : Literal) (huniv : f.isVarExistential l.var = false) (hvar : l.var =
+    on_) (hfalse : f.litValue σ sk l = false) : l = mkLit on_ (!(σ on_))`. -/
 theorem universal_lit_false_eq_mkLit_not_sigma
     (f : DQBF) (on_ : Var) (σ : UnivAssignment) (sk : SkolemAssignment)
     (l : Literal)
@@ -10758,6 +11308,12 @@ private theorem getReachable_go_step_clause_marks_reach_true_of_pre
     hidx hnotExpl hocc hraw hdel hnoNegArr hmem hne
     hpre hexi hdep hlt
 
+/-- `noDeleteCrossPathsSet_forbids_deletePurePath_pair` states `{dqbf : DQBF} {cs : ClauseStore} {st
+    : CheckState} {vars : Array Var} {on_ of_ : Var} {pos : Bool} (hfull : CheckState.FullCorrect
+    dqbf cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ : st.formula.isVarExistential on_ =
+    false) (hpaths : NoDeleteCrossPathsSet st vars on_) (hof : of_ ∈ vars.toList) (hposPath :
+    DeletePurePath st on_ (mkLit on_ true) (mkLit of_ pos)) (hnegPath : DeletePurePath st on_ (mkLit
+    on_ false) (mkLit of_ (!pos))) : False`. -/
 theorem noDeleteCrossPathsSet_forbids_deletePurePath_pair
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {vars : Array Var} {on_ of_ : Var} {pos : Bool}
@@ -14868,16 +15424,24 @@ def AddClausePost (dqbf : DQBF) (cs : ClauseStore)
   | some _ => CheckState.Correct dqbf cs s'
   | none   => DQBFFalse dqbf cs
 
+/-- `addClausePost_some` states `(dqbf : DQBF) (cs : ClauseStore) (cref : CRef) (s' : CheckState) :
+    AddClausePost dqbf cs (some cref) s' ↔ CheckState.Correct dqbf cs s'`. -/
 @[simp] theorem addClausePost_some
     (dqbf : DQBF) (cs : ClauseStore) (cref : CRef) (s' : CheckState) :
     AddClausePost dqbf cs (some cref) s' ↔ CheckState.Correct dqbf cs s' := by
   rfl
 
+/-- `addClausePost_none` states `(dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) : AddClausePost
+    dqbf cs none s' ↔ DQBFFalse dqbf cs`. -/
 @[simp] theorem addClausePost_none
     (dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) :
     AddClausePost dqbf cs none s' ↔ DQBFFalse dqbf cs := by
   rfl
 
+/-- `addClausePost_of_empty_sameFC` states `{dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ : CheckState}
+    {lits : Array Literal} (hcorr : CheckState.Correct dqbf cs s₁) (hsame : SameFC s₀ s₁) (hsem :
+    DQBFTrue dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1) (hempty : lits.isEmpty =
+    true) : AddClausePost dqbf cs none { s₁ with clauses := (s₁.clauses.addClause lits).1 }`. -/
 theorem addClausePost_of_empty_sameFC
     {dqbf : DQBF} {cs : ClauseStore}
     {s₀ s₁ : CheckState} {lits : Array Literal}
@@ -14900,6 +15464,11 @@ theorem addClausePost_of_empty_sameFC
   refine ⟨{ lits := lits, deleted := false }, hget, ?_⟩
   simpa [hlits_empty]
 
+/-- `addClausePost_of_store_only_sameFC` states `{dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ :
+    CheckState} {lits : Array Literal} {cref : CRef} (hcorr : CheckState.Correct dqbf cs s₁) (hsame
+    : SameFC s₀ s₁) (hlits : ClauseLitsWellFormed s₀.formula lits) (hsem : DQBFTrue dqbf cs →
+    DQBFTrue s₀.formula (s₀.clauses.addClause lits).1) : AddClausePost dqbf cs (some cref) { s₁ with
+    clauses := (s₁.clauses.addClause lits).1 }`. -/
 theorem addClausePost_of_store_only_sameFC
     {dqbf : DQBF} {cs : ClauseStore}
     {s₀ s₁ : CheckState} {lits : Array Literal} {cref : CRef}
@@ -14913,6 +15482,10 @@ theorem addClausePost_of_store_only_sameFC
     (clauseLitsWellFormed_of_sameFC hsame hlits)
     (addClause_semantics_of_sameFC hsame hsem)
 
+/-- `clauseValue_false_of_sat_false_unassigned_empty` states `{dqbf : DQBF} {cs : ClauseStore} {st :
+    CheckState} {lits : Array Literal} {σ : UnivAssignment} {sk : SkolemAssignment} (hcorr :
+    CheckState.Correct dqbf cs st) (hwf : ClauseLitsWellFormed st.formula lits) (hsat_false :
+    lits.any (fun lit => let v := lit.var`. -/
 theorem clauseValue_false_of_sat_false_unassigned_empty
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {lits : Array Literal} {σ : UnivAssignment} {sk : SkolemAssignment}
@@ -14978,6 +15551,10 @@ theorem clauseValue_false_of_sat_false_unassigned_empty
     rw [hany] at hsat_false
     cases hsat_false
 
+/-- `addClausePost_of_all_false_sameFC` states `{dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ :
+    CheckState} {lits : Array Literal} (hcorr : CheckState.Correct dqbf cs s₁) (hsame : SameFC s₀
+    s₁) (hlits : ClauseLitsWellFormed s₀.formula lits) (hsem : DQBFTrue dqbf cs → DQBFTrue
+    s₀.formula (s₀.clauses.addClause lits).1) (hsat_false : lits.any (fun lit => let v := lit.var`. -/
 theorem addClausePost_of_all_false_sameFC
     {dqbf : DQBF} {cs : ClauseStore}
     {s₀ s₁ : CheckState} {lits : Array Literal}
@@ -15013,6 +15590,11 @@ theorem addClausePost_of_all_false_sameFC
     refine ⟨σ, matrixValue_addClause_false_of_new_false
       s₁.formula s₁.clauses lits σ sk hcorr.toSound.clauses_nonempty hclause_false⟩
 
+/-- `addClausePost_of_unit_conflict_sameFC` states `{dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ s_enq s₂
+    : CheckState} {lits unassigned : Array Literal} {conflict : CRef} (hcorr : CheckState.Correct
+    dqbf cs s₁) (hsame : SameFC s₀ s₁) (hlits : ClauseLitsWellFormed s₀.formula lits) (hsem :
+    DQBFTrue dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1) (hunassigned : unassigned
+    = lits.filter (fun lit => let v := lit.var`. -/
 theorem addClausePost_of_unit_conflict_sameFC
     {dqbf : DQBF} {cs : ClauseStore}
     {s₀ s₁ s_enq s₂ : CheckState} {lits unassigned : Array Literal} {conflict : CRef}
@@ -15087,6 +15669,11 @@ theorem addClausePost_of_unit_conflict_sameFC
   rw [hprop_run] at hprop
   cases hprop.2
 
+/-- `addClausePost_of_unit_success_sameFC` states `{dqbf : DQBF} {cs : ClauseStore} {s₀ s₁ s_enq s₂
+    : CheckState} {lits unassigned : Array Literal} {cref : CRef} (hcorr : CheckState.Correct dqbf
+    cs s₁) (hsame : SameFC s₀ s₁) (hlits : ClauseLitsWellFormed s₀.formula lits) (hsem : DQBFTrue
+    dqbf cs → DQBFTrue s₀.formula (s₀.clauses.addClause lits).1) (hunassigned : unassigned =
+    lits.filter (fun lit => let v := lit.var`. -/
 theorem addClausePost_of_unit_success_sameFC
     {dqbf : DQBF} {cs : ClauseStore}
     {s₀ s₁ s_enq s₂ : CheckState} {lits unassigned : Array Literal} {cref : CRef}
@@ -15212,23 +15799,31 @@ def AddClauseSelfFullPost (r : Option CRef) (s' : CheckState) : Prop :=
   | some _ => CheckState.FullCorrect s'.formula s'.clauses s'
   | none => DQBFFalse s'.formula s'.clauses
 
+/-- `addClauseSelfPost_some` states `(cref : CRef) (s' : CheckState) : AddClauseSelfPost (some cref)
+    s' ↔ CheckState.Correct s'.formula s'.clauses s'`. -/
 @[simp] theorem addClauseSelfPost_some
     (cref : CRef) (s' : CheckState) :
     AddClauseSelfPost (some cref) s' ↔
       CheckState.Correct s'.formula s'.clauses s' := by
   rfl
 
+/-- `addClauseSelfPost_none` states `(s' : CheckState) : AddClauseSelfPost none s' ↔ DQBFFalse
+    s'.formula s'.clauses`. -/
 @[simp] theorem addClauseSelfPost_none
     (s' : CheckState) :
     AddClauseSelfPost none s' ↔ DQBFFalse s'.formula s'.clauses := by
   rfl
 
+/-- `addClauseSelfFullPost_some` states `(cref : CRef) (s' : CheckState) : AddClauseSelfFullPost
+    (some cref) s' ↔ CheckState.FullCorrect s'.formula s'.clauses s'`. -/
 @[simp] theorem addClauseSelfFullPost_some
     (cref : CRef) (s' : CheckState) :
     AddClauseSelfFullPost (some cref) s' ↔
       CheckState.FullCorrect s'.formula s'.clauses s' := by
   rfl
 
+/-- `addClauseSelfFullPost_none` states `(s' : CheckState) : AddClauseSelfFullPost none s' ↔
+    DQBFFalse s'.formula s'.clauses`. -/
 @[simp] theorem addClauseSelfFullPost_none
     (s' : CheckState) :
     AddClauseSelfFullPost none s' ↔ DQBFFalse s'.formula s'.clauses := by
@@ -15502,6 +16097,9 @@ private theorem addClauseSelf_of_unit_success_full
     hsame₂
   simpa [s_added, hsame₂.1, hsame₂.2] using hfull₂
 
+/-- `addClauseAfterCache_self_spec` states `(lits : Array Literal) : ⦃fun s => ⌜CheckState.Correct
+    s.formula s.clauses s ∧ ClauseLitsWellFormed s.formula lits⌝⦄ (addClauseAfterCache lits : CheckM
+    (Option CRef)) ⦃⇓? r s' => ⌜AddClauseSelfPost r s'⌝⦄`. -/
 theorem addClauseAfterCache_self_spec (lits : Array Literal) :
     ⦃fun s =>
       ⌜CheckState.Correct s.formula s.clauses s ∧
@@ -15597,6 +16195,9 @@ theorem addClauseAfterCache_self_spec (lits : Array Literal) :
             hunempty, hsize1, AddClauseSelfPost]
           simpa [s_added, cref] using CheckState.Correct.withSelfAddClause hcorr hlits
 
+/-- `addClauseAfterCache_self_full_spec` states `(lits : Array Literal) : ⦃fun s =>
+    ⌜CheckState.FullCorrect s.formula s.clauses s ∧ ClauseLitsWellFormed s.formula lits⌝⦄
+    (addClauseAfterCache lits : CheckM (Option CRef)) ⦃⇓? r s' => ⌜AddClauseSelfFullPost r s'⌝⦄`. -/
 theorem addClauseAfterCache_self_full_spec (lits : Array Literal) :
     ⦃fun s =>
       ⌜CheckState.FullCorrect s.formula s.clauses s ∧
@@ -15693,6 +16294,9 @@ theorem addClauseAfterCache_self_full_spec (lits : Array Literal) :
             hunempty, hsize1, AddClauseSelfFullPost]
           simpa [s_added, cref] using CheckState.FullCorrect.withSelfAddClause hfull hlits
 
+/-- `addClause_self_spec` states `(lits : Array Literal) : ⦃fun s => ⌜CheckState.Correct s.formula
+    s.clauses s ∧ ClauseLitsWellFormed s.formula lits⌝⦄ (addClause lits : CheckM (Option CRef)) ⦃⇓?
+    r s' => ⌜AddClauseSelfPost r s'⌝⦄`. -/
 theorem addClause_self_spec (lits : Array Literal) :
     ⦃fun s =>
       ⌜CheckState.Correct s.formula s.clauses s ∧
@@ -15720,6 +16324,9 @@ theorem addClause_self_spec (lits : Array Literal) :
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hafter
       simpa [Bind.bind, EStateM.bind, hrun] using hafter
 
+/-- `addClause_self_full_spec` states `(lits : Array Literal) : ⦃fun s => ⌜CheckState.FullCorrect
+    s.formula s.clauses s ∧ ClauseLitsWellFormed s.formula lits⌝⦄ (addClause lits : CheckM (Option
+    CRef)) ⦃⇓? r s' => ⌜AddClauseSelfFullPost r s'⌝⦄`. -/
 theorem addClause_self_full_spec (lits : Array Literal) :
     ⦃fun s =>
       ⌜CheckState.FullCorrect s.formula s.clauses s ∧
@@ -15982,6 +16589,10 @@ private theorem readMatrixM_sound_run
                         simp [extVar, hlookup, EStateM.bind, EStateM.pure, hrec] at hrun'
                         simpa [ReadMatrixPost, hrun'.1, hrun'.2] using hpost
 
+/-- `readMatrixM_sound_spec` states `(declaredMaxVar : Nat) (toks : Array String) (pos : Nat)
+    (curLits : Array Literal) : ⦃fun s => ⌜CheckState.Correct s.formula s.clauses s ∧
+    ClauseLitsWellFormed s.formula curLits⌝⦄ (readMatrixM declaredMaxVar toks pos curLits : CheckM
+    Bool) ⦃⇓? r s' => ⌜ReadMatrixPost r s'⌝⦄`. -/
 theorem readMatrixM_sound_spec
     (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) (curLits : Array Literal) :
     ⦃fun s =>
@@ -15998,6 +16609,10 @@ theorem readMatrixM_sound_spec
       exact readMatrixM_sound_run declaredMaxVar toks
         (toks.size - pos) pos curLits s result s' hcorr hcur (by omega) hrun
 
+/-- `readMatrixM_full_spec` states `(declaredMaxVar : Nat) (toks : Array String) (pos : Nat)
+    (curLits : Array Literal) : ⦃fun s => ⌜CheckState.FullCorrect s.formula s.clauses s ∧
+    ClauseLitsWellFormed s.formula curLits⌝⦄ (readMatrixM declaredMaxVar toks pos curLits : CheckM
+    Bool) ⦃⇓? r s' => ⌜ReadMatrixFullPost r s'⌝⦄`. -/
 theorem readMatrixM_full_spec
     (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) (curLits : Array Literal) :
     ⦃fun s =>
@@ -16014,6 +16629,9 @@ theorem readMatrixM_full_spec
       exact readMatrixM_full_run declaredMaxVar toks
         (toks.size - pos) pos curLits s result s' hfull hcur (by omega) hrun
 
+/-- `parseDQDIMACSInner_prefix_sound_spec` states `(declaredMaxVar : Nat) (allToks : Array String) :
+    ⦃fun s => ⌜PrefixState s⌝⦄ (parseDQDIMACSInner declaredMaxVar allToks : CheckM Bool) ⦃⇓? r s' =>
+    ⌜ReadMatrixPost r s'⌝⦄`. -/
 theorem parseDQDIMACSInner_prefix_sound_spec
     (declaredMaxVar : Nat) (allToks : Array String) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -16036,6 +16654,9 @@ theorem parseDQDIMACSInner_prefix_sound_spec
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hmatrix
       simpa [Bind.bind, EStateM.bind, hpre] using hmatrix
 
+/-- `parseDQDIMACSInner_prefix_full_spec` states `(declaredMaxVar : Nat) (allToks : Array String) :
+    ⦃fun s => ⌜PrefixState s⌝⦄ (parseDQDIMACSInner declaredMaxVar allToks : CheckM Bool) ⦃⇓? r s' =>
+    ⌜ReadMatrixFullPost r s'⌝⦄`. -/
 theorem parseDQDIMACSInner_prefix_full_spec
     (declaredMaxVar : Nat) (allToks : Array String) :
     ⦃fun s => ⌜PrefixState s⌝⦄
@@ -16058,6 +16679,9 @@ theorem parseDQDIMACSInner_prefix_full_spec
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hmatrix
       simpa [Bind.bind, EStateM.bind, hpre] using hmatrix
 
+/-- `parseDQDIMACSInner_sound` states `(declaredMaxVar : Nat) (allToks : Array String) (result :
+    Bool) (st : CheckState) (h : parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok
+    result st) : ReadMatrixPost result st`. -/
 theorem parseDQDIMACSInner_sound
     (declaredMaxVar : Nat) (allToks : Array String) (result : Bool) (st : CheckState)
     (h : parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok result st) :
@@ -16069,6 +16693,9 @@ theorem parseDQDIMACSInner_sound
   rw [h] at hspec
   exact hspec
 
+/-- `parseDQDIMACSInner_full_sound` states `(declaredMaxVar : Nat) (allToks : Array String) (result
+    : Bool) (st : CheckState) (h : parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok
+    result st) : ReadMatrixFullPost result st`. -/
 theorem parseDQDIMACSInner_full_sound
     (declaredMaxVar : Nat) (allToks : Array String) (result : Bool) (st : CheckState)
     (h : parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok result st) :
@@ -16080,6 +16707,9 @@ theorem parseDQDIMACSInner_full_sound
   rw [h] at hspec
   exact hspec
 
+/-- `parseDQDIMACSTokensAfterHeader_correct` states `(declaredMaxVar : Nat) (allToks : Array String)
+    (st : CheckState) (h : parseDQDIMACSTokensAfterHeader declaredMaxVar allToks = .ok (some st)) :
+    CheckState.Correct st.formula st.clauses st`. -/
 theorem parseDQDIMACSTokensAfterHeader_correct
     (declaredMaxVar : Nat) (allToks : Array String) (st : CheckState)
     (h : parseDQDIMACSTokensAfterHeader declaredMaxVar allToks = .ok (some st)) :
@@ -16102,6 +16732,9 @@ theorem parseDQDIMACSTokensAfterHeader_correct
           have hsound := parseDQDIMACSInner_sound declaredMaxVar allToks false s0 hinner'
           simpa [ReadMatrixPost] using hsound
 
+/-- `parseDQDIMACSTokensAfterHeader_full_correct` states `(declaredMaxVar : Nat) (allToks : Array
+    String) (st : CheckState) (h : parseDQDIMACSTokensAfterHeader declaredMaxVar allToks = .ok (some
+    st)) : CheckState.FullCorrect st.formula st.clauses st`. -/
 theorem parseDQDIMACSTokensAfterHeader_full_correct
     (declaredMaxVar : Nat) (allToks : Array String) (st : CheckState)
     (h : parseDQDIMACSTokensAfterHeader declaredMaxVar allToks = .ok (some st)) :
@@ -16124,6 +16757,8 @@ theorem parseDQDIMACSTokensAfterHeader_full_correct
           have hsound := parseDQDIMACSInner_full_sound declaredMaxVar allToks false s0 hinner'
           simpa [ReadMatrixFullPost] using hsound
 
+/-- `parseDQDIMACSTokens_correct` states `(allToks : Array String) (st : CheckState) (h :
+    parseDQDIMACSTokens allToks = .ok (some st)) : CheckState.Correct st.formula st.clauses st`. -/
 theorem parseDQDIMACSTokens_correct
     (allToks : Array String) (st : CheckState)
     (h : parseDQDIMACSTokens allToks = .ok (some st)) :
@@ -16170,6 +16805,8 @@ theorem parseDQDIMACSTokens_correct
       simpa [Except.bind] using h
     exact False.elim this
 
+/-- `parseDQDIMACSTokens_full_correct` states `(allToks : Array String) (st : CheckState) (h :
+    parseDQDIMACSTokens allToks = .ok (some st)) : CheckState.FullCorrect st.formula st.clauses st`. -/
 theorem parseDQDIMACSTokens_full_correct
     (allToks : Array String) (st : CheckState)
     (h : parseDQDIMACSTokens allToks = .ok (some st)) :
@@ -16371,16 +17008,23 @@ def BasicStepPost (dqbf : DQBF) (cs : ClauseStore)
   | some (.Failed ..)  => CheckState.Correct dqbf cs s'
   | some .Unknown      => CheckState.Correct dqbf cs s'
 
+/-- `basicStepPost_none` states `(dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) : BasicStepPost
+    dqbf cs none s' ↔ CheckState.Correct dqbf cs s'`. -/
 @[simp] theorem basicStepPost_none
     (dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) :
     BasicStepPost dqbf cs none s' ↔ CheckState.Correct dqbf cs s' := by
   rfl
 
+/-- `basicStepPost_verified` states `(dqbf : DQBF) (cs : ClauseStore) (n : Nat) (s' : CheckState) :
+    BasicStepPost dqbf cs (some (.Verified n)) s' ↔ DQBFFalse dqbf cs`. -/
 @[simp] theorem basicStepPost_verified
     (dqbf : DQBF) (cs : ClauseStore) (n : Nat) (s' : CheckState) :
     BasicStepPost dqbf cs (some (.Verified n)) s' ↔ DQBFFalse dqbf cs := by
   rfl
 
+/-- `basicStepPost_failed` states `(dqbf : DQBF) (cs : ClauseStore) (line : Nat) (rules : Array
+    String) (info : Array Int) (blocker : Option CRef) (s' : CheckState) : BasicStepPost dqbf cs
+    (some (.Failed line rules info blocker)) s' ↔ CheckState.Correct dqbf cs s'`. -/
 @[simp] theorem basicStepPost_failed
     (dqbf : DQBF) (cs : ClauseStore)
     (line : Nat) (rules : Array String) (info : Array Int) (blocker : Option CRef)
@@ -16389,6 +17033,8 @@ def BasicStepPost (dqbf : DQBF) (cs : ClauseStore)
       CheckState.Correct dqbf cs s' := by
   rfl
 
+/-- `basicStepPost_unknown` states `(dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) :
+    BasicStepPost dqbf cs (some .Unknown) s' ↔ CheckState.Correct dqbf cs s'`. -/
 @[simp] theorem basicStepPost_unknown
     (dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) :
     BasicStepPost dqbf cs (some .Unknown) s' ↔ CheckState.Correct dqbf cs s' := by
@@ -16402,16 +17048,23 @@ def BasicRunPost (dqbf : DQBF) (cs : ClauseStore)
   | .Verified _   => DQBFFalse dqbf cs
   | .Failed ..    => CheckState.Correct dqbf cs s'
 
+/-- `basicRunPost_unknown` states `(dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) : BasicRunPost
+    dqbf cs .Unknown s' ↔ CheckState.Correct dqbf cs s'`. -/
 @[simp] theorem basicRunPost_unknown
     (dqbf : DQBF) (cs : ClauseStore) (s' : CheckState) :
     BasicRunPost dqbf cs .Unknown s' ↔ CheckState.Correct dqbf cs s' := by
   rfl
 
+/-- `basicRunPost_verified` states `(dqbf : DQBF) (cs : ClauseStore) (n : Nat) (s' : CheckState) :
+    BasicRunPost dqbf cs (.Verified n) s' ↔ DQBFFalse dqbf cs`. -/
 @[simp] theorem basicRunPost_verified
     (dqbf : DQBF) (cs : ClauseStore) (n : Nat) (s' : CheckState) :
     BasicRunPost dqbf cs (.Verified n) s' ↔ DQBFFalse dqbf cs := by
   rfl
 
+/-- `basicRunPost_failed` states `(dqbf : DQBF) (cs : ClauseStore) (line : Nat) (rules : Array
+    String) (info : Array Int) (blocker : Option CRef) (s' : CheckState) : BasicRunPost dqbf cs
+    (.Failed line rules info blocker) s' ↔ CheckState.Correct dqbf cs s'`. -/
 @[simp] theorem basicRunPost_failed
     (dqbf : DQBF) (cs : ClauseStore)
     (line : Nat) (rules : Array String) (info : Array Int) (blocker : Option CRef)
@@ -16544,6 +17197,10 @@ theorem addClauseAfterCache_sound_spec
           simpa [s_added, cref] using
             addClausePost_of_store_only_sameFC (cref := cref) hcorr hsame hlits hsem
 
+/-- `addClause_sound_spec` states `(dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) : ⦃fun s
+    => ⌜CheckState.Correct dqbf cs s ∧ ClauseLitsWellFormed s.formula lits ∧ (DQBFTrue dqbf cs →
+    DQBFTrue s.formula (s.clauses.addClause lits).1)⌝⦄ (addClause lits : CheckM (Option CRef)) ⦃⇓? r
+    s' => ⌜AddClausePost dqbf cs r s'⌝⦄`. -/
 theorem addClause_sound_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
     ⦃fun s =>
       ⌜CheckState.Correct dqbf cs s ∧
@@ -16584,6 +17241,11 @@ theorem addClause_sound_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Lite
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hafter
       simpa [hrun] using hafter
 
+/-- `addClause_full_sound_spec` states `(dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
+    ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s ∧ ClauseLitsWellFormed s.formula lits ∧ (DQBFTrue
+    dqbf cs → DQBFTrue s.formula (s.clauses.addClause lits).1)⌝⦄ (addClause lits : CheckM (Option
+    CRef)) ⦃⇓? r s' => ⌜match r with | some _ => CheckState.FullCorrect dqbf cs s' | none =>
+    DQBFFalse dqbf cs⌝⦄`. -/
 theorem addClause_full_sound_spec (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
     ⦃fun s =>
       ⌜CheckState.FullCorrect dqbf cs s ∧
@@ -17235,6 +17897,10 @@ theorem checkDQRATU_restore_spec
           simp only [WP.wp, PredTrans.apply, EStateM.run] at hrat
           simpa [hisRup] using hrat
 
+/-- `checkDQRATU_restore_sameFC_spec` states `(dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState)
+    (lits : Array Literal) (pivot : Literal) : ⦃fun s => ⌜s = s₀ ∧ CheckState.Correct dqbf cs s₀ ∧
+    ClauseLitsWellFormed s.formula lits⌝⦄ checkDQRATU lits pivot ⦃⇓? _ s' => ⌜CheckState.Correct
+    dqbf cs s' ∧ SameFC s₀ s' ∧ ClauseLitsWellFormed s'.formula lits⌝⦄`. -/
 theorem checkDQRATU_restore_sameFC_spec
     (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState)
     (lits : Array Literal) (pivot : Literal) :
@@ -17314,6 +17980,10 @@ theorem checkDQRATU_restore_sameFC_spec
           simp only [WP.wp, PredTrans.apply, EStateM.run] at hrat
           simpa [hisRup] using hrat
 
+/-- `checkDQRATU_restore_full_spec` states `(dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState) (lits
+    : Array Literal) (pivot : Literal) : ⦃fun s => ⌜s = s₀ ∧ CheckState.FullCorrect dqbf cs s₀ ∧
+    ClauseLitsWellFormed s.formula lits⌝⦄ checkDQRATU lits pivot ⦃⇓? _ s' => ⌜CheckState.FullCorrect
+    dqbf cs s' ∧ SameFC s₀ s' ∧ ClauseLitsWellFormed s'.formula lits⌝⦄`. -/
 theorem checkDQRATU_restore_full_spec
     (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState)
     (lits : Array Literal) (pivot : Literal) :
@@ -17336,6 +18006,10 @@ theorem checkDQRATU_restore_full_spec
       rcases hspec with ⟨hcorr', hsame', hlits'⟩
       exact ⟨CheckState.FullCorrect.ofCorrectSameFC hfull hcorr' hsame', hsame', hlits'⟩
 
+/-- `runRupTrial_spec` states `(dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) : ⦃fun s =>
+    ⌜CheckState.Correct dqbf cs s ∧ ClauseLitsWellFormed s.formula lits⌝⦄ (runRupTrial lits : CheckM
+    Bool) ⦃⇓? r s' => ⌜CheckState.Correct dqbf cs s' ∧ ClauseLitsWellFormed s'.formula lits ∧ (r =
+    true → DQBFTrue dqbf cs → DQBFTrue s'.formula (s'.clauses.addClause lits).1)⌝⦄`. -/
 @[spec] theorem runRupTrial_spec
     (dqbf : DQBF) (cs : ClauseStore) (lits : Array Literal) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s ∧ ClauseLitsWellFormed s.formula lits⌝⦄
@@ -17766,6 +18440,9 @@ private theorem checkUniversalReductionTranslated_full_sound
 
 end URTranslatedFullProof
 
+/-- `checkUniversalReduction_sound` states `(dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat)
+    (extLits : List Int) : ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄ checkUniversalReduction lineNum
+    extLits ⦃⇓? r s' => ⌜FullStepPost dqbf cs r s'⌝⦄`. -/
 theorem checkUniversalReduction_sound (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extLits : List Int) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
@@ -17787,6 +18464,9 @@ theorem checkUniversalReduction_sound (dqbf : DQBF) (cs : ClauseStore)
         checkUniversalReductionTranslated_sound dqbf cs lineNum lits s₁
           ⟨hcorr₁, hlits₁⟩
 
+/-- `checkUniversalReduction_full_sound` states `(dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat)
+    (extLits : List Int) : ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄ checkUniversalReduction
+    lineNum extLits ⦃⇓? r s' => ⌜FullStepFullPost dqbf cs r s'⌝⦄`. -/
 theorem checkUniversalReduction_full_sound (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extLits : List Int) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
@@ -17911,6 +18591,9 @@ theorem processProof_sound' (content formulaContent : String) (n : Nat)
       subst hr
       simpa [FullRunFullPost] using hpost
 
+/-- `checkRatClauseBasic_sound` states `(dqbf : DQBF) (cs : ClauseStore) (lineNum : Nat) (extLits :
+    List Int) : ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄ checkRatClauseBasic lineNum extLits ⦃⇓? r
+    s' => ⌜BasicStepPost dqbf cs r s'⌝⦄`. -/
 theorem checkRatClauseBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     (lineNum : Nat) (extLits : List Int) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
@@ -18067,6 +18750,9 @@ theorem checkActionBasic_sound (dqbf : DQBF) (cs : ClauseStore)
     ⦃⇓? r s' => ⌜BasicStepPost dqbf cs r s'⌝⦄ := by
   mvcgen [checkActionBasic, checkUniversalReductionBasic_sound, checkRatClauseBasic_sound]
 
+/-- `checkActionNoNegE_sound` states `(dqbf : DQBF) (cs : ClauseStore) (action : DQRatAction) : ⦃fun
+    s => ⌜CheckState.Correct dqbf cs s⌝⦄ checkActionNoNegE action ⦃⇓? r s' => ⌜FullStepPost dqbf cs
+    r s'⌝⦄`. -/
 theorem checkActionNoNegE_sound (dqbf : DQBF) (cs : ClauseStore)
     (action : DQRatAction) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
@@ -18089,6 +18775,9 @@ theorem checkActionNoNegE_sound (dqbf : DQBF) (cs : ClauseStore)
       simpa [checkActionNoNegE, BasicStepPost, FullStepPost] using
         checkRatClauseBasic_sound dqbf cs lineNum extLits
 
+/-- `checkActionsNoNegE_sound` states `(dqbf : DQBF) (cs : ClauseStore) (actions : List DQRatAction)
+    : ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄ checkActionsNoNegE actions ⦃⇓? r s' => ⌜FullRunPost
+    dqbf cs r s'⌝⦄`. -/
 theorem checkActionsNoNegE_sound (dqbf : DQBF) (cs : ClauseStore)
     (actions : List DQRatAction) :
     ⦃fun s => ⌜CheckState.Correct dqbf cs s⌝⦄
@@ -18158,6 +18847,9 @@ theorem processProofBasic_sound (st : CheckState) (proofContent : String) (n : N
   rw [hrun'] at hpost
   simpa [BasicRunPost] using hpost
 
+/-- `processProofBasic_sound'` states `(content formulaContent : String) (n : Nat) (st : CheckState)
+    (hparse : parseDQDIMACS formulaContent = .ok (some st)) (hverify : ∃ st', (checkActionsBasic
+    (parseProofActions content)).run st = .ok (.Verified n) st') : DQBFFalse st.formula st.clauses`. -/
 theorem processProofBasic_sound'
     (content formulaContent : String) (n : Nat)
     (st : CheckState) (hparse : parseDQDIMACS formulaContent = .ok (some st))
@@ -18168,6 +18860,10 @@ theorem processProofBasic_sound'
     (parseDQDIMACS_full_correct formulaContent st hparse).toCorrect
   exact processProofBasic_sound st content n hcorrect hverify
 
+/-- `processProofNoNegE_sound` states `(st : CheckState) (proofContent : String) (n : Nat) (hcorrect
+    : CheckState.Correct st.formula st.clauses st) (hverify : ∃ st', (checkActionsNoNegE
+    (parseProofActions proofContent)).run st = .ok (.Verified n) st') : DQBFFalse st.formula
+    st.clauses`. -/
 theorem processProofNoNegE_sound (st : CheckState) (proofContent : String) (n : Nat)
     (hcorrect : CheckState.Correct st.formula st.clauses st)
     (hverify : ∃ st', (checkActionsNoNegE (parseProofActions proofContent)).run st
@@ -18184,6 +18880,9 @@ theorem processProofNoNegE_sound (st : CheckState) (proofContent : String) (n : 
   rw [hrun'] at hpost
   simpa [FullRunPost] using hpost
 
+/-- `processProofNoNegE_sound'` states `(content formulaContent : String) (n : Nat) (st :
+    CheckState) (hparse : parseDQDIMACS formulaContent = .ok (some st)) (hverify :
+    processProofNoNegE st content = .Verified n) : DQBFFalse st.formula st.clauses`. -/
 theorem processProofNoNegE_sound'
     (content formulaContent : String) (n : Nat)
     (st : CheckState) (hparse : parseDQDIMACS formulaContent = .ok (some st))

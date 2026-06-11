@@ -3,6 +3,15 @@ import DqratLean.Formula
 import DqratLean.ClauseStore
 import DqratLean.CheckState
 
+/-!
+# Watched State
+
+Runtime state and cache update operations for the watched-literal propagation
+layer.
+
+Trust status: experimental watched-layer executable infrastructure, outside the
+certified default path.
+-/
 namespace DqratLean.Watched
 
 /--

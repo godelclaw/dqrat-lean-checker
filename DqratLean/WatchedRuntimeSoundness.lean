@@ -1,6 +1,14 @@
 import DqratLean.WatchedSoundness
 import DqratLean.WatchedBinaryRefinement
 
+/-!
+# Watched Runtime Soundness
+
+Runtime invariant bundles and local refinement lemmas for the watched caches.
+
+Trust status: experimental watched-layer proof work, outside the certified
+default path.
+-/
 namespace DqratLean.Watched
 
 /--

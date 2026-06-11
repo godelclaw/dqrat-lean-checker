@@ -1,6 +1,14 @@
 -- Core types: Literal, Var, CRef
 -- MiniSAT encoding: x = var*2 + (1 if positive, 0 if negative)
 
+/-!
+# Core Types
+
+Definitions of the primitive variable, literal, and clause-reference types
+shared across the checker.
+
+Trust status: foundational definitions on the certified default path.
+-/
 abbrev Var := Nat  -- 1-indexed internal variable
 
 structure Literal where

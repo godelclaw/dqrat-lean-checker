@@ -4,6 +4,15 @@
 import DqratLean.Checker
 import DqratLean.WatchedParser
 
+/-!
+# Watched Main CLI
+
+Command-line entry point for the watched-runtime parser and checker.
+
+Trust status: experimental watched-layer executable for benchmarking and
+differential testing, outside the certified default path.
+-/
+/-- `main` runs the experimental watched-runtime checker on a formula/proof pair. -/
 def main : List String → IO UInt32
   | [formulaFile, proofFile] => do
       let formulaContent ← IO.FS.readFile formulaFile

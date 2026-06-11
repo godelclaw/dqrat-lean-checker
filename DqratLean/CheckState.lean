@@ -2,6 +2,16 @@ import DqratLean.Types
 import DqratLean.Formula
 import DqratLean.ClauseStore
 import Std.Tactic.Do
+/-!
+# Checker State
+
+The mutable checker state together with trail, propagation, and clause-store
+update operations.
+
+Trust status: executable infrastructure on the certified default path, with
+soundness proved in `Soundness.lean`.
+-/
+
 open Std.Do
 
 -- `mvcgen` is the intended proof style here; suppress its upstream blanket

@@ -1,6 +1,15 @@
 import DqratLean.WatchedArrayLemmas
 import DqratLean.WatchedState
 
+/-!
+# Watched Binary Lemmas
+
+Auxiliary lemmas for the watched binary-implication cache and its update
+operations.
+
+Trust status: experimental watched-layer support, outside the certified default
+path.
+-/
 namespace DqratLean.Watched
 
 /--

@@ -1,6 +1,15 @@
 import DqratLean.Types
 
 -- DQBF state: variables, quantifier types, dependency sets
+/-!
+# Formula Representation
+
+The `DQBF` structure and its primitive lookup and mutation helpers for variables
+and dependency sets.
+
+Trust status: shared executable foundation on the certified default path.
+-/
+
 structure DQBF where
   maxVar        : Var := 0
   -- external → internal: unsorted pairs, linear search

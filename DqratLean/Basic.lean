@@ -16,3 +16,13 @@ import DqratLean.Soundness
 -- DqratLean.Counterexamples (diagnostic witnesses built from native evaluation) is
 -- also intentionally NOT imported here: it stays outside the certified path
 -- and is built explicitly by scripts/build_and_test.sh.
+/-!
+# DqratLean Basic
+
+Aggregate re-export for the default parser, checker, semantics, and proof
+modules.
+
+Trust status: this import surface is the certified default path and keeps the
+diagnostic and experimental watched-layer modules out of the root library.
+-/
+

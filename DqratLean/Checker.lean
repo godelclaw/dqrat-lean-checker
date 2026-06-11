@@ -4,6 +4,16 @@ import DqratLean.CheckState
 
 -- Negate filtered literals and propagate; returns true if conflict found.
 -- Opens a new decision level. Caller must backtrack.
+/-!
+# Checker Operations
+
+Executable implementations of propagation, clause checking, and proof-action
+processing for the default non-watched checker.
+
+Trust status: executable default-path code whose top-level soundness is proved
+in `Soundness.lean`.
+-/
+
 def negateAndPropagate (lits : Array Literal) (which : Literal → Bool) : CheckM Bool := do
   newDecisionLevel
   lits.foldlM (fun conflict l => do

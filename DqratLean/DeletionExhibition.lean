@@ -38,6 +38,8 @@ BFS specification is ever needed, never its soundness direction.
 
 All lemmas in this module are proved; the development is complete.
 (`lake build DqratLean.DeletionExhibition` rebuilds only this leaf.)
+
+Trust status: certified proof module on the default non-watched path.
 -/
 
 open Std.Do
@@ -46,6 +48,8 @@ open Std.Do
 def pinUniv (on_ : Var) (c : Bool) (σ : UnivAssignment) : UnivAssignment :=
   fun w => if w == on_ then c else σ w
 
+/-- `pinUniv_flipUniv` states `(on_ : Var) (c : Bool) (σ : UnivAssignment) : pinUniv on_ c (flipUniv
+    on_ σ) = pinUniv on_ c σ`. -/
 theorem pinUniv_flipUniv (on_ : Var) (c : Bool) (σ : UnivAssignment) :
     pinUniv on_ c (flipUniv on_ σ) = pinUniv on_ c σ := by
   funext w
@@ -53,6 +57,8 @@ theorem pinUniv_flipUniv (on_ : Var) (c : Bool) (σ : UnivAssignment) :
   · simp [pinUniv, h]
   · simp [pinUniv, flipUniv, h]
 
+/-- `pinUniv_eq_self_of_eq` states `{on_ : Var} {c : Bool} {σ : UnivAssignment} (hσ : σ on_ = c) :
+    pinUniv on_ c σ = σ`. -/
 theorem pinUniv_eq_self_of_eq {on_ : Var} {c : Bool} {σ : UnivAssignment}
     (hσ : σ on_ = c) : pinUniv on_ c σ = σ := by
   funext w
@@ -61,6 +67,8 @@ theorem pinUniv_eq_self_of_eq {on_ : Var} {c : Bool} {σ : UnivAssignment}
     simp [pinUniv, this, hσ]
   · simp [pinUniv, h]
 
+/-- `flipUniv_eq_pinUniv_of_eq` states `{on_ : Var} {b : Bool} {σ : UnivAssignment} (hσ : σ on_ = b)
+    : flipUniv on_ σ = pinUniv on_ (!b) σ`. -/
 theorem flipUniv_eq_pinUniv_of_eq {on_ : Var} {b : Bool} {σ : UnivAssignment}
     (hσ : σ on_ = b) : flipUniv on_ σ = pinUniv on_ (!b) σ := by
   funext w
@@ -76,6 +84,8 @@ def pinDepArgs (f : DQBF) (v on_ : Var) (c : Bool) (args : Array Bool) :
     Array Bool :=
   (f.depset.getD v #[]).zipWith (fun u a => if u == on_ then c else a) args
 
+/-- `fullDepArgs_pinUniv` states `(f : DQBF) (v on_ : Var) (c : Bool) (σ : UnivAssignment) :
+    fullDepArgs f v (pinUniv on_ c σ) = pinDepArgs f v on_ c (fullDepArgs f v σ)`. -/
 theorem fullDepArgs_pinUniv (f : DQBF) (v on_ : Var) (c : Bool)
     (σ : UnivAssignment) :
     fullDepArgs f v (pinUniv on_ c σ) =
@@ -175,6 +185,9 @@ noncomputable def reformSkolem (st : CheckState) (on_ : Var)
 ## Evaluation rules for the reform (the computational content of Def. 12)
 -/
 
+/-- `varValue_reformLeft_of_not_contains` states `(st : CheckState) (on_ : Var) (sk :
+    SkolemAssignment) (σ : UnivAssignment) {z : Var} (hnc : (st.formula.depset.getD z #[]).contains
+    on_ = false) : st.formula.varValue σ (reformLeft st on_ sk) z = st.formula.varValue σ sk z`. -/
 theorem varValue_reformLeft_of_not_contains
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     (σ : UnivAssignment) {z : Var}
@@ -191,6 +204,9 @@ theorem varValue_reformLeft_of_not_contains
     rw [DQBF.varValue, DQBF.varValue, hexi']
     simp
 
+/-- `varValue_reformLeft_of_on_true` states `(st : CheckState) (on_ : Var) (sk : SkolemAssignment)
+    {σ : UnivAssignment} {z : Var} (hσ : σ on_ = true) : st.formula.varValue σ (reformLeft st on_
+    sk) z = st.formula.varValue σ sk z`. -/
 theorem varValue_reformLeft_of_on_true
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     {σ : UnivAssignment} {z : Var}
@@ -279,6 +295,9 @@ theorem varValue_reformLeft_reformed
   unfold reformLeft
   rw [if_neg (by rw [hcont]; simp), if_neg hnotpin, if_neg hno]
 
+/-- `varValue_reformRight_of_not_contains` states `(st : CheckState) (on_ : Var) (sk :
+    SkolemAssignment) (σ : UnivAssignment) {z : Var} (hnc : (st.formula.depset.getD z #[]).contains
+    on_ = false) : st.formula.varValue σ (reformRight st on_ sk) z = st.formula.varValue σ sk z`. -/
 theorem varValue_reformRight_of_not_contains
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     (σ : UnivAssignment) {z : Var}
@@ -295,6 +314,9 @@ theorem varValue_reformRight_of_not_contains
     rw [DQBF.varValue, DQBF.varValue, hexi']
     simp
 
+/-- `varValue_reformRight_of_on_false` states `(st : CheckState) (on_ : Var) (sk : SkolemAssignment)
+    {σ : UnivAssignment} {z : Var} (hσ : σ on_ = false) : st.formula.varValue σ (reformRight st on_
+    sk) z = st.formula.varValue σ sk z`. -/
 theorem varValue_reformRight_of_on_false
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     {σ : UnivAssignment} {z : Var}
@@ -319,6 +341,11 @@ theorem varValue_reformRight_of_on_false
     rw [DQBF.varValue, DQBF.varValue, hexi']
     simp
 
+/-- `varValue_reformRight_refused` states `(st : CheckState) (on_ : Var) (sk : SkolemAssignment) {σ
+    : UnivAssignment} {z : Var} (hexi : st.formula.isVarExistential z = true) (hcont :
+    (st.formula.depset.getD z #[]).contains on_ = true) (hσ : σ on_ = true) (hpath : DeletePurePath
+    st on_ (mkLit on_ false) (mkLit z (!(st.formula.varValue (flipUniv on_ σ) sk z)))) :
+    st.formula.varValue σ (reformRight st on_ sk) z = st.formula.varValue σ sk z`. -/
 theorem varValue_reformRight_refused
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     {σ : UnivAssignment} {z : Var}
@@ -349,6 +376,11 @@ theorem varValue_reformRight_refused
   unfold reformRight
   rw [if_neg (by rw [hcont]; simp), if_neg hnotpin, if_pos hpath]
 
+/-- `varValue_reformRight_reformed` states `(st : CheckState) (on_ : Var) (sk : SkolemAssignment) {σ
+    : UnivAssignment} {z : Var} (hexi : st.formula.isVarExistential z = true) (hcont :
+    (st.formula.depset.getD z #[]).contains on_ = true) (hσ : σ on_ = true) (hno : ¬ DeletePurePath
+    st on_ (mkLit on_ false) (mkLit z (!(st.formula.varValue (flipUniv on_ σ) sk z)))) :
+    st.formula.varValue σ (reformRight st on_ sk) z = st.formula.varValue (flipUniv on_ σ) sk z`. -/
 theorem varValue_reformRight_reformed
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     {σ : UnivAssignment} {z : Var}
@@ -471,6 +503,11 @@ private theorem reformLeft_disagree_inv
     rw [DQBF.varValue, DQBF.varValue, hexi']
     simp
 
+/-- `reformLeft_matrix_true` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ :
+    st.formula.isVarExistential on_ = false) {sk : SkolemAssignment} (hall : ∀ σ,
+    st.clauses.matrixValue st.formula σ sk = true) : ∀ σ, st.clauses.matrixValue st.formula σ
+    (reformLeft st on_ sk) = true`. -/
 theorem reformLeft_matrix_true
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -709,6 +746,11 @@ private theorem reformRight_disagree_inv
     rw [DQBF.varValue, DQBF.varValue, hexi']
     simp
 
+/-- `reformRight_matrix_true` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {on_ : Var}
+    (hfull : CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ :
+    st.formula.isVarExistential on_ = false) {sk : SkolemAssignment} (hall : ∀ σ,
+    st.clauses.matrixValue st.formula σ sk = true) : ∀ σ, st.clauses.matrixValue st.formula σ
+    (reformRight st on_ sk) = true`. -/
 theorem reformRight_matrix_true
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -1002,6 +1044,13 @@ private theorem reformSkolem_flip_eq_of_on_false
         hexi_of hcont_of hσf hR
     rw [hLHS, hQ, hff]
 
+/-- `reformSkolem_exhibits_mem` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {vars :
+    Array Var} {on_ : Var} (hfull : CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤
+    st.formula.maxVar) (hon_univ : st.formula.isVarExistential on_ = false) (hexi : ∀ of_ ∈
+    vars.toList, st.formula.isVarExistential of_ = true) (hcontains : ∀ of_ ∈ vars.toList,
+    (st.formula.depset.getD of_ #[]).contains on_ = true) (hpaths : NoDeleteCrossPathsSet st vars
+    on_) (sk : SkolemAssignment) : ExhibitsDeleteIndependenceSet st.formula vars on_ (reformSkolem
+    st on_ sk)`. -/
 theorem reformSkolem_exhibits_mem
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {vars : Array Var} {on_ : Var}

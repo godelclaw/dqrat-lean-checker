@@ -1,5 +1,13 @@
 import DqratLean.WatchedBinaryLemmas
 
+/-!
+# Watched Binary Soundness
+
+Soundness-side invariants for the watched binary-implication cache.
+
+Trust status: experimental watched-layer proof work, outside the certified
+default path.
+-/
 namespace DqratLean.Watched
 
 /--

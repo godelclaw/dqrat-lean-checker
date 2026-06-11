@@ -3,6 +3,15 @@ import Init.Data.List.Sort.Lemmas
 import DqratLean.Types
 
 -- Clause storage with occurrence lists
+/-!
+# Clause Store
+
+Executable clause storage, occurrence-list maintenance, and clause lookup
+helpers used by the checker.
+
+Trust status: shared executable infrastructure on the certified default path.
+-/
+
 structure Clause where
   lits    : Array Literal
   deleted : Bool := false

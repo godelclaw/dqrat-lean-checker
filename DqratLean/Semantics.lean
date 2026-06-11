@@ -33,6 +33,8 @@ The Skolem function for yᵢ is called as `sk yᵢ (D(yᵢ).map σ)`: it receive
 outside D(yᵢ), so the dependency constraint is enforced by construction.
 
 `ValidSkolem` makes this explicit; `ValidSkolem.trivial` shows it costs nothing.
+
+Trust status: foundational semantics on the certified default path.
 -/
 
 -- ─── Core types ────────────────────────────────────────────────────────────

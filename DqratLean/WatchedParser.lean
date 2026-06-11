@@ -1,6 +1,14 @@
 import DqratLean.Parser
 import DqratLean.WatchedChecker
 
+/-!
+# Watched Parser
+
+Parser entry points that build the watched-runtime checker state.
+
+Trust status: experimental watched-layer executable code, outside the certified
+default path.
+-/
 namespace DqratLean.Watched
 
 def ensureWithinMaxVar (declaredMaxVar extVar : Nat) : CheckM Unit := do

@@ -7,9 +7,12 @@ import DqratLean.Checker
 Definitions of the state-validity predicates (`CheckState.Sound`,
 `CheckState.Correct`, `CheckState.FullCorrect`) plus small generic literal
 and array helpers shared by the soundness development.
+
+Trust status: certified proof module on the default non-watched path.
 -/
 open Std.Do
 
+/-- `mkLit_var_early` states `(v : Var) (pos : Bool) : (mkLit v pos).var = v`. -/
 theorem mkLit_var_early (v : Var) (pos : Bool) :
     (mkLit v pos).var = v := by
   unfold Literal.var mkLit
@@ -20,6 +23,7 @@ theorem mkLit_var_early (v : Var) (pos : Bool) :
     simp
   · simp [hpos]
 
+/-- `literal_eq_mkLit_var_isPos` states `(l : Literal) : l = mkLit l.var l.isPos`. -/
 theorem literal_eq_mkLit_var_isPos (l : Literal) :
     l = mkLit l.var l.isPos := by
   cases l with
@@ -48,6 +52,8 @@ def ClausesWellFormed (f : DQBF) (cs : ClauseStore) : Prop :=
   ∀ cref c, cs.getClause cref = some c →
     ∀ l ∈ c.lits.toList, 0 < l.var ∧ l.var ≤ f.maxVar
 
+/-- `arrayGetD_true_imp_lt` states `(a : Array Bool) {i : Nat} (h : a.getD i false = true) : i <
+    a.size`. -/
 theorem arrayGetD_true_imp_lt (a : Array Bool) {i : Nat}
     (h : a.getD i false = true) :
     i < a.size := by
@@ -55,6 +61,8 @@ theorem arrayGetD_true_imp_lt (a : Array Bool) {i : Nat}
   · exact hi
   · simp [Array.getD, hi] at h
 
+/-- `litValue_mkLit_true` states `(f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (v : Var)
+    : f.litValue σ sk (mkLit v true) = f.varValue σ sk v`. -/
 theorem litValue_mkLit_true
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (v : Var) :
     f.litValue σ sk (mkLit v true) = f.varValue σ sk v := by
@@ -62,6 +70,8 @@ theorem litValue_mkLit_true
   rw [mkLit_var_early]
   simp [Literal.isPos, mkLit]
 
+/-- `litValue_mkLit_false` states `(f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (v : Var)
+    : f.litValue σ sk (mkLit v false) = !(f.varValue σ sk v)`. -/
 theorem litValue_mkLit_false
     (f : DQBF) (σ : UnivAssignment) (sk : SkolemAssignment) (v : Var) :
     f.litValue σ sk (mkLit v false) = !(f.varValue σ sk v) := by
@@ -129,6 +139,8 @@ structure CheckState.FullCorrect (dqbf : DQBF) (cs : ClauseStore) (st : CheckSta
   toCorrect : CheckState.Correct dqbf cs st
   liveOccurrencesComplete : ClauseStore.LiveOccurrencesComplete st.clauses
 
+/-- `CheckState.empty_correct` states `CheckState.Correct CheckState.empty.formula
+    CheckState.empty.clauses CheckState.empty`. -/
 theorem CheckState.empty_correct :
     CheckState.Correct CheckState.empty.formula CheckState.empty.clauses CheckState.empty := by
   refine
@@ -195,6 +207,7 @@ def PrefixState (st : CheckState) : Prop :=
     (∀ v : Var, 0 < v → v ≤ st.formula.maxVar →
       st.isAssigned.getD (v - 1) false = false)
 
+/-- `PrefixState.empty` states `PrefixState CheckState.empty`. -/
 theorem PrefixState.empty : PrefixState CheckState.empty := by
   refine ⟨CheckState.empty_correct, rfl, ?_⟩
   intro v hpos hle
@@ -203,6 +216,8 @@ theorem PrefixState.empty : PrefixState CheckState.empty := by
     exact Nat.not_lt_zero _ (Nat.lt_of_lt_of_le hpos hle0)
   exact False.elim this
 
+/-- `arraySetIfInBounds_getD_eq` states `{α : Type} (a : Array α) (i : Nat) (v fallback : α) (h : i
+    < a.size) : (a.setIfInBounds i v).getD i fallback = v`. -/
 theorem arraySetIfInBounds_getD_eq
     {α : Type} (a : Array α) (i : Nat) (v fallback : α) (h : i < a.size) :
     (a.setIfInBounds i v).getD i fallback = v := by
@@ -210,6 +225,8 @@ theorem arraySetIfInBounds_getD_eq
   simp only [Array.getD, dif_pos (hsize ▸ h)]
   simp [Array.getElem_setIfInBounds h]
 
+/-- `arraySetIfInBounds_getD_ne` states `{α : Type} (a : Array α) (i j : Nat) (v fallback : α) (hij
+    : i ≠ j) : (a.setIfInBounds i v).getD j fallback = a.getD j fallback`. -/
 theorem arraySetIfInBounds_getD_ne
     {α : Type} (a : Array α) (i j : Nat) (v fallback : α) (hij : i ≠ j) :
     (a.setIfInBounds i v).getD j fallback = a.getD j fallback := by
@@ -221,6 +238,8 @@ theorem arraySetIfInBounds_getD_ne
   · have hjlt' : ¬(j < a.size) := Nat.not_lt.mpr hjlt
     rw [dif_neg (hsize ▸ hjlt'), dif_neg hjlt']
 
+/-- `getClauseRaw_deleted_of_getClause` states `{cs : ClauseStore} {cref : CRef} {c : Clause} (hget
+    : cs.getClause cref = some c) : cs.getClauseRaw cref = some c ∧ c.deleted = false`. -/
 theorem getClauseRaw_deleted_of_getClause
     {cs : ClauseStore} {cref : CRef} {c : Clause}
     (hget : cs.getClause cref = some c) :
@@ -238,6 +257,9 @@ theorem getClauseRaw_deleted_of_getClause
       cases hc
       simp [ClauseStore.getClauseRaw, hne, hraw, hdeleted]
 
+/-- `getClause_of_getClauseRaw_not_deleted` states `{cs : ClauseStore} {cref : CRef} {c : Clause}
+    (hraw : cs.getClauseRaw cref = some c) (hdeleted : c.deleted = false) : cs.getClause cref = some
+    c`. -/
 theorem getClause_of_getClauseRaw_not_deleted
     {cs : ClauseStore} {cref : CRef} {c : Clause}
     (hraw : cs.getClauseRaw cref = some c)

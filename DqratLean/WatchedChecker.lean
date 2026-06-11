@@ -1,6 +1,15 @@
 import DqratLean.Checker
 import DqratLean.WatchedState
 
+/-!
+# Watched Checker
+
+Executable checker operations routed through the watched-runtime propagation
+layer.
+
+Trust status: experimental watched-layer executable code, outside the certified
+default path.
+-/
 namespace DqratLean.Watched
 
 /--

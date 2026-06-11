@@ -1,6 +1,14 @@
 import Init.Data.Array.Lemmas
 import DqratLean.Types
 
+/-!
+# Watched Array Lemmas
+
+Shared array helper lemmas used by the watched-runtime cache proofs.
+
+Trust status: experimental watched-layer support, outside the certified default
+path.
+-/
 namespace DqratLean.Watched
 
 /--
