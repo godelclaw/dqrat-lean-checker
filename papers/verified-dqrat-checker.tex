@@ -1,0 +1,243 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb,booktabs,url,listings,xcolor}
+\lstset{basicstyle=\ttfamily\small,breaklines=true}
+\title{A Machine-Checked Soundness Proof for a DQBF Proof Checker\\
+{\large Formally Verified Checking of DQRAT$+D^{\forall}$pure Certificates in Lean~4}}
+% TODO(authors): co-authorship with the format/tool authors to be discussed.
+\author{Zar Goertzel}
+\date{June 2026 — draft}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Proof checkers are the trust anchors of automated reasoning: solvers may be
+arbitrarily complex provided their certificates are validated independently.
+That argument is only as strong as the checker itself. We present the first
+machine-checked soundness proof of a proof checker for \emph{dependency
+quantified Boolean formulas} (DQBF), covering the recent
+DQRAT$+D^{\forall}$pure certificate format~\cite{dqratcheck}. The proof, in
+Lean~4~\cite{MouraUllrich2021}, is stated about the literal executable: if the
+checker prints \texttt{s VERIFIED} --- on either of its two code paths --- the
+input formula is semantically false. The development is \texttt{sorry}-free
+and the top-level theorems depend only on the three standard classical axioms.
+The mathematically hardest component is, to our knowledge, the first
+formalization of \emph{full exhibition} of the reflexive resolution-path
+dependency scheme~\cite{BeyersdorffBlinkhornChewSchmidtSuda2019,
+WimmerWimmerSchollBecker2016}, which justifies the format's dependency-deletion
+rule. Differential testing against the reference C++ implementation uncovered
+two previously unknown defects in the latter (a garbage-collection bug that
+both rejects valid proofs and crashes, and a parser non-termination), while one
+semantic correction flowed in the opposite direction --- evidence that
+verification pays as a development instrument, not only as a stamp. The
+development was carried out largely by LLM agents under human direction; we
+argue the resulting trust model is exactly the classical one: the Lean kernel,
+not the proof's author, is the arbiter.
+\end{abstract}
+
+\section{Introduction}
+The certificate paradigm dominates trustworthy automated reasoning: a solver
+emits a proof which an independent, simpler checker validates
+\cite{WetzlerHeuleHunt2014}. For propositional SAT the community went further
+and verified the checkers themselves
+\cite{CruzFilipeEtAl2017,Lammich2017}, so that trust reduces to a proof
+assistant kernel. For \emph{quantified} and especially \emph{dependency
+quantified} Boolean formulas (DQBF) --- where existential variables depend on
+explicitly specified subsets of the universal variables, making satisfiability
+\textsc{NEXP}-complete \cite{PetersonReif1979} --- proof formats are younger
+\cite{HeuleSeidlBiere2014,dqratcheck} and no verified checker existed.
+
+We verify the checker for DQRAT$+D^{\forall}$pure \cite{dqratcheck}, a format
+whose proof rules include clause deletion, universal reduction, RUP/RAT-style
+clause addition with dependency awareness (DQRATE/DQRATU), and --- its most
+distinctive rule --- \emph{dependency deletion}: removing a universal $u$ from
+the dependency set of an existential $x$ when a reachability analysis certifies
+that no ``$u$-pure resolution paths'' connect the two polarities of $u$ to $x$.
+Soundness of that rule is a nontrivial theorem of the dependency-scheme
+literature \cite{WimmerWimmerSchollBecker2016,
+BeyersdorffBlinkhornChewSchmidtSuda2019,VanGelder2011,SlivovskySzeider2012}.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\item An executable DQRAT$+D^{\forall}$pure checker written in Lean~4 together
+  with a machine-checked, end-to-end soundness proof: parser, every proof
+  rule, and the command-line verdict are covered
+  (\S\ref{sec:checker}). The claim-bearing theorems are
+  \texttt{processProof\_sound'} and \texttt{parseDQDIMACS\_none\_sound}; the
+  axiom audit reports only \texttt{propext}, \texttt{Classical.choice},
+  \texttt{Quot.sound}.
+\item The first formalization of full exhibition of the reflexive
+  resolution-path dependency scheme, transcribed from
+  \cite{BeyersdorffBlinkhornChewSchmidtSuda2019} with a
+  definition-by-definition alignment table in the source
+  (\S\ref{sec:deletion}); and a negative lesson from a failed first proof
+  architecture (\S\ref{sec:descent}).
+\item A differential-validation study against the reference C++ checker:
+  verdict parity on the full upstream test suite, two new bugs found in the
+  reference implementation, one conformance fix adopted on the verified side,
+  and honest benchmarks (\S\ref{sec:differential}).
+\item A report on carrying out such a development with LLM agents under
+  kernel-checked ground truth, including where statement-level review by
+  humans and adversarial models caught errors that type-checking cannot
+  (\S\ref{sec:method}).
+\end{enumerate}
+
+\section{Background: DQBF and the certificate format}\label{sec:bg}
+A DQBF prefix assigns each existential variable $x$ a dependency set
+$D(x)$ of universal variables. Semantics is by Skolem functions: an
+assignment $\mathit{sk}$ gives each $x$ a Boolean function of the values of
+$D(x)$; the formula is \emph{true} iff some $\mathit{sk}$ satisfies the CNF
+matrix under every universal assignment $\sigma$, and \emph{false} iff every
+$\mathit{sk}$ is refuted by some $\sigma$. Our Lean development defines this
+in ${\sim}176$ lines (\texttt{Semantics.lean}); this small file, together
+with the statements of the two top theorems and the 38-line command-line
+driver, is the entire semantic trust base.
+
+A DQRAT refutation transforms the formula by truth-preserving steps ---
+deletions (\texttt{d}), universal-variable additions (\texttt{a}),
+dependency modifications (\texttt{e}), universal reduction lines
+(\texttt{u}, with a DQRATU fallback gated by the $D^{\forall}$pure path
+analysis), and RUP/DQRATE clause additions --- until an immediate
+contradiction is derived; the original formula is then false.
+
+\section{The verified checker}\label{sec:checker}
+The artifact (${\sim}26$k lines of Lean across 23 modules) separates the
+executable (parser, clause store with occurrence lists, unit propagation,
+rule handlers) from its specification. The central invariant ladder
+\texttt{Sound} $\subset$ \texttt{Correct} $\subset$ \texttt{FullCorrect}
+captures, respectively, structural well-formedness; the \emph{action
+boundary} (propagation quiescence, single trail level, and the property that
+the current formula is a truth-preserving extension of the original); and
+occurrence-list completeness. The last is not bureaucracy: the development
+contains executable counterexamples (\texttt{Counterexamples.lean}) showing
+that without it the DQRATE rule admits unsound acceptances --- the invariant
+was \emph{forced} by a failed proof attempt, and \S\ref{sec:differential}
+shows the reference implementation violating exactly this invariant after
+garbage collection.
+
+Every proof action is specified by a Hoare triple in the
+\texttt{Std.Do} weakest-precondition framework, read as: \emph{if the
+checker answers, the answer is right}; termination and completeness are
+deliberately not claimed. The two top-level theorems cover the two
+\texttt{s VERIFIED} print sites of the CLI:
+\begin{lstlisting}
+theorem processProof_sound' (content formulaContent : String) (n : Nat)
+    (st : CheckState) (hparse : parseDQDIMACS formulaContent = .ok (some st))
+    (hverify : processProof st content = .Verified n) :
+    DQBFFalse st.formula st.clauses
+
+theorem parseDQDIMACS_none_sound (content : String)
+    (h : parseDQDIMACS content = .ok none) :
+    ∃ declaredMaxVar st, ... ∧ DQBFFalse st.formula st.clauses
+\end{lstlisting}
+The first assumes only the parse result and the checker verdict ---
+\texttt{FullCorrect} is derived internally from the parser correctness
+theorem, so there is no unverifiable side condition. The second covers
+formulas refuted by unit propagation already during reading; its witness
+state is pinned to the parser's own run on the input's token stream (a bare
+existential would be vacuously true --- a statement-level subtlety caught in
+review, \S\ref{sec:method}).
+
+\section{Formalizing dependency deletion}\label{sec:deletion}
+The \texttt{e}-line may delete $u$ from $D(x)$ when the checker's BFS
+certifies the absence of cross-polarity $u$-pure resolution paths. Soundness
+is \emph{full exhibition} of the reflexive resolution-path dependency
+scheme: any model can be repaired into one whose Skolem functions ignore the
+deleted dependency \cite{WimmerWimmerSchollBecker2016,
+BeyersdorffBlinkhornChewSchmidtSuda2019,BeyersdorffBlinkhornPeitl2020}. We
+transcribe the \emph{reformed models} proof of
+\cite{BeyersdorffBlinkhornChewSchmidtSuda2019}: a two-stage transformation
+copies each dependent existential's value from the $u$-flipped half-space
+unless a resolution path \emph{refuses} the copy. The Lean module carries an
+alignment table (paper Definitions 9--13, Lemmas 2 and 4, Theorem 8 $\to$
+Lean identifiers); Lemma 3 is automatic in Skolem form and Lemma 5
+unnecessary because the checker deletes one universal per step. A pleasant
+proof-engineering fact: stating the refusal conditions as propositions
+decided classically means only the \emph{completeness} direction of the BFS
+specification is needed, never its soundness direction.
+
+\subsection{A negative lesson: statement shape}\label{sec:descent}
+Our first architecture attempted a witness-descent argument: a rank function
+counting ``bad fibers'' and a restart obligation quantified over abstract
+progress candidates. The obligation was eventually shown to admit
+adversarial instances --- candidates scrambled off the deletion frontier
+carrying no usable structure --- making the final lemma provably as hard as
+the whole theorem. The descent was discarded (it is preserved in the
+repository history) in favor of the literature's construction. The lesson we
+draw: in formalization, \emph{finding the right statement} dominates proof
+effort, and an abstraction that discards the provenance of its witnesses can
+quietly convert a local lemma into the global theorem.
+
+\section{Differential validation and benchmarks}\label{sec:differential}
+We synchronized with the reference C++ checker at its latest revision and
+compared verdicts on its full test suite, our regression corpus, and
+generated instances (all scripts ship with the artifact). Results: exact
+verdict parity on all nine upstream tests --- achieving which required
+adopting one upstream semantic correction on our side (tautological input
+clauses are kept, not dropped; both parser specification lemmas were
+re-proved) --- and two previously unknown defects in the reference
+implementation, found because the machine-checked \texttt{VERIFIED} of the
+Lean checker is unimpeachable in a disagreement:
+(i) a garbage-collection bug in clause-deletion compaction that drops live
+clauses from occurrence lists (valid proofs spuriously rejected from
+${\sim}5000$ deletions; out-of-bounds crash at $20{,}000$); and
+(ii) non-termination on a proof file whose final integer list lacks its
+\texttt{0} terminator (a stream-extraction corner case: end-of-file reached
+while skipping whitespace fails in the sentry, so the C++11
+zero-on-failure rule never fires). Root-cause analyses and repro generators
+are included; fixes were communicated upstream. On performance: the verified
+(non-watched) checker processes the benchmark family in $0.1$--$24$s
+versus ${\sim}0.1$s for C++; an experimental watched-literals layer with
+partial refinement proofs ships alongside, and completing its refinement to
+the certified theorem is designated future work in the style of verified
+watched-literal SAT solving \cite{BlanchetteFleuryWeidenbach2018}.
+
+\section{Method: LLM agents under kernel ground truth}\label{sec:method}
+The development was written predominantly by large-language-model agents
+(several models, used adversarially against one another) under human
+direction. We report this not as a novelty claim but because it sharpens the
+trust question this paper answers: \emph{nothing} in the guarantee depends
+on how the proofs were produced. The kernel checks every step; the axiom
+audit bounds the ambient logic; the executable is the verified function.
+What generation quality \emph{does} affect is the statements, and there
+human and cross-model review earned its keep: an external model review
+caught that the parse-time \texttt{VERIFIED} path was initially uncovered
+(we proved it rather than scoping the claim down), and statement-level
+review caught that the naive form of that theorem --- a bare existential
+over states --- was vacuously true. Our working discipline: every claim in
+this paper names a Lean identifier; sorry/axiom audits run in CI; diffs to
+specifications get adversarial review; and counterexample modules document
+why each load-bearing invariant exists.
+
+\section{Related work}
+Verified propositional certificate checking is mature
+(LRAT \cite{CruzFilipeEtAl2017}, GRAT \cite{Lammich2017}); verified SAT
+solving with watched literals \cite{BlanchetteFleuryWeidenbach2018} informs
+our planned refinement. QBF preprocessing has QRAT
+\cite{HeuleSeidlBiere2014}; dependency schemes originate with resolution
+paths \cite{VanGelder2011,SlivovskySzeider2012}, were brought to DQBF by
+\cite{WimmerWimmerSchollBecker2016}, reinterpreted and proved fully
+exhibited in \cite{BeyersdorffBlinkhornChewSchmidtSuda2019}, and
+strengthened in \cite{BeyersdorffBlinkhornPeitl2020}. To our knowledge no
+prior proof checker for DQBF certificates — and no checker validating
+dependency-scheme reasoning — has been formally verified.
+
+\section{Conclusion}
+A DQBF proof checker now exists whose \texttt{VERIFIED} verdict is a
+theorem. The remaining gaps are stated plainly: completeness is not claimed;
+performance parity awaits the watched-literals refinement. We hope the
+artifact serves both as a trust anchor for DQBF solving (e.g., in
+competition settings) and as a case study in LLM-assisted formalization
+where the proof assistant, not the author, carries the trust.
+
+\paragraph{Artifact.} Source, proofs, audits, benchmarks, and repro
+generators: \url{https://github.com/godelclaw/dqrat-lean-checker}
+(branch \texttt{codex/wip-parser-soundness-seam}).
+
+\paragraph{Acknowledgments.} The development used Claude (Anthropic), Codex
+(OpenAI) and GPT-5.x review models; and gratefully builds on the
+DQRAT$+D^{\forall}$pure format and reference checker \cite{dqratcheck}.
+
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}
