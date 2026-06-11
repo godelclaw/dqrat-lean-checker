@@ -150,13 +150,12 @@ def readMatrixM (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) (curLit
     match tok.toInt? with
       | none   => readMatrixM declaredMaxVar toks (pos + 1) curLits
       | some 0 =>
-        let sorted := ClauseStore.sortLits curLits
-        let isTauto :=
-          (List.range (if sorted.size > 0 then sorted.size - 1 else 0)).any fun i =>
-            sorted.getD i ⟨0⟩ == (sorted.getD (i + 1) ⟨0⟩).negate
-        if !isTauto then
-          let r ← addClause sorted
-          if r.isNone then return true
+        -- Tautological clauses are kept, not dropped (upstream Mixed-EUR
+        -- item 3, dqrat-check 8b4187d): UR rejects a tautological pivot,
+        -- DQRATU reduces such clauses soundly, and dropping them would make
+        -- Del/UR/DQRATU clause lookups fail.
+        let r ← addClause (ClauseStore.sortLits curLits)
+        if r.isNone then return true
         readMatrixM declaredMaxVar toks (pos + 1) #[]
       | some lit =>
         let extVar := lit.natAbs

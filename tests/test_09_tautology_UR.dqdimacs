@@ -1,0 +1,6 @@
+c minimal tautology test: clause {1, -1, 2} is a tautology in universal 1
+c existential 2 has empty dependency set so UR on pivot 1 is admissible
+p cnf 2 1
+e 2 0
+a 1 0
+1 -1 2 0

@@ -30,6 +30,9 @@ run_case "test_03_UP_unsat" tests/test_03_UP_unsat.dqdimacs tests/test_03_UP_uns
 run_case "test_04_propositional_drat" tests/test_04_propositional_drat.dqdimacs tests/test_04_propositional_drat.dqrat "s UNKNOWN"
 run_case "test_05_ex2_BCJ14_Thm7" tests/test_05_ex2_BCJ14_Thm7.dqdimacs tests/test_05_ex2_BCJ14_Thm7.dqrat "s VERIFIED"
 run_case "test_06_fork" tests/test_06_fork.dqdimacs tests/test_06_fork.dqrat "s VERIFIED"
+run_case "test_07_del_unit" tests/test_07_del_unit.dqdimacs tests/test_07_del_unit.dqrat "s FAILED"
+run_case "test_08_del_nonunit" tests/test_08_del_nonunit.dqdimacs tests/test_08_del_nonunit.dqrat "s UNKNOWN"
+run_case "test_09_tautology_UR" tests/test_09_tautology_UR.dqdimacs tests/test_09_tautology_UR.dqrat "s UNKNOWN"
 
 run_case "repro_header_comment_contains_p_cnf" repros/header_comment_contains_p_cnf.dqdimacs repros/header_comment_contains_p_cnf.dqrat "s UNKNOWN"
 run_case "repro_maxvar_violation" repros/maxvar_violation.dqdimacs repros/maxvar_violation.dqrat "c parse error: Variable 2 exceeds maximum declared variable"

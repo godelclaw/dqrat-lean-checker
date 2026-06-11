@@ -15777,79 +15777,45 @@ private theorem readMatrixM_full_run
               have hsorted : ClauseLitsWellFormed s.formula sorted := by
                 dsimp [sorted]
                 exact ClauseLitsWellFormed.sortLits hcur
-              let isTauto :=
-                (List.range (if sorted.size > 0 then sorted.size - 1 else 0)).any fun i =>
-                  sorted.getD i ⟨0⟩ == (sorted.getD (i + 1) ⟨0⟩).negate
-              by_cases hskip : !isTauto
-              · have hskip_prop :
-                    ∀ (x : Nat),
-                      x < (if 0 < (ClauseStore.sortLits curLits).size
-                        then (ClauseStore.sortLits curLits).size - 1 else 0) →
-                        ¬(ClauseStore.sortLits curLits)[x]?.getD { x := 0 } =
-                          ((ClauseStore.sortLits curLits)[x + 1]?.getD { x := 0 }).negate := by
-                    simpa [sorted, isTauto] using hskip
-                rw [if_pos hskip_prop] at hrun
-                simp [Bind.bind, EStateM.bind] at hrun
-                have haddspec := addClause_self_full_spec sorted s ⟨hfull, hsorted⟩
-                simp only [WP.wp, PredTrans.apply, EStateM.run] at haddspec
-                cases hadd : addClause sorted s with
-                | error e s1 =>
-                    have hadd' : addClause (ClauseStore.sortLits curLits) s = .error e s1 := by
-                      simpa [sorted] using hadd
-                    rw [hadd'] at hrun
-                    simp at hrun
-                | ok r s1 =>
-                    rw [hadd] at haddspec
-                    have hadd' : addClause (ClauseStore.sortLits curLits) s = .ok r s1 := by
-                      simpa [sorted] using hadd
-                    rw [hadd'] at hrun
-                    cases hr : r with
-                    | none =>
-                        rw [hr] at hrun
-                        simp [Bind.bind, EStateM.bind, Pure.pure, EStateM.pure] at hrun
-                        rcases hrun with ⟨rfl, rfl⟩
-                        simpa [ReadMatrixFullPost, hr] using haddspec
-                    | some cref =>
-                        have hfull1 : CheckState.FullCorrect s1.formula s1.clauses s1 := by
-                          simpa [hr] using haddspec
-                        rw [hr] at hrun
-                        cases hrec : readMatrixM declaredMaxVar toks (pos + 1) #[] s1 with
-                        | error e s2 =>
-                            simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
-                            rw [hrec] at hrun
-                            simp at hrun
-                        | ok r2 s2 =>
-                            have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
-                            have hpost :=
-                              ih (pos + 1) #[] s1 r2 s2 hfull1
-                                (by intro l hl; simp at hl)
-                                hmeasure' hrec
-                            simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
-                            rw [hrec] at hrun
-                            rcases hrun with ⟨rfl, rfl⟩
-                            exact hpost
-              · have hskip_prop :
-                    ¬ ∀ (x : Nat),
-                      x < (if 0 < (ClauseStore.sortLits curLits).size
-                        then (ClauseStore.sortLits curLits).size - 1 else 0) →
-                        ¬(ClauseStore.sortLits curLits)[x]?.getD { x := 0 } =
-                          ((ClauseStore.sortLits curLits)[x + 1]?.getD { x := 0 }).negate := by
-                    simpa [sorted, isTauto] using hskip
-                rw [if_neg hskip_prop] at hrun
-                cases hrec : readMatrixM declaredMaxVar toks (pos + 1) #[] s with
-                | error e s1 =>
-                    rw [hrec] at hrun
-                    simp at hrun
-                | ok r1 s1 =>
-                    have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
-                    have hpost :=
-                      ih (pos + 1) #[] s r1 s1 hfull
-                        (by intro l hl; simp at hl)
-                        hmeasure' hrec
-                    rw [hrec] at hrun
-                    injection hrun with hres hs
-                    subst hres hs
-                    exact hpost
+              simp [Bind.bind, EStateM.bind] at hrun
+              have haddspec := addClause_self_full_spec sorted s ⟨hfull, hsorted⟩
+              simp only [WP.wp, PredTrans.apply, EStateM.run] at haddspec
+              cases hadd : addClause sorted s with
+              | error e s1 =>
+                  have hadd' : addClause (ClauseStore.sortLits curLits) s = .error e s1 := by
+                    simpa [sorted] using hadd
+                  rw [hadd'] at hrun
+                  simp at hrun
+              | ok r s1 =>
+                  rw [hadd] at haddspec
+                  have hadd' : addClause (ClauseStore.sortLits curLits) s = .ok r s1 := by
+                    simpa [sorted] using hadd
+                  rw [hadd'] at hrun
+                  cases hr : r with
+                  | none =>
+                      rw [hr] at hrun
+                      simp [Bind.bind, EStateM.bind, Pure.pure, EStateM.pure] at hrun
+                      rcases hrun with ⟨rfl, rfl⟩
+                      simpa [ReadMatrixFullPost, hr] using haddspec
+                  | some cref =>
+                      have hfull1 : CheckState.FullCorrect s1.formula s1.clauses s1 := by
+                        simpa [hr] using haddspec
+                      rw [hr] at hrun
+                      cases hrec : readMatrixM declaredMaxVar toks (pos + 1) #[] s1 with
+                      | error e s2 =>
+                          simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
+                          rw [hrec] at hrun
+                          simp at hrun
+                      | ok r2 s2 =>
+                          have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
+                          have hpost :=
+                            ih (pos + 1) #[] s1 r2 s2 hfull1
+                              (by intro l hl; simp at hl)
+                              hmeasure' hrec
+                          simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
+                          rw [hrec] at hrun
+                          rcases hrun with ⟨rfl, rfl⟩
+                          exact hpost
             · have hrun' := hrun
               rw [htok] at hrun'
               let extVar := lit.natAbs
@@ -15927,79 +15893,45 @@ private theorem readMatrixM_sound_run
               have hsorted : ClauseLitsWellFormed s.formula sorted := by
                 dsimp [sorted]
                 exact ClauseLitsWellFormed.sortLits hcur
-              let isTauto :=
-                (List.range (if sorted.size > 0 then sorted.size - 1 else 0)).any fun i =>
-                  sorted.getD i ⟨0⟩ == (sorted.getD (i + 1) ⟨0⟩).negate
-              by_cases hskip : !isTauto
-              · have hskip_prop :
-                    ∀ (x : Nat),
-                      x < (if 0 < (ClauseStore.sortLits curLits).size
-                        then (ClauseStore.sortLits curLits).size - 1 else 0) →
-                        ¬(ClauseStore.sortLits curLits)[x]?.getD { x := 0 } =
-                          ((ClauseStore.sortLits curLits)[x + 1]?.getD { x := 0 }).negate := by
-                    simpa [sorted, isTauto] using hskip
-                rw [if_pos hskip_prop] at hrun
-                simp [Bind.bind, EStateM.bind] at hrun
-                have haddspec := addClause_self_spec sorted s ⟨hcorr, hsorted⟩
-                simp only [WP.wp, PredTrans.apply, EStateM.run] at haddspec
-                cases hadd : addClause sorted s with
-                | error e s1 =>
-                    have hadd' : addClause (ClauseStore.sortLits curLits) s = .error e s1 := by
-                      simpa [sorted] using hadd
-                    rw [hadd'] at hrun
-                    simp at hrun
-                | ok r s1 =>
-                    rw [hadd] at haddspec
-                    have hadd' : addClause (ClauseStore.sortLits curLits) s = .ok r s1 := by
-                      simpa [sorted] using hadd
-                    rw [hadd'] at hrun
-                    cases hr : r with
-                    | none =>
-                        rw [hr] at hrun
-                        simp [Bind.bind, EStateM.bind, Pure.pure, EStateM.pure] at hrun
-                        rcases hrun with ⟨rfl, rfl⟩
-                        simpa [ReadMatrixPost, hr] using haddspec
-                    | some cref =>
-                        have hcorr1 : CheckState.Correct s1.formula s1.clauses s1 := by
-                          simpa [hr] using haddspec
-                        rw [hr] at hrun
-                        cases hrec : readMatrixM declaredMaxVar toks (pos + 1) #[] s1 with
-                        | error e s2 =>
-                            simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
-                            rw [hrec] at hrun
-                            simp at hrun
-                        | ok r2 s2 =>
-                            have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
-                            have hpost :=
-                              ih (pos + 1) #[] s1 r2 s2 hcorr1
-                                (by intro l hl; simp at hl)
-                                hmeasure' hrec
-                            simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
-                            rw [hrec] at hrun
-                            rcases hrun with ⟨rfl, rfl⟩
-                            exact hpost
-              · have hskip_prop :
-                    ¬ ∀ (x : Nat),
-                      x < (if 0 < (ClauseStore.sortLits curLits).size
-                        then (ClauseStore.sortLits curLits).size - 1 else 0) →
-                        ¬(ClauseStore.sortLits curLits)[x]?.getD { x := 0 } =
-                          ((ClauseStore.sortLits curLits)[x + 1]?.getD { x := 0 }).negate := by
-                    simpa [sorted, isTauto] using hskip
-                rw [if_neg hskip_prop] at hrun
-                cases hrec : readMatrixM declaredMaxVar toks (pos + 1) #[] s with
-                | error e s1 =>
-                    rw [hrec] at hrun
-                    simp at hrun
-                | ok r1 s1 =>
-                    have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
-                    have hpost :=
-                      ih (pos + 1) #[] s r1 s1 hcorr
-                        (by intro l hl; simp at hl)
-                        hmeasure' hrec
-                    rw [hrec] at hrun
-                    injection hrun with hres hs
-                    subst hres hs
-                    exact hpost
+              simp [Bind.bind, EStateM.bind] at hrun
+              have haddspec := addClause_self_spec sorted s ⟨hcorr, hsorted⟩
+              simp only [WP.wp, PredTrans.apply, EStateM.run] at haddspec
+              cases hadd : addClause sorted s with
+              | error e s1 =>
+                  have hadd' : addClause (ClauseStore.sortLits curLits) s = .error e s1 := by
+                    simpa [sorted] using hadd
+                  rw [hadd'] at hrun
+                  simp at hrun
+              | ok r s1 =>
+                  rw [hadd] at haddspec
+                  have hadd' : addClause (ClauseStore.sortLits curLits) s = .ok r s1 := by
+                    simpa [sorted] using hadd
+                  rw [hadd'] at hrun
+                  cases hr : r with
+                  | none =>
+                      rw [hr] at hrun
+                      simp [Bind.bind, EStateM.bind, Pure.pure, EStateM.pure] at hrun
+                      rcases hrun with ⟨rfl, rfl⟩
+                      simpa [ReadMatrixPost, hr] using haddspec
+                  | some cref =>
+                      have hcorr1 : CheckState.Correct s1.formula s1.clauses s1 := by
+                        simpa [hr] using haddspec
+                      rw [hr] at hrun
+                      cases hrec : readMatrixM declaredMaxVar toks (pos + 1) #[] s1 with
+                      | error e s2 =>
+                          simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
+                          rw [hrec] at hrun
+                          simp at hrun
+                      | ok r2 s2 =>
+                          have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
+                          have hpost :=
+                            ih (pos + 1) #[] s1 r2 s2 hcorr1
+                              (by intro l hl; simp at hl)
+                              hmeasure' hrec
+                          simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
+                          rw [hrec] at hrun
+                          rcases hrun with ⟨rfl, rfl⟩
+                          exact hpost
             · have hrun' := hrun
               rw [htok] at hrun'
               let extVar := lit.natAbs
