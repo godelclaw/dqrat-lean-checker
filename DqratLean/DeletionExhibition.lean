@@ -48,8 +48,8 @@ open Std.Do
 def pinUniv (on_ : Var) (c : Bool) (σ : UnivAssignment) : UnivAssignment :=
   fun w => if w == on_ then c else σ w
 
-/-- `pinUniv_flipUniv` states `(on_ : Var) (c : Bool) (σ : UnivAssignment) : pinUniv on_ c (flipUniv
-    on_ σ) = pinUniv on_ c σ`. -/
+/-- Pinning the `on_`-coordinate overwrites a preceding flip there: pinning after flipping `on_`
+    yields the same assignment as pinning directly. -/
 theorem pinUniv_flipUniv (on_ : Var) (c : Bool) (σ : UnivAssignment) :
     pinUniv on_ c (flipUniv on_ σ) = pinUniv on_ c σ := by
   funext w
@@ -57,8 +57,7 @@ theorem pinUniv_flipUniv (on_ : Var) (c : Bool) (σ : UnivAssignment) :
   · simp [pinUniv, h]
   · simp [pinUniv, flipUniv, h]
 
-/-- `pinUniv_eq_self_of_eq` states `{on_ : Var} {c : Bool} {σ : UnivAssignment} (hσ : σ on_ = c) :
-    pinUniv on_ c σ = σ`. -/
+/-- Pinning `on_` to the value `σ` already assigns it is the identity. -/
 theorem pinUniv_eq_self_of_eq {on_ : Var} {c : Bool} {σ : UnivAssignment}
     (hσ : σ on_ = c) : pinUniv on_ c σ = σ := by
   funext w
@@ -67,8 +66,7 @@ theorem pinUniv_eq_self_of_eq {on_ : Var} {c : Bool} {σ : UnivAssignment}
     simp [pinUniv, this, hσ]
   · simp [pinUniv, h]
 
-/-- `flipUniv_eq_pinUniv_of_eq` states `{on_ : Var} {b : Bool} {σ : UnivAssignment} (hσ : σ on_ = b)
-    : flipUniv on_ σ = pinUniv on_ (!b) σ`. -/
+/-- If `σ` assigns `b` to `on_`, then flipping `on_` is the same as pinning it to `!b`. -/
 theorem flipUniv_eq_pinUniv_of_eq {on_ : Var} {b : Bool} {σ : UnivAssignment}
     (hσ : σ on_ = b) : flipUniv on_ σ = pinUniv on_ (!b) σ := by
   funext w
@@ -84,8 +82,8 @@ def pinDepArgs (f : DQBF) (v on_ : Var) (c : Bool) (args : Array Bool) :
     Array Bool :=
   (f.depset.getD v #[]).zipWith (fun u a => if u == on_ then c else a) args
 
-/-- `fullDepArgs_pinUniv` states `(f : DQBF) (v on_ : Var) (c : Bool) (σ : UnivAssignment) :
-    fullDepArgs f v (pinUniv on_ c σ) = pinDepArgs f v on_ c (fullDepArgs f v σ)`. -/
+/-- Pinning commutes with building dependency vectors: the dependency vector of `v` under the
+    pinned assignment is the `pinDepArgs`-pinned dependency vector of `v` under `σ`. -/
 theorem fullDepArgs_pinUniv (f : DQBF) (v on_ : Var) (c : Bool)
     (σ : UnivAssignment) :
     fullDepArgs f v (pinUniv on_ c σ) =
@@ -185,9 +183,8 @@ noncomputable def reformSkolem (st : CheckState) (on_ : Var)
 ## Evaluation rules for the reform (the computational content of Def. 12)
 -/
 
-/-- `varValue_reformLeft_of_not_contains` states `(st : CheckState) (on_ : Var) (sk :
-    SkolemAssignment) (σ : UnivAssignment) {z : Var} (hnc : (st.formula.depset.getD z #[]).contains
-    on_ = false) : st.formula.varValue σ (reformLeft st on_ sk) z = st.formula.varValue σ sk z`. -/
+/-- A variable whose dependency set does not contain `on_` is untouched by the left reform: its
+    value agrees with the original Skolem assignment under every `σ`. -/
 theorem varValue_reformLeft_of_not_contains
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     (σ : UnivAssignment) {z : Var}
@@ -204,9 +201,8 @@ theorem varValue_reformLeft_of_not_contains
     rw [DQBF.varValue, DQBF.varValue, hexi']
     simp
 
-/-- `varValue_reformLeft_of_on_true` states `(st : CheckState) (on_ : Var) (sk : SkolemAssignment)
-    {σ : UnivAssignment} {z : Var} (hσ : σ on_ = true) : st.formula.varValue σ (reformLeft st on_
-    sk) z = st.formula.varValue σ sk z`. -/
+/-- On the `σ on_ = true` half-space (the side the left reform copies from), the left reform
+    changes no variable's value. -/
 theorem varValue_reformLeft_of_on_true
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     {σ : UnivAssignment} {z : Var}
@@ -295,9 +291,8 @@ theorem varValue_reformLeft_reformed
   unfold reformLeft
   rw [if_neg (by rw [hcont]; simp), if_neg hnotpin, if_neg hno]
 
-/-- `varValue_reformRight_of_not_contains` states `(st : CheckState) (on_ : Var) (sk :
-    SkolemAssignment) (σ : UnivAssignment) {z : Var} (hnc : (st.formula.depset.getD z #[]).contains
-    on_ = false) : st.formula.varValue σ (reformRight st on_ sk) z = st.formula.varValue σ sk z`. -/
+/-- A variable whose dependency set does not contain `on_` is untouched by the right reform: its
+    value agrees with the original Skolem assignment under every `σ`. -/
 theorem varValue_reformRight_of_not_contains
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     (σ : UnivAssignment) {z : Var}
@@ -314,9 +309,8 @@ theorem varValue_reformRight_of_not_contains
     rw [DQBF.varValue, DQBF.varValue, hexi']
     simp
 
-/-- `varValue_reformRight_of_on_false` states `(st : CheckState) (on_ : Var) (sk : SkolemAssignment)
-    {σ : UnivAssignment} {z : Var} (hσ : σ on_ = false) : st.formula.varValue σ (reformRight st on_
-    sk) z = st.formula.varValue σ sk z`. -/
+/-- On the `σ on_ = false` half-space (the side the right reform copies from), the right reform
+    changes no variable's value. -/
 theorem varValue_reformRight_of_on_false
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     {σ : UnivAssignment} {z : Var}
@@ -341,11 +335,8 @@ theorem varValue_reformRight_of_on_false
     rw [DQBF.varValue, DQBF.varValue, hexi']
     simp
 
-/-- `varValue_reformRight_refused` states `(st : CheckState) (on_ : Var) (sk : SkolemAssignment) {σ
-    : UnivAssignment} {z : Var} (hexi : st.formula.isVarExistential z = true) (hcont :
-    (st.formula.depset.getD z #[]).contains on_ = true) (hσ : σ on_ = true) (hpath : DeletePurePath
-    st on_ (mkLit on_ false) (mkLit z (!(st.formula.varValue (flipUniv on_ σ) sk z)))) :
-    st.formula.varValue σ (reformRight st on_ sk) z = st.formula.varValue σ sk z`. -/
+/-- Right half-space (`σ on_ = true`), refusal triggered (paper: `(¬l, ¬l′) ∈ C_Φ` with `l = u`):
+    the reform keeps the original value. -/
 theorem varValue_reformRight_refused
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     {σ : UnivAssignment} {z : Var}
@@ -376,11 +367,8 @@ theorem varValue_reformRight_refused
   unfold reformRight
   rw [if_neg (by rw [hcont]; simp), if_neg hnotpin, if_pos hpath]
 
-/-- `varValue_reformRight_reformed` states `(st : CheckState) (on_ : Var) (sk : SkolemAssignment) {σ
-    : UnivAssignment} {z : Var} (hexi : st.formula.isVarExistential z = true) (hcont :
-    (st.formula.depset.getD z #[]).contains on_ = true) (hσ : σ on_ = true) (hno : ¬ DeletePurePath
-    st on_ (mkLit on_ false) (mkLit z (!(st.formula.varValue (flipUniv on_ σ) sk z)))) :
-    st.formula.varValue σ (reformRight st on_ sk) z = st.formula.varValue (flipUniv on_ σ) sk z`. -/
+/-- Right half-space (`σ on_ = true`), reform performed (paper: `(¬l, ¬l′) ∉ C_Φ` with `l = u`):
+    the value is copied from the complementary path. -/
 theorem varValue_reformRight_reformed
     (st : CheckState) (on_ : Var) (sk : SkolemAssignment)
     {σ : UnivAssignment} {z : Var}
@@ -503,11 +491,9 @@ private theorem reformLeft_disagree_inv
     rw [DQBF.varValue, DQBF.varValue, hexi']
     simp
 
-/-- `reformLeft_matrix_true` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {on_ : Var}
-    (hfull : CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ :
-    st.formula.isVarExistential on_ = false) {sk : SkolemAssignment} (hall : ∀ σ,
-    st.clauses.matrixValue st.formula σ sk = true) : ∀ σ, st.clauses.matrixValue st.formula σ
-    (reformLeft st on_ sk) = true`. -/
+/-- Paper Lemma 2, left case: in a fully correct state with `on_` a universal variable in range,
+    if a Skolem assignment satisfies the matrix under every universal assignment, then so does its
+    left reform on `on_`. -/
 theorem reformLeft_matrix_true
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -746,11 +732,9 @@ private theorem reformRight_disagree_inv
     rw [DQBF.varValue, DQBF.varValue, hexi']
     simp
 
-/-- `reformRight_matrix_true` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {on_ : Var}
-    (hfull : CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤ st.formula.maxVar) (hon_univ :
-    st.formula.isVarExistential on_ = false) {sk : SkolemAssignment} (hall : ∀ σ,
-    st.clauses.matrixValue st.formula σ sk = true) : ∀ σ, st.clauses.matrixValue st.formula σ
-    (reformRight st on_ sk) = true`. -/
+/-- Paper Lemma 2, right case: in a fully correct state with `on_` a universal variable in range,
+    if a Skolem assignment satisfies the matrix under every universal assignment, then so does its
+    right reform on `on_`. -/
 theorem reformRight_matrix_true
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {on_ : Var}
     (hfull : CheckState.FullCorrect dqbf cs st)
@@ -1044,13 +1028,10 @@ private theorem reformSkolem_flip_eq_of_on_false
         hexi_of hcont_of hσf hR
     rw [hLHS, hQ, hff]
 
-/-- `reformSkolem_exhibits_mem` states `{dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {vars :
-    Array Var} {on_ : Var} (hfull : CheckState.FullCorrect dqbf cs st) (hon_le : on_ ≤
-    st.formula.maxVar) (hon_univ : st.formula.isVarExistential on_ = false) (hexi : ∀ of_ ∈
-    vars.toList, st.formula.isVarExistential of_ = true) (hcontains : ∀ of_ ∈ vars.toList,
-    (st.formula.depset.getD of_ #[]).contains on_ = true) (hpaths : NoDeleteCrossPathsSet st vars
-    on_) (sk : SkolemAssignment) : ExhibitsDeleteIndependenceSet st.formula vars on_ (reformSkolem
-    st on_ sk)`. -/
+/-- Paper Lemma 4: in a fully correct state, if every variable of `vars` is existential with `on_`
+    (universal, in range) in its dependency set and the checker certificate `NoDeleteCrossPathsSet`
+    holds, then the two-stage reform of any Skolem assignment exhibits deletion-independence of
+    every variable in `vars` from `on_`. -/
 theorem reformSkolem_exhibits_mem
     {dqbf : DQBF} {cs : ClauseStore} {st : CheckState}
     {vars : Array Var} {on_ : Var}
