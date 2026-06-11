@@ -4,6 +4,10 @@ import DqratLean.ClauseStore
 import Std.Tactic.Do
 open Std.Do
 
+-- `mvcgen` is the intended proof style here; suppress its upstream blanket
+-- experimental warning rather than rewriting stable proof scripts.
+set_option mvcgen.warning false
+
 -- Combined checker state
 structure CheckState where
   formula    : DQBF
@@ -81,7 +85,7 @@ theorem enqueue_measure_spec (l : Literal) (m : Nat) :
   mvcgen [enqueue]
   -- rename_i goes oldest→newest; positions: 1=state, 2=measure, 3=var,
   -- 4-6=do_jp/guard/do_jp, 7=bounds_check, 8=do_jp, 9=assigned_check, 10-11=let-bindings
-  rename_i s hm v _ _ _ s0 _ hv _ _
+  rename_i s _ v _ _ _ s0 _ hv _ _
   -- s : CheckState, hm : measure, v : Var := l.var
   -- s0 : ¬(v - 1 ≥ s.isAssigned.size), hv : ¬isAssigned.getD (v-1) false = true
   have hlt := Nat.lt_of_not_le s0
@@ -156,7 +160,7 @@ where
     else
       let l  := st.propQueue.getD (st.propQueue.size - 1) ⟨0⟩
       let s₁ := { st with propQueue := st.propQueue.pop }
-      match hm : (propagateOne l) s₁ with
+      match _hm : (propagateOne l) s₁ with
       | .error e s => .error e s
       | .ok (some c) s => .ok (some c) s
       | .ok none s => aux s
@@ -172,7 +176,7 @@ where
       have hspec := propagateOne_measure_spec l (s₁.propQueue.size + s₁.isAssigned.count false)
       specialize hspec s₁ rfl
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
-      rw [hm] at hspec
+      rw [_hm] at hspec
       exact hspec
     -- s₁ = st with propQueue popped: s₁.propQueue.size = st.propQueue.size - 1
     have hpop : s₁.propQueue.size = st.propQueue.size - 1 := by

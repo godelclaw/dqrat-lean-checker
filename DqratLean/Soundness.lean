@@ -3,6 +3,12 @@ import DqratLean.DeletionExhibition
 import DqratLean.Parser
 open Std.Do
 
+-- This file keeps explicit `simp` argument lists and `simpa` steps in a few
+-- proof-heavy regions to stabilize long tactic scripts across Lean releases.
+set_option linter.unusedSimpArgs false
+set_option linter.unnecessarySimpa false
+set_option mvcgen.warning false
+
 /-!
 # Soundness of DQRAT Checker Rules
 
@@ -24,7 +30,7 @@ A DQRAT refutation demonstrates that a formula Ψ is false by:
 - Section 7: Overall checker soundness wrappers (fully proved:
   `checkAction_sound`, `processProof_sound'`, `parseDQDIMACS_none_sound`)
 
-The development is sorry-free; the dependency-deletion semantic theorem
+The development is complete; the dependency-deletion semantic theorem
 lives in `DqratLean/DeletionExhibition.lean`.
 -/
 
@@ -5298,6 +5304,7 @@ theorem CheckState.Correct.withForceDelDepReset
         propQueue := #[]
         indepKnown := st.indepKnown.setIfInBounds (on_ - 1) false
         indepOf := st.indepOf.setIfInBounds (on_ - 1) #[] } := by
+  let _ := hon
   let st₁ : CheckState :=
     { st with
       formula := st.formula.forceDelDep of_ on_
@@ -5829,6 +5836,7 @@ theorem unit_lit_model_true
         !st.isAssigned.getD (v - 1) false))
     (hsize1 : unassigned.size = 1) :
     f.litValue σ sk (unassigned.getD 0 ⟨0⟩) = true := by
+  let _ := hcs
   simp only [DQBF.clauseValue, Array.any_eq_true] at hclause_val
   obtain ⟨i, hi, hl_true⟩ := hclause_val
   have hmem_tl := Array.mem_toList_iff.mpr (Array.getElem_mem hi)
@@ -9095,7 +9103,7 @@ private def AddUniversalAccOk (lineNum : Nat)
 private theorem checkAddUniversalStep_shape_spec
     (lineNum : Nat) (cv : Int)
     (r : MProd (Option (Option ProofResult)) PUnit) :
-    ⦃fun s => ⌜AddUniversalAccOk lineNum r⌝⦄
+    ⦃fun _ => ⌜AddUniversalAccOk lineNum r⌝⦄
     (checkAddUniversalStep lineNum cv r)
     ⦃⇓ a _ => ⌜match a with
       | ForInStep.yield r' => AddUniversalAccOk lineNum r'
@@ -9122,7 +9130,7 @@ private theorem checkAddUniversalStep_shape_spec
 
 private theorem checkAddUniversalLoop_shape_spec
     (lineNum : Nat) (extVars : List Int) :
-    ⦃fun s => ⌜True⌝⦄
+    ⦃fun _ => ⌜True⌝⦄
     (forIn extVars (MProd.mk (none : Option (Option ProofResult)) PUnit.unit)
       (checkAddUniversalStep lineNum) :
       CheckM (MProd (Option (Option ProofResult)) PUnit))
@@ -14032,6 +14040,7 @@ private theorem runDQRATEPivotPhase_true_gives_exec_condition
           (dqrateResolvent s.formula lits blockerLits pivot))
     (hrun : runDQRATEPivotPhase pivot s = .ok (true, none) s') :
     DQRATE_exec_Condition s.formula s.clauses lits pivot := by
+  let _ := hlits
   have hget : (get : CheckM CheckState) = EStateM.get := rfl
   let occPivot := s.clauses.getOcc pivot.negate
   have hrun' :
@@ -14837,6 +14846,7 @@ theorem CheckState.ConsistentWith.of_addClause_lits
     (hcon : CheckState.ConsistentWith f cs σ sk st) :
     CheckState.ConsistentWith f (cs.addClause lits).1 σ sk
       { st with clauses := (cs.addClause lits).1 } := by
+  let _ := hclause
   refine ⟨?_, hcon.formula_eq, rfl, hwf, hcon.assigned_model, hcon.queue_model⟩
   exact { isAssigned_size := hcon.toSound.isAssigned_size, value_size := hcon.toSound.value_size,
           indepKnown_size := hcon.toSound.indepKnown_size, indepOf_size := hcon.toSound.indepOf_size,
@@ -16646,6 +16656,7 @@ private theorem runNegateTrial_post_of_trial
     (hback_run : backtrackBefore 1 s₁ = .ok () s₂) :
     CheckState.Correct dqbf cs s₂ ∧
       ClauseLitsWellFormed s₂.formula lits := by
+  let _ := which
   have hback := backtrackBefore_trial_correct_spec dqbf cs s
   specialize hback s₁ ⟨hcorr, htrial⟩
   simp only [WP.wp, PredTrans.apply, EStateM.run] at hback

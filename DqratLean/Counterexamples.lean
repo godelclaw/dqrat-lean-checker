@@ -279,7 +279,7 @@ theorem dqrateBridge_not_exec_condition :
       hraw rfl hblocker
   have hres_true := hsem dqrateBridgeSk dqrateBridgeSigma dqrateBridgeMatrixTrue
   rw [dqrateBridgeResolvent_eq] at hres_true
-  simpa [dqrateBridgeResolventFalse] using hres_true
+  simp [dqrateBridgeResolventFalse] at hres_true
 
 /-- One universal `u`, two existentials `y, x`, both depending on `u`. -/
 def deleteBridgeFormula : DQBF := {

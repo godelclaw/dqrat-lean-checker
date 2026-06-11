@@ -212,8 +212,8 @@ theorem fullDepArgs_flipUniv_eq_of_agreeOnDeleteDeps
       cases h₁ : σ₁ on_ <;> cases h₂ : σ₂ on_
       · exfalso
         exact hneq (by simp [h₁, h₂])
-      · simp [h₁, h₂]
-      · simp [h₁, h₂]
+      · simp
+      · simp
       · exfalso
         exact hneq (by simp [h₁, h₂])
     calc
@@ -366,7 +366,7 @@ theorem fullDepArgs_eq_implies_on_eq_of_contains
     congrArg (fun a => a.getD i false) hfull
   rw [← Array.getElem_eq_getD (h := hi₁),
       ← Array.getElem_eq_getD (h := hi₂)] at hget
-  simp only [fullDepArgs, Array.getElem_map, hi] at hget
+  simp only [fullDepArgs, Array.getElem_map] at hget
   calc
     σ on_ = σ ((f.depset.getD of_ #[])[i]) := by rw [hi_on]
     _ = σ₀ ((f.depset.getD of_ #[])[i]) := hget
@@ -432,7 +432,7 @@ theorem projectDeleteArgs_of_map
     (deps : Array Var) (on_ : Var) (σ : UnivAssignment) :
     projectDeleteArgs deps on_ (deps.map σ) = (deps.filter (· ≠ on_)).map σ := by
   apply Array.ext'
-  simp [projectDeleteArgs, Array.toList_map, Array.toList_filter]
+  simp [projectDeleteArgs, Array.toList_map]
   induction deps.toList with
   | nil =>
       simp
@@ -470,7 +470,7 @@ def liftForceDelDepsWitness
 theorem array_filter_ne_idem (xs : Array Var) (on_ : Var) :
     (xs.filter (· ≠ on_)).filter (· ≠ on_) = xs.filter (· ≠ on_) := by
   apply Array.ext'
-  simp [Array.toList_filter, List.filter_filter]
+  simp
 
 theorem forceDelDep_depset_getD_self
     (f : DQBF) (of_ on_ : Var) :
@@ -596,9 +596,9 @@ theorem matrixValue_liftForceDelDepsWitness
   intro i
   cases hclause : cs.getClause (i + 1) with
   | none =>
-      simp [hclause]
+      simp
   | some c =>
-      simp [hclause, clauseValue_liftForceDelDepsWitness f vars on_ σ sk c.lits]
+      simp [clauseValue_liftForceDelDepsWitness f vars on_ σ sk c.lits]
 
 theorem exhibitsDeleteIndependenceSet_liftForceDelDepsWitness
     (f : DQBF) (vars : Array Var) (on_ : Var) (sk : SkolemAssignment)
@@ -813,9 +813,9 @@ theorem matrixValue_projectForceDelDepsWitness
   intro i
   cases hclause : cs.getClause (i + 1) with
   | none =>
-      simp [hclause]
+      simp
   | some c =>
-      simp [hclause, clauseValue_projectForceDelDepsWitness f vars on_ σ sk hexhibit c.lits]
+      simp [clauseValue_projectForceDelDepsWitness f vars on_ σ sk hexhibit c.lits]
 
 theorem DQBFTrue_forceDelDeps_of_setBridge
     {st : CheckState} {vars : Array Var} {on_ : Var}
@@ -864,7 +864,7 @@ theorem varValue_forceDelDeps_filter_existential_eq
         intro hmem_exi
         exact hmem (Array.mem_toList_iff.mpr (Array.mem_filter.mp
           (Array.mem_toList_iff.mp hmem_exi)).1)
-      simp [DQBF.exiValue, hdeps_all, hdeps_exi, hmem, hnot_mem_exi, hex]
+      simp [DQBF.exiValue, hdeps_all, hdeps_exi, hmem, hex]
   · have hex_all : (forceDelDeps f vars on_).isVarExistential v = false := by
       simpa [forceDelDeps_isVarExistential] using hex
     have hex_exi :
@@ -902,9 +902,9 @@ theorem matrixValue_forceDelDeps_filter_existential_eq
   intro i
   cases hclause : cs.getClause (i + 1) with
   | none =>
-      simp [hclause]
+      simp
   | some c =>
-      simp [hclause, clauseValue_forceDelDeps_filter_existential_eq
+      simp [clauseValue_forceDelDeps_filter_existential_eq
         f vars on_ σ sk c.lits]
 
 theorem DQBFTrue_forceDelDeps_filter_existential_iff

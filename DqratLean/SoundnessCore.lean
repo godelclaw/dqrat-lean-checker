@@ -166,7 +166,7 @@ theorem CheckState.empty_correct :
   · intro cref c hget l hl
     by_cases hzero : cref = CRef_Undef
     · have : False := by
-        simpa [CheckState.empty, ClauseStore.getClause, CRef_Undef, hzero] using hget
+        simp [ClauseStore.getClause, CRef_Undef, hzero] at hget
       exact this.elim
     · have : False := by
         have hne0 : cref ≠ 0 := by
@@ -174,7 +174,7 @@ theorem CheckState.empty_correct :
         have hnone :
             (if cref = 0 then some Clause.dummy else none) = none := by
           simp [hne0]
-        simp [CheckState.empty, ClauseStore.getClause, ClauseStore.getClauseAt, CRef_Undef, hzero,
+        simp [CheckState.empty, ClauseStore.getClause, ClauseStore.getClauseAt, CRef_Undef,
           hnone] at hget
       exact this.elim
   · intro v hpos hassign sk σ hmat
@@ -230,7 +230,7 @@ theorem getClauseRaw_deleted_of_getClause
   unfold ClauseStore.getClause at hget
   cases hraw : cs.getClauseAt cref with
   | none =>
-      simp [ClauseStore.getClauseRaw, hne, hraw] at hget
+      simp [hne, hraw] at hget
   | some c' =>
       have hget' : c'.deleted = false ∧ c' = c := by
         simpa [ClauseStore.getClauseRaw, hne, hraw] using hget
@@ -254,4 +254,4 @@ theorem getClause_of_getClauseRaw_not_deleted
       have hc : c' = c := by
         simpa [hne, hgetAt] using hraw
       subst hc
-      simp [ClauseStore.getClause, ClauseStore.getClauseRaw, hne, hgetAt, hdeleted]
+      simp [ClauseStore.getClause, hne, hgetAt, hdeleted]

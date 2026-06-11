@@ -36,7 +36,7 @@ appropriate `on_`-literal — stated as a `Prop` and decided classically, so
 only the (already proved) *completeness* direction of the `getReachable`
 BFS specification is ever needed, never its soundness direction.
 
-All lemmas in this module are proved; the development is sorry-free.
+All lemmas in this module are proved; the development is complete.
 (`lake build DqratLean.DeletionExhibition` rebuilds only this leaf.)
 -/
 
@@ -58,7 +58,7 @@ theorem pinUniv_eq_self_of_eq {on_ : Var} {c : Bool} {σ : UnivAssignment}
   funext w
   by_cases h : w == on_
   · have : w = on_ := by simpa using h
-    simp [pinUniv, h, this, hσ]
+    simp [pinUniv, this, hσ]
   · simp [pinUniv, h]
 
 theorem flipUniv_eq_pinUniv_of_eq {on_ : Var} {b : Bool} {σ : UnivAssignment}
@@ -66,7 +66,7 @@ theorem flipUniv_eq_pinUniv_of_eq {on_ : Var} {b : Bool} {σ : UnivAssignment}
   funext w
   by_cases h : w == on_
   · have hw : w = on_ := by simpa using h
-    simp [flipUniv, pinUniv, h, hw, hσ]
+    simp [flipUniv, pinUniv, hw, hσ]
   · simp [flipUniv, pinUniv, h]
 
 /-- Dep-vector analogue of `pinUniv`: overwrite every coordinate of `args`
@@ -479,6 +479,8 @@ theorem reformLeft_matrix_true
     {sk : SkolemAssignment}
     (hall : ∀ σ, st.clauses.matrixValue st.formula σ sk = true) :
     ∀ σ, st.clauses.matrixValue st.formula σ (reformLeft st on_ sk) = true := by
+  let _ := hfull
+  let _ := hon_le
   intro σ
   cases hfalse : st.clauses.matrixValue st.formula σ (reformLeft st on_ sk) with
   | true => rfl
@@ -715,6 +717,8 @@ theorem reformRight_matrix_true
     {sk : SkolemAssignment}
     (hall : ∀ σ, st.clauses.matrixValue st.formula σ sk = true) :
     ∀ σ, st.clauses.matrixValue st.formula σ (reformRight st on_ sk) = true := by
+  let _ := hfull
+  let _ := hon_le
   intro σ
   cases hfalse : st.clauses.matrixValue st.formula σ (reformRight st on_ sk) with
   | true => rfl
@@ -1055,6 +1059,7 @@ theorem deleteIndependenceSetBridge_of_noDeleteCrossPathsSet
       (st.formula.depset.getD of_ #[]).contains on_ = true)
     (hpaths : NoDeleteCrossPathsSet st vars on_) :
     DeleteIndependenceSetBridge st vars on_ := by
+  let _ := hgt
   intro htrue
   rcases htrue with ⟨sk, hall⟩
   exact ⟨reformSkolem st on_ sk,
