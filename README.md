@@ -15,13 +15,13 @@ What is already done on this branch:
 - Parser fixes and parser regressions are in place.
 - `parseDQDIMACS_correct` is proved.
 - Low-level soundness infrastructure is largely proved, including propagation, `addClause`, and UR.
-- The basic checker path is fully proved:
-  - `checkActionBasic_sound`
-  - `checkActionsBasic_sound`
-  - `processProofBasic_sound`
+- The full non-watched checker path used by `Main.lean` is theorem-backed:
+  - `parseDQDIMACS_none_sound`
+  - `checkAction_sound`
+  - `processProof_sound'`
 
 Nothing is unfinished: the soundness development is **sorry-free**.
-The axiom audit shows `processProof_sound'` depends only on `propext`,
+The audited top-level theorems depend only on `propext`,
 `Classical.choice`, and `Quot.sound`.
 
 The DQRATE seam was substantive, not just inconvenient:
@@ -37,13 +37,30 @@ reflexive resolution-path dependency scheme, formalized in
 Chew, Schmidt, Suda (JAR 2019, archived in `docs/papers/`); see
 `docs/deletion_exhibition_proof.md` for the paper-to-Lean map.
 
-The current negative-`e` frontier is subtler than "prove `notDependsOn`
-eliminates both-bad patterns for one fixed old witness." The repo now contains
-`deleteBridge...` counterexamples showing that `notDependsOn` can succeed while
-a concrete old witness, even on the two relevant universal cases, still
-requires coordinated changes beyond the deleted existential itself. So the
-remaining proof needs a richer semantic transport argument, not just a
-one-variable patch.
+Counterexample diagnostics using `native_decide` are kept outside the root
+import path. `DqratLean.Basic` does not import `DqratLean.Counterexamples`, and
+`scripts/build_and_test.sh` builds that module separately as a diagnostics step.
+
+## Watched-Literals Status
+
+This repo carries the watched-literals runtime modules (`WatchedState`,
+`WatchedChecker`, `WatchedParser`, plus cache-invariant and refinement
+lemmas up to `RuntimeRefines` in `WatchedRuntimeSoundness`) as an
+experimental layer, and builds them in CI (`scripts/build_and_test.sh`)
+together with an experimental executable `dqrat-lean-watched`
+(`WatchedMain.lean`).
+
+Status, honestly stated:
+- The watched runtime agrees with the certified checker on all 9 shared
+  test instances and on the generated benchmarks.
+- It is **not** on the certified path: there is no end-to-end watched
+  `processProof` refinement theorem yet (the per-operation cache-invariant
+  lemmas exist and are sorry-free; the propagation-loop refinement is the
+  open part). The theorem-backed CLI remains `dqrat-lean` (`Main.lean`).
+- Current measured performance does not yet beat the simple checker on
+  deletion-heavy workloads (cache maintenance dominates); see
+  `docs/benchmarks.md`. Optimization and the end-to-end refinement
+  theorem are the designated next work items.
 
 ## Repository Layout
 
@@ -65,7 +82,7 @@ Core Lean modules:
 - `DqratLean/SoundnessCore.lean`: checker-state invariant definitions (`Sound`/`Correct`/`FullCorrect`)
 - `DqratLean/DeletionSemantics.lean`: dependency-deletion semantic layer (forceDelDeps, independence bridges, flipUniv)
 - `DqratLean/DeletionPaths.lean`: resolution paths, `getReachable` BFS spec/completeness, `NoDeleteCrossPaths`
-- `DqratLean/DeletionExhibition.lean`: the single open frontier theorem (leaf module for fast iteration)
+- `DqratLean/DeletionExhibition.lean`: completed dependency-deletion exhibition theorem
 - `DqratLean/Soundness.lean`: main proof development
 - `DqratLean/Counterexamples.lean`: counterexample / bug-exploration material
 - `DqratLean/Basic.lean`: re-export module
@@ -134,10 +151,10 @@ If you want the shortest orientation path:
 
 Useful milestones inside `DqratLean/Soundness.lean`:
 - `parseDQDIMACS_correct`
+- `parseDQDIMACS_none_sound`
 - `addClause_sound_spec`
-- `checkActionBasic_sound`
-- `checkActionsBasic_sound`
-- `processProofBasic_sound`
+- `checkAction_sound`
+- `processProof_sound'`
 
 Current full-checker frontier: none — `checkAction_sound` and
 `processProof_sound'` are fully proved.
@@ -146,4 +163,5 @@ Current full-checker frontier: none — `checkAction_sound` and
 
 - This GitHub mirror is not the canonical upstream repository.
 - The file `DqratLean/Soundness.lean` is large because most of the proof work still lives in one place.
-- The authoritative proof-status check is `grep -rn sorry DqratLean/` plus a fresh `lake build`; docs and comments are kept in sync as of 2026-06-10.
+- The authoritative proof-status check is a proof-hole grep plus a fresh `lake build`.
+- The current CLI is the non-watched checker. The watched-literals modules are present as experimental runtime work, not the certified default path in this repo.

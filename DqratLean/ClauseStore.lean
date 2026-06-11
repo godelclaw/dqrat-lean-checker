@@ -340,6 +340,15 @@ theorem getClause_addClause_lt (cs : ClauseStore) (lits : Array Literal) (cref' 
   have h1 : cref' < cs.clauses.size + 1 := Nat.lt_succ_of_lt hlt
   simp only [h1, ↓reduceDIte, hlt]
 
+/-- `getClauseRaw` for existing indices is unchanged after `addClause`. -/
+theorem getClauseRaw_addClause_lt (cs : ClauseStore) (lits : Array Literal) (cref' : CRef)
+    (hlt : cref' < cs.clauses.size) :
+    (cs.addClause lits).1.getClauseRaw cref' = cs.getClauseRaw cref' := by
+  unfold getClauseRaw
+  by_cases h0 : cref' = CRef_Undef
+  · simp [h0]
+  · simp [h0, getClauseAt, addClause, hlt, Nat.lt_succ_of_lt hlt, Array.getElem_push_lt hlt]
+
 /-- getClause returning Some implies cref is in bounds. -/
 theorem getClause_some_imp_lt (cs : ClauseStore) (cref : CRef) (c : Clause)
     (h : cs.getClause cref = some c) : cref < cs.clauses.size := by
@@ -367,6 +376,15 @@ theorem getClause_addClause_new (cs : ClauseStore) (lits : Array Literal)
   have hne : cs.clauses.size ≠ CRef_Undef := Nat.pos_iff_ne_zero.mp hpos
   simp only [if_neg hne, Nat.lt_succ_self, ↓reduceDIte]
   simp [Array.getElem_push_eq]
+
+/-- `getClauseRaw` for the newly added clause at its cref (= old size). -/
+theorem getClauseRaw_addClause_new (cs : ClauseStore) (lits : Array Literal)
+    (hpos : 0 < cs.clauses.size) :
+    (cs.addClause lits).1.getClauseRaw cs.clauses.size =
+    some { lits := lits, deleted := false } := by
+  unfold getClauseRaw getClauseAt
+  have hne : cs.clauses.size ≠ CRef_Undef := Nat.pos_iff_ne_zero.mp hpos
+  simp [addClause, if_neg hne, Array.getElem_push_eq]
 
 /-- The empty clause store trivially satisfies live-occurrence completeness. -/
 theorem liveOccurrencesComplete_empty :
@@ -431,5 +449,32 @@ theorem liveOccurrencesComplete_deleteClause
     rw [getClause_deleteClause_ne cs cref cref' hne] at hget
     exact hget
   cases hca : getClauseAt cs cref <;> simpa [deleteClause, getOcc, hca] using hocc hold hmem
+
+/-- `getClauseRaw cref'` is unchanged after `deleteClause cref` when `cref' ≠ cref`. -/
+theorem getClauseRaw_deleteClause_ne (cs : ClauseStore) (cref cref' : CRef) (h : cref' ≠ cref) :
+    (cs.deleteClause cref).getClauseRaw cref' = cs.getClauseRaw cref' := by
+  unfold getClauseRaw
+  by_cases h0 : cref' = CRef_Undef
+  · simp [h0]
+  · simp only [if_neg h0]
+    simp only [deleteClause]
+    cases hca : getClauseAt cs cref with
+    | none => rfl
+    | some c =>
+        simp [getClauseAt_clauses_update_ne cs cref cref' h]
+
+/-- After `deleteClause cref`, `getClauseRaw cref` returns the clause marked deleted. -/
+theorem getClauseRaw_deleteClause_eq (cs : ClauseStore) (cref : CRef) (hsize : cref < cs.clauses.size) :
+    (cs.deleteClause cref).getClauseRaw cref =
+    (cs.getClauseRaw cref).map fun c => { c with deleted := true } := by
+  unfold getClauseRaw
+  by_cases h0 : cref = CRef_Undef
+  · simp [h0]
+  · simp only [if_neg h0]
+    have hca : getClauseAt cs cref = some cs.clauses[cref] := by
+      simp [getClauseAt, hsize]
+    rw [deleteClause, hca]
+    unfold getClauseAt
+    simp [hsize, Array.getElem_setIfInBounds hsize]
 
 end ClauseStore

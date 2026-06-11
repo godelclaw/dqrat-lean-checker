@@ -59,3 +59,21 @@ conformance, not soundness. The single conformance-relevant divergence
 found during this audit (parse-time dropping of tautological clauses,
 upstream Mixed-EUR item 3) was fixed in this repo with proofs re-checked;
 see `git log` and `docs/coverage_matrix.md`.
+
+## Watched-runtime layer (experimental, 2026-06-11)
+
+`dqrat-lean-watched` (the watched-literals runtime, NOT on the certified
+path) agrees with the certified checker on all tests and benchmarks, but is
+currently **slower** on deletion-heavy workloads — its live-occurrence and
+binary-implication cache maintenance dominates:
+
+| instance | simple (certified) | watched (experimental) |
+|---|---|---|
+| del20k | 3.8s VERIFIED | 6.5s VERIFIED |
+| del50k | 24.0s VERIFIED | 70.0s VERIFIED |
+| chain5k | 0.46s VERIFIED | 0.49s VERIFIED |
+
+Conclusion: the watched layer's value today is its proof scaffolding
+(`RuntimeRefines` and the cache invariants); making it a performance win
+requires profiling the deletion path before the end-to-end refinement
+theorem makes it the certified default.

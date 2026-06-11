@@ -32,7 +32,7 @@ Use the **lean-lsp MCP server** for all Lean interactions:
 | `DqratLean/SoundnessCore.lean` | Invariant definitions: `CheckState.Sound`/`Correct`/`FullCorrect` |
 | `DqratLean/DeletionSemantics.lean` | Deletion semantic layer: `forceDelDeps`, independence bridges, `flipUniv` |
 | `DqratLean/DeletionPaths.lean` | `DeletePurePath`, `getReachable` BFS spec, `NoDeleteCrossPaths` |
-| `DqratLean/DeletionExhibition.lean` | The single open frontier theorem (leaf) |
+| `DqratLean/DeletionExhibition.lean` | Dependency-deletion exhibition theorem (fully proved; leaf module) |
 | `DqratLean/Semantics.lean` | Formal DQBF semantics via Skolem functions: `DQBFTrue`, `DQBFFalse`, `ValidSkolem` |
 | `DqratLean/Soundness.lean` | Formal soundness proofs (complete — see status below) |
 | `DqratLean/Basic.lean` | Re-exports all submodules |
@@ -106,7 +106,7 @@ Occurrence-list based (`CheckState.propagate`). `trail[i]` holds literals assign
 
 ## Testing
 
-After any code change (not needed after just a proof update), verify that all 6 tests in `dqrat-check/test/` produce the same result as the C++ reference checker.
+After any code change (not needed after just a proof update), run `scripts/run_parser_regressions.sh` (15 cases) and `scripts/crosscheck_cpp.sh` (all 9 shared tests + repros vs the C++ reference).
 
 ```sh
 CPP=dqrat-check/build/src/dqrat-check
@@ -133,7 +133,7 @@ done
 | `test_05_ex2_BCJ14_Thm7` | `s VERIFIED` | DQBF example from BCJ14 Thm 7; UP conflict at line 23 |
 | `test_06_fork` | `s VERIFIED` | Fork example; UP conflict at line 54 |
 
-Both checkers agree on all 6 tests. Minor output differences (C++ prints a timing line; message wording differs slightly) are expected and not a concern — only the `s` verdict line matters.
+Both checkers agree on all 9 shared tests. Minor output differences (C++ prints a timing line; message wording differs slightly) are expected and not a concern — only the `s` verdict line matters.
 
 ## Building
 
@@ -146,7 +146,8 @@ Binary: `.lake/build/bin/dqrat-lean <formula.dqdimacs> <proof.dqrat>`
 
 ## Next Proof Goals (Priority Order)
 
-1. (none — the soundness development is complete; see `sound_todo.md` for follow-ups like linting and upstreaming)
+1. Watched-literals end-to-end refinement theorem (lift `processProof_sound'` to the watched runtime via `RuntimeRefines`) and watched-runtime performance work
+2. Lint pass; upstreaming to the canonical repository
 3. Formalize DQRATE soundness: show each RAT blocker contributes a contradiction
 4. Formalize DQRATU soundness: incorporate UR condition and path connectivity
 5. Assemble `processProof_sound` via induction on proof steps

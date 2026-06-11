@@ -8,3 +8,7 @@ name = "DqratLean"
 [[lean_exe]]
 name = "dqrat-lean"
 root = "Main"
+
+[[lean_exe]]
+name = "dqrat-lean-watched"
+root = "WatchedMain"

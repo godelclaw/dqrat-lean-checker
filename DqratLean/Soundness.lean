@@ -17802,7 +17802,8 @@ theorem checkUniversalReduction_full_sound (dqbf : DQBF) (cs : ClauseStore)
 /-- **Single-action soundness**:
     executable-aligned, result-dependent statement for the full checker.
 
-    The remaining blocker is the full negative-`e` `ModifyExistential` branch. -/
+    The negative-`e` `ModifyExistential` branch is discharged by the completed
+    dependency-deletion exhibition route. -/
 theorem checkAction_sound (dqbf : DQBF) (cs : ClauseStore) (action : DQRatAction) :
     ⦃fun s => ⌜CheckState.FullCorrect dqbf cs s⌝⦄
     checkAction action
