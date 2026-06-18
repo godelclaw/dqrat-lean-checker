@@ -63,26 +63,40 @@ def assigned (st : CheckState) (v : Var) : Bool :=
   v > 0 && v <= st.formula.maxVar &&
   st.isAssigned.getD (v - 1) false
 
+/-- Proof-facing state transition: start a fresh decision level. -/
+def newDecisionLevelState (st : CheckState) : CheckState :=
+  { st with trail := st.trail.push #[] }
+
 def newDecisionLevel : CheckM Unit :=
-  modify fun st => { st with trail := st.trail.push #[] }
+  modify newDecisionLevelState
+
+/--
+Proof-facing state transition: clear assignments above `level` and empty the
+propagation queue.
+-/
+def backtrackState (st : CheckState) (level : Nat) : CheckState :=
+  let rec clearLevels (tr : Array (Array Literal)) (ia : Array Bool) :
+      Array (Array Literal) × Array Bool :=
+    if tr.size <= level then (tr, ia)
+    else
+      let lvl := tr.getD (tr.size - 1) #[]
+      let ia' := lvl.foldl (fun acc l =>
+        let v := l.var
+        if v > 0 then acc.setIfInBounds (v - 1) false else acc
+      ) ia
+      clearLevels tr.pop ia'
+  termination_by tr.size
+  let (trail', isAssigned') := clearLevels st.trail st.isAssigned
+  { st with trail := trail', isAssigned := isAssigned', propQueue := #[] }
 
 def backtrackBefore (level : Nat) : CheckM Unit :=
-  modify fun st =>
-    let rec clearLevels (tr : Array (Array Literal)) (ia : Array Bool) :
-        Array (Array Literal) × Array Bool :=
-      if tr.size <= level then (tr, ia)
-      else
-        let lvl := tr.getD (tr.size - 1) #[]
-        let ia' := lvl.foldl (fun acc l =>
-          let v := l.var
-          if v > 0 then acc.setIfInBounds (v - 1) false else acc
-        ) ia
-        clearLevels tr.pop ia'
-    termination_by tr.size
-    let (trail', isAssigned') := clearLevels st.trail st.isAssigned
-    { st with trail := trail', isAssigned := isAssigned', propQueue := #[] }
+  modify fun st => backtrackState st level
 
-private def enqueueState (st : CheckState) (l : Literal) : CheckState :=
+/--
+Proof-facing state transition: enqueue an unassigned literal if its variable is
+in range; otherwise leave the state unchanged.
+-/
+def enqueueState (st : CheckState) (l : Literal) : CheckState :=
   let v := l.var
   if v = 0 || v > st.formula.maxVar then st
   else if v - 1 >= st.isAssigned.size then st
@@ -197,6 +211,50 @@ private def setBinaryImpList (l : Literal) (entries : Array BinaryImpEntry) : Ch
 def getBinaryImp (st : CheckState) (l : Literal) : Array BinaryImpEntry :=
   st.binaryImpBy.getD l.x #[]
 
+/-- Proof-facing state transition: add one clause to the store only. -/
+def addClauseStoreState (st : CheckState) (lits : Array Literal) : CheckState :=
+  { st with clauses := (st.clauses.addClause lits).1 }
+
+/-- Proof-facing cache transition: index both implication edges of a binary clause. -/
+def addBinaryClauseCache
+    (binaryImpBy : Array (Array BinaryImpEntry)) (lit0 lit1 : Literal) (cref : CRef) :
+    Array (Array BinaryImpEntry) :=
+  appendBinaryImpArray
+    (appendBinaryImpArray binaryImpBy lit0.negate { cref := cref, implied := lit1 })
+    lit1.negate { cref := cref, implied := lit0 }
+
+/--
+Add one clause and apply the proof-facing cache transition shared with the
+watched runtime lemmas.
+
+This updates the clause store, live-occurrence cache, and binary implication
+cache. Long-clause watch registration remains a separate runtime-only step.
+-/
+def addClauseCacheState (st : CheckState) (lits : Array Literal) : CheckState :=
+  let clauses' := (st.clauses.addClause lits).1
+  let cref := st.clauses.clauses.size
+  let liveOccBy' := appendClauseLiveOccArray st.liveOccBy lits cref
+  let binaryImpBy' :=
+    if lits.size = 2 then
+      addBinaryClauseCache st.binaryImpBy
+        (lits.getD 0 (mkLit 0 false)) (lits.getD 1 (mkLit 0 false)) cref
+    else
+      st.binaryImpBy
+  { st with clauses := clauses', liveOccBy := liveOccBy', binaryImpBy := binaryImpBy' }
+
+/--
+Delete one live clause and apply the proof-facing cache transition shared with
+the watched runtime lemmas.
+
+This keeps the executable delete path aligned with the current refinement work
+without changing the watched runtime's lazy watch/binary cleanup behavior.
+-/
+def deleteClauseCacheState (st : CheckState) (cref : CRef) (c : Clause) :
+    CheckState :=
+  { st with
+    clauses := st.clauses.deleteClause cref
+    liveOccBy := removeClauseLiveOccArray st.liveOccBy c.lits cref }
+
 private def clauseIsWatchedByLiteral (clause : Clause) (l : Literal) : Bool :=
   ((clause.lits.size > 0) && clause.lits.getD 0 dummyLit == l) ||
   ((clause.lits.size > 1) && clause.lits.getD 1 dummyLit == l)
@@ -281,14 +339,33 @@ def updateWatchedLiterals (cref : CRef) : CheckM (Bool × Bool) := do
       return (true, watcherChanged)
 
 /--
-Propagate binary clauses through a direct implication cache.
+Proof-facing binary propagation step for one live cached implication entry.
 
-This intentionally mirrors the standard solver split where size-2 clauses can be
-handled without entering the long-clause watched-literal path.
+The cache logic around dead-entry trimming is handled by
+`propagateBinaryImplications`; this helper isolates the semantic effect of a
+live entry on the abstract propagation state.
+-/
+def applyBinaryImpEntryState
+    (st : CheckState) (entry : BinaryImpEntry) (conflict : Option CRef) :
+    Option CRef × CheckState :=
+  if conflict.isSome then
+    (conflict, st)
+  else if satisfied st entry.implied then
+    (none, st)
+  else if satisfied st entry.implied.negate then
+    (some entry.cref, st)
+  else
+    (none, enqueueState st entry.implied)
+
+/--
+Propagate binary clauses through the direct implication cache.
+
+This intentionally mirrors the standard solver split where size-2 clauses can
+be handled without entering the long-clause watched-literal path.
 
 See `docs/watched_runtime_references.md` for source notes.
 -/
-private def propagateBinaryImplications (l : Literal) : CheckM (Option CRef) := do
+def propagateBinaryImplications (l : Literal) : CheckM (Option CRef) := do
   let st ← get
   let entries := getBinaryImp st l
   let mut kept : Array BinaryImpEntry := #[]
@@ -518,14 +595,17 @@ def addVarExists (ext : Nat) (deps : Array Var) : CheckM Var := do
     makeIndepUnknown u
   return v
 
-def resetPropagationState : CheckM Unit := do
-  let st ← get
+/-- Proof-facing state transition: clear all propagation assignments and queues. -/
+def resetPropagationStateState (st : CheckState) : CheckState :=
   let n := st.formula.maxVar
-  set { st with
+  { st with
     isAssigned := Array.replicate n false
     value      := Array.replicate n false
     trail      := #[#[]]
     propQueue  := #[] }
+
+def resetPropagationState : CheckM Unit := do
+  modify resetPropagationStateState
 
 def addDependency (of_ on_ : Var) : CheckM Unit := do
   let st ← get
@@ -592,6 +672,40 @@ def CheckState.toBase (st : CheckState) : _root_.CheckState :=
 
 theorem CheckState.toBase_empty :
     CheckState.empty.toBase = _root_.CheckState.empty := by
+  rfl
+
+theorem satisfied_toBase (st : CheckState) (l : Literal) :
+    satisfied st l = _root_.satisfied st.toBase l := by
+  rfl
+
+theorem assigned_toBase (st : CheckState) (v : Var) :
+    assigned st v = _root_.isAssigned st.toBase v := by
+  rfl
+
+theorem newDecisionLevel_run_toBase (st : CheckState) :
+    _root_.newDecisionLevel st.toBase = .ok () (newDecisionLevelState st).toBase := by
+  rfl
+
+theorem toBase_addClauseCacheState (st : CheckState) (lits : Array Literal) :
+    (addClauseCacheState st lits).toBase =
+      { st.toBase with clauses := (st.toBase.clauses.addClause lits).1 } := by
+  rfl
+
+theorem toBase_backtrackState (level : Nat) (st : CheckState) :
+    (backtrackState st level).toBase =
+      { st.toBase with
+        trail := (backtrackState st level).trail
+        isAssigned := (backtrackState st level).isAssigned
+        propQueue := #[] } := by
+  rfl
+
+theorem toBase_resetPropagationStateState (st : CheckState) :
+    (resetPropagationStateState st).toBase =
+      { st.toBase with
+        isAssigned := Array.replicate st.formula.maxVar false
+        value := Array.replicate st.formula.maxVar false
+        trail := #[#[]]
+        propQueue := #[] } := by
   rfl
 
 end DqratLean.Watched

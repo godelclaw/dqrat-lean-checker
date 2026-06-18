@@ -46,38 +46,26 @@ def RuntimeRefines (watched : CheckState) (base : _root_.CheckState) : Prop :=
   watched.toBase = base ∧ RuntimeSoundInvariant watched
 
 def addClauseRuntimeCacheState (st : CheckState) (lits : Array Literal) : CheckState :=
-  let clauses' := (st.clauses.addClause lits).1
-  let cref := st.clauses.clauses.size
-  let liveOccBy' := appendClauseLiveOccArray st.liveOccBy lits cref
-  let binaryImpBy' :=
-    if lits.size = 2 then
-      addBinaryClauseCache st.binaryImpBy
-        (lits.getD 0 (mkLit 0 false)) (lits.getD 1 (mkLit 0 false)) cref
-    else
-      st.binaryImpBy
-  { st with clauses := clauses', liveOccBy := liveOccBy', binaryImpBy := binaryImpBy' }
+  addClauseCacheState st lits
 
 def deleteClauseRuntimeCacheState (st : CheckState) (cref : CRef) (c : Clause) :
     CheckState :=
-  { st with
-    clauses := st.clauses.deleteClause cref
-    liveOccBy := removeClauseLiveOccArray st.liveOccBy c.lits cref }
+  deleteClauseCacheState st cref c
 
 theorem toBase_addClauseRuntimeCacheState
     (st : CheckState) (lits : Array Literal) :
     (addClauseRuntimeCacheState st lits).toBase =
       { st.toBase with clauses := (st.toBase.clauses.addClause lits).1 } := by
-  by_cases hbin : lits.size = 2
-  · simp [addClauseRuntimeCacheState, CheckState.toBase, hbin]
-  · simp [addClauseRuntimeCacheState, CheckState.toBase, hbin]
+  simpa [addClauseRuntimeCacheState] using toBase_addClauseCacheState st lits
 
 theorem runtimeSoundInvariant_addClauseRuntimeCacheState
     {st : CheckState} (hinv : RuntimeSoundInvariant st)
     (hpos : 0 < st.clauses.clauses.size) (lits : Array Literal) :
     RuntimeSoundInvariant (addClauseRuntimeCacheState st lits) := by
+  change RuntimeSoundInvariant (addClauseCacheState st lits)
   rcases hinv with ⟨hlive, hbinSound⟩
   constructor
-  · simpa [addClauseRuntimeCacheState, RuntimeSoundInvariant] using
+  · simpa [addClauseCacheState, RuntimeSoundInvariant] using
       liveOccInvariant_addClause hlive hpos lits
   · intro l entry hmem
     have hmem' :
@@ -88,16 +76,16 @@ theorem runtimeSoundInvariant_addClauseRuntimeCacheState
           else
             addNonbinaryClauseState st lits) l := by
       by_cases hsize : lits.size = 2
-      · simpa [addClauseRuntimeCacheState, addBinaryClauseState, getBinaryImp, hsize]
+      · simpa [addClauseCacheState, addBinaryClauseState, getBinaryImp, hsize]
           using hmem
-      · simpa [addClauseRuntimeCacheState, addNonbinaryClauseState, getBinaryImp, hsize]
+      · simpa [addClauseCacheState, addNonbinaryClauseState, getBinaryImp, hsize]
           using hmem
     rcases binaryImpSound_addClause hbinSound hpos lits hmem' with
       ⟨c, hget, hmatch⟩
     refine ⟨c, ?_, hmatch⟩
     by_cases hsize : lits.size = 2
-    · simpa [addClauseRuntimeCacheState, addBinaryClauseState, hsize] using hget
-    · simpa [addClauseRuntimeCacheState, addNonbinaryClauseState, hsize] using hget
+    · simpa [addClauseCacheState, addBinaryClauseState, hsize] using hget
+    · simpa [addClauseCacheState, addNonbinaryClauseState, hsize] using hget
 
 theorem toBase_deleteClauseRuntimeCacheState
     (st : CheckState) (cref : CRef) (c : Clause) :

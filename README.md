@@ -57,10 +57,26 @@ Status, honestly stated:
   `processProof` refinement theorem yet (the per-operation cache-invariant
   lemmas exist and are sorry-free; the propagation-loop refinement is the
   open part). The theorem-backed CLI remains `dqrat-lean` (`Main.lean`).
+- The watched add/delete actions now route their proof-relevant store/cache
+  edits through shared proof-facing transitions from `WatchedState.lean`
+  (store addition, live-occurrence indexing, binary-cache updates, clause
+  deletion), reducing the remaining code/proof mismatch to runtime-only
+  watchlist updates.
+- Phase 1 refinement work now also includes explicit proof-facing state
+  transitions for decision-level start, backtrack, enqueue, and propagation
+  reset, plus a first binary-step lemma
+  (`WatchedPropagationRefinement.applyBinaryImpEntryState_enqueue_refines`)
+  showing that one live binary cache entry's enqueue branch refines to the
+  corresponding abstract queue update.
 - Current measured performance does not yet beat the simple checker on
   deletion-heavy workloads (cache maintenance dominates); see
   `docs/benchmarks.md`. Optimization and the end-to-end refinement
   theorem are the designated next work items.
+- The repo enforces watched/base functionality parity on the shared tests
+  and repros via `scripts/crosscheck_watched.sh`; use
+  `scripts/bench_watched.sh [ratio]` to track watched/base performance
+  ratios on representative generated instances without changing the
+  certified default path.
 
 ## Repository Layout
 

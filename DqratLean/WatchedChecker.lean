@@ -41,8 +41,8 @@ def negateAndPropagate (lits : Array Literal) (which : Literal → Bool) : Check
 
 def addClauseAfterCache (lits : Array Literal) : CheckM (Option CRef) := do
   let st0 ← get
-  let (clauses', cref) := st0.clauses.addClause lits
-  set { st0 with clauses := clauses' }
+  let cref := st0.clauses.clauses.size
+  modify fun st => addClauseStoreState st lits
   addClauseLiveOccs lits cref
   if lits.isEmpty then
     return none
@@ -363,8 +363,7 @@ def checkDeleteClause (lineNum : Nat) (extLits : List Int) : CheckM (Option Proo
       match st.clauses.getClauseRaw cref with
       | none => return some (.Failed lineNum #["LOCATE", "DEL"] #[] none)
       | some clause =>
-          modify fun s => { s with clauses := s.clauses.deleteClause cref }
-          removeClauseLiveOccs clause.lits cref
+          modify fun s => deleteClauseCacheState s cref clause
       resetPropagationState
       return none
 

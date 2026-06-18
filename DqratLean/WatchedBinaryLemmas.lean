@@ -55,13 +55,6 @@ theorem mem_appendBinaryImpArray_iff
     rw [hright]
     simp [hne]
 
-def addBinaryClauseCache
-    (binaryImpBy : Array (Array BinaryImpEntry)) (lit0 lit1 : Literal) (cref : CRef) :
-    Array (Array BinaryImpEntry) :=
-  appendBinaryImpArray
-    (appendBinaryImpArray binaryImpBy lit0.negate { cref := cref, implied := lit1 })
-    lit1.negate { cref := cref, implied := lit0 }
-
 theorem mem_addBinaryClauseCache_iff
     (binaryImpBy : Array (Array BinaryImpEntry)) (lit0 lit1 target : Literal)
     (cref : CRef) (entry : BinaryImpEntry) :
