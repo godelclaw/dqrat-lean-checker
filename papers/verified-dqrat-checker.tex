@@ -16,7 +16,7 @@ arbitrarily complex provided their certificates are validated independently.
 That argument is only as strong as the checker itself. We present the first
 machine-checked soundness proof of a proof checker for \emph{dependency
 quantified Boolean formulas} (DQBF), covering the recent
-DQRAT$+D^{\forall}$pure certificate format~\cite{dqratcheck}. The proof, in
+DQRAT + $D^{\forall}$pure certificate format \cite{dqratcheck}. The proof, in
 Lean~4~\cite{MouraUllrich2021}, is stated about the literal executable: if the
 checker prints \texttt{s VERIFIED} --- on either of its two code paths --- the
 input formula is semantically false. The development is \texttt{sorry}-free
@@ -120,16 +120,20 @@ Every proof action is specified by a Hoare triple in the
 checker answers, the answer is right}; termination and completeness are
 deliberately not claimed. The two top-level theorems cover the two
 \texttt{s VERIFIED} print sites of the CLI:
-\begin{lstlisting}
-theorem processProof_sound' (content formulaContent : String) (n : Nat)
-    (st : CheckState) (hparse : parseDQDIMACS formulaContent = .ok (some st))
-    (hverify : processProof st content = .Verified n) :
-    DQBFFalse st.formula st.clauses
+\begin{quote}\small
+\noindent\texttt{processProof\_sound'} says: if parsing the formula returns a
+checker state \texttt{st} and the executable checker returns
+\texttt{.Verified n} from that state, then the parsed formula is
+semantically false.
 
-theorem parseDQDIMACS_none_sound (content : String)
-    (h : parseDQDIMACS content = .ok none) :
-    ∃ declaredMaxVar st, ... ∧ DQBFFalse st.formula st.clauses
-\end{lstlisting}
+\medskip
+\noindent\texttt{parseDQDIMACS\_none\_sound} says: if
+\texttt{parseDQDIMACS content = .ok none}, then there exist
+\texttt{declaredMaxVar} and \texttt{st} such that the header's own
+\texttt{maxVar} token yields \texttt{declaredMaxVar}, the inner parser run on
+the tokenized comment-stripped input returns \texttt{.ok true st}, and the
+resulting formula state is semantically false.
+\end{quote}
 The first assumes only the parse result and the checker verdict ---
 \texttt{FullCorrect} is derived internally from the parser correctness
 theorem, so there is no unverifiable side condition. The second covers
@@ -169,7 +173,7 @@ effort, and an abstraction that discards the provenance of its witnesses can
 quietly convert a local lemma into the global theorem.
 
 \section{Differential validation and benchmarks}\label{sec:differential}
-We synchronized with the reference C++ checker at its latest revision and
+We synchronized with the reference C++ checker at revision \texttt{d60d50e} and
 compared verdicts on its full test suite, our regression corpus, and
 generated instances (all scripts ship with the artifact). Results: exact
 verdict parity on all nine upstream tests --- achieving which required
@@ -178,6 +182,21 @@ clauses are kept, not dropped; both parser specification lemmas were
 re-proved) --- and two previously unknown defects in the reference
 implementation, found because the machine-checked \texttt{VERIFIED} of the
 Lean checker is unimpeachable in a disagreement:
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+instance & upstream C++ \texttt{d60d50e} & Lean \\
+\midrule
+upstream tests (9 cases) & exact parity & exact parity \\
+\texttt{proof\_missing\_zero} & HANG & FAILED (parse error) \\
+\texttt{del5k} & FAILED (bug) & 0.00s VERIFIED \\
+\texttt{del20k} & core dump & 3.0s VERIFIED \\
+\bottomrule
+\end{tabular}
+\caption{Compact parity/benchmark slice from the artifact's differential study.}
+\end{table}
 (i) a garbage-collection bug in clause-deletion compaction that drops live
 clauses from occurrence lists (valid proofs spuriously rejected from
 ${\sim}5000$ deletions; out-of-bounds crash at $20{,}000$); and
@@ -185,7 +204,7 @@ ${\sim}5000$ deletions; out-of-bounds crash at $20{,}000$); and
 \texttt{0} terminator (a stream-extraction corner case: end-of-file reached
 while skipping whitespace fails in the sentry, so the C++11
 zero-on-failure rule never fires). Root-cause analyses and repro generators
-are included; fixes were communicated upstream. On performance: the verified
+are included; issue-ready upstream reports are included in the artifact. On performance: the verified
 (non-watched) checker processes the benchmark family in $0.1$--$24$s
 versus ${\sim}0.1$s for C++; an experimental watched-literals layer with
 partial refinement proofs ships alongside, and completing its refinement to
@@ -232,7 +251,8 @@ where the proof assistant, not the author, carries the trust.
 
 \paragraph{Artifact.} Source, proofs, audits, benchmarks, and repro
 generators: \url{https://github.com/godelclaw/dqrat-lean-checker}
-(branch \texttt{codex/wip-parser-soundness-seam}).
+(branch \texttt{codex/wip-parser-}%
+\allowbreak\texttt{soundness-seam}).
 
 \paragraph{Acknowledgments.} The development used Claude (Anthropic), Codex
 (OpenAI) and GPT-5.x review models; and gratefully builds on the
