@@ -5288,6 +5288,72 @@ theorem negateAndPropagate_consistent_spec
     simp [satisfied_false_of_model_false h_inv.2 cur
             (hlits_false cur (Or.inr (Or.inl rfl)))] at h_sat
 
+/-- Filtered variant of `negateAndPropagate_consistent_spec`:
+    if every literal selected by `which` is model-false, the trial cannot conflict. -/
+theorem negateAndPropagate_consistent_filtered_spec
+    (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hmat : cs.matrixValue f σ sk = true)
+    (lits : Array Literal) (which : Literal → Bool)
+    (hlits_false :
+      ∀ l ∈ lits.toList, which l = true → f.litValue σ sk l = false) :
+    ⦃fun s => ⌜CheckState.ConsistentWith f cs σ sk s⌝⦄
+    (negateAndPropagate lits which : CheckM Bool)
+    ⦃⇓ r s' => ⌜CheckState.ConsistentWith f cs σ sk s' ∧ r = false⌝⦄ := by
+  mvcgen [negateAndPropagate] invariants
+  · ⇓⟨_xs, b⟩ s => ⌜b = false ∧ CheckState.ConsistentWith f cs σ sk s⌝
+    with simp_all [litValue_negate, List.mem_append, List.mem_cons]
+  case vc12.isFalse.isFalse.isFalse.isTrue =>
+    rename_i _ _ _ _ cur _ _ _ _ _ _ _ _ _ _ h_inv hwhich _ h_sat
+    have hcur_false : f.litValue σ sk cur = false :=
+      hlits_false cur (Or.inr (Or.inl rfl)) hwhich
+    simp [satisfied_false_of_model_false h_inv.2 cur hcur_false] at h_sat
+
+private theorem runDQRATEBlockerTrial_true_impossible_of_consistent
+    (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hmat : cs.matrixValue f σ sk = true)
+    (pivot : Literal) (blockerLits : Array Literal)
+    {s s' : CheckState}
+    (hcon : CheckState.ConsistentWith f cs σ sk s)
+    (hsel_false :
+      ∀ l ∈ blockerLits.toList,
+        (l ≠ pivot.negate && f.isVarOuterOfExivar l.var pivot.var) = true →
+          f.litValue σ sk l = false) :
+    runDQRATEBlockerTrial pivot f blockerLits s ≠ .ok true s' := by
+  let isouter : Literal → Bool := fun l =>
+    l ≠ pivot.negate && f.isVarOuterOfExivar l.var pivot.var
+  have hneg :=
+    negateAndPropagate_consistent_filtered_spec
+      f cs σ sk hmat blockerLits isouter
+      (by
+        intro l hl hwhich
+        simpa [isouter] using hsel_false l hl hwhich)
+  specialize hneg s hcon
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hneg
+  have hisouter :
+      (fun l => decide (l ≠ pivot.negate) && f.isVarOuterOfExivar l.var pivot.var) = isouter := by
+    funext l
+    by_cases hl : l = pivot.negate <;> simp [isouter, hl]
+  intro hrun
+  unfold runDQRATEBlockerTrial at hrun
+  rw [hisouter] at hrun
+  simp only [Bind.bind, EStateM.bind] at hrun
+  cases hneg_run : negateAndPropagate blockerLits isouter s with
+  | error e s_err =>
+      rw [hneg_run] at hneg
+      exact hneg.elim
+  | ok gotConflict s₁ =>
+      rw [hneg_run] at hneg
+      cases hgc : gotConflict with
+      | false =>
+          cases hback_run : backtrackBefore 2 s₁ with
+          | error e s_err =>
+              simp [hneg_run, hgc, hback_run] at hrun
+          | ok _ s₂ =>
+              simp [hneg_run, hgc, hback_run] at hrun
+              simp [Pure.pure, EStateM.pure] at hrun
+      | true =>
+          simp [hgc] at hneg
+
 -- ─── Main theorem ────────────────────────────────────────────────────────────
 
 /-- **RUP soundness**: if `negateAndPropagate lits (fun _ => true)` detects a conflict
@@ -5376,6 +5442,54 @@ theorem ClauseLitsWellFormed.dqrateResolvent
   exact ClauseLitsWellFormed.append
     (ClauseLitsWellFormed.filter hlits)
     (ClauseLitsWellFormed.outerClause hblocker)
+
+private theorem runDQRATEBlockerTrial_true_clauseValue_of_consistent
+    (f : DQBF) (cs : ClauseStore) (σ : UnivAssignment) (sk : SkolemAssignment)
+    (hmat : cs.matrixValue f σ sk = true)
+    (pivot : Literal) (lits blockerLits : Array Literal)
+    {s s' : CheckState}
+    (hcon : CheckState.ConsistentWith f cs σ sk s)
+    (hrun : runDQRATEBlockerTrial pivot f blockerLits s = .ok true s') :
+    f.clauseValue σ sk (dqrateResolvent f lits blockerLits pivot) = true := by
+  by_cases hres : f.clauseValue σ sk (dqrateResolvent f lits blockerLits pivot) = true
+  · exact hres
+  · have houter_false :
+        f.clauseValue σ sk (outerClause f blockerLits pivot) = false := by
+      cases houter : f.clauseValue σ sk (outerClause f blockerLits pivot) with
+      | false =>
+          exact rfl
+      | true =>
+          have houter_any :
+              (outerClause f blockerLits pivot).any (f.litValue σ sk) = true := by
+            simpa [DQBF.clauseValue] using houter
+          have hres_true :
+              f.clauseValue σ sk (dqrateResolvent f lits blockerLits pivot) = true := by
+            simp [dqrateResolvent, DQBF.clauseValue, Array.any_append, houter_any]
+          rw [hres_true] at hres
+          contradiction
+    have hsel_false :
+        ∀ l ∈ blockerLits.toList,
+          (l ≠ pivot.negate && f.isVarOuterOfExivar l.var pivot.var) = true →
+            f.litValue σ sk l = false := by
+      intro l hl hwhich
+      cases hlit : f.litValue σ sk l with
+      | false =>
+          exact rfl
+      | true =>
+          have hmemOuter : l ∈ outerClause f blockerLits pivot := by
+            apply Array.mem_filter.mpr
+            exact ⟨Array.mem_toList_iff.mp hl, hwhich⟩
+          rcases Array.mem_iff_getElem.mp hmemOuter with ⟨i, hi, hidx⟩
+          have houter_true :
+              f.clauseValue σ sk (outerClause f blockerLits pivot) = true := by
+            simp only [DQBF.clauseValue, Array.any_eq_true]
+            refine ⟨i, hi, ?_⟩
+            simpa [hidx] using hlit
+          rw [houter_true] at houter_false
+          contradiction
+    exact False.elim <|
+      (runDQRATEBlockerTrial_true_impossible_of_consistent
+        f cs σ sk hmat pivot blockerLits hcon hsel_false) hrun
 
 /-- Two universal assignments agree on the dependency set of `pivot`. -/
 private def AgreeOnPivotDeps (f : DQBF) (pivot : Literal)
@@ -5477,6 +5591,43 @@ private theorem clauseValue_outerClause_eq_of_dep_agree
 /-- Executable-aligned existential RAT condition:
     the pivot is existential and every non-deleted blocker clause selected by the
     checker yields a semantically implied resolvent clause. -/
+def FullInv (dqbf : DQBF) (cs : ClauseStore) (st : CheckState) : Prop :=
+  CheckState.Correct dqbf cs st ∧ ClauseStore.LiveOccurrencesComplete st.clauses
+
+theorem CheckState.empty_fullInv :
+    FullInv CheckState.empty.formula CheckState.empty.clauses CheckState.empty := by
+  exact ⟨CheckState.empty_correct, ClauseStore.liveOccurrencesComplete_empty⟩
+
+private theorem liveOccurrencesComplete_of_sameFC
+    {s₀ s₁ : CheckState}
+    (hocc : ClauseStore.LiveOccurrencesComplete s₀.clauses)
+    (hsame : SameFC s₀ s₁) :
+    ClauseStore.LiveOccurrencesComplete s₁.clauses := by
+  exact ClauseStore.liveOccurrencesComplete_congr hsame.2.symm hocc
+
+private theorem liveOccurrencesComplete_withAddClause
+    {dqbf : DQBF} {cs : ClauseStore} {st : CheckState} {lits : Array Literal}
+    (hcorr : CheckState.Correct dqbf cs st)
+    (hocc : ClauseStore.LiveOccurrencesComplete st.clauses) :
+    ClauseStore.LiveOccurrencesComplete (st.clauses.addClause lits).1 := by
+  exact ClauseStore.liveOccurrencesComplete_addClause
+    hcorr.toSound.clauses_nonempty hocc lits
+
+private theorem liveOccurrencesComplete_withDeleteClause
+    {st : CheckState} {cref : CRef}
+    (hocc : ClauseStore.LiveOccurrencesComplete st.clauses) :
+    ClauseStore.LiveOccurrencesComplete (st.clauses.deleteClause cref) := by
+  exact ClauseStore.liveOccurrencesComplete_deleteClause hocc cref
+
+private theorem blocker_mem_getOcc_of_fullInv
+    {dqbf : DQBF} {cs : ClauseStore} {s : CheckState}
+    (hfull : FullInv dqbf cs s)
+    {cref : CRef} {c : Clause} {pivot : Literal}
+    (hget : s.clauses.getClause cref = some c)
+    (hblocker : pivot.negate ∈ c.lits.toList) :
+    cref ∈ s.clauses.getOcc pivot.negate := by
+  exact ClauseStore.mem_getOcc_of_liveOccurrencesComplete hfull.2 hget hblocker
+
 def DQRATE_exec_Condition (f : DQBF) (cs : ClauseStore)
     (lits : Array Literal) (pivot : Literal) : Prop :=
   f.isVarExistential pivot.var = true ∧
@@ -5485,6 +5636,31 @@ def DQRATE_exec_Condition (f : DQBF) (cs : ClauseStore)
     c.deleted = false →
     pivot.negate ∈ c.lits.toList →
     IsSemanticConsequence f cs (dqrateResolvent f lits c.lits pivot)
+
+private theorem dqrate_exec_condition_of_occ_semantic
+    (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot : Literal)
+    (hexi : f.isVarExistential pivot.var = true)
+    (hocc : ClauseStore.LiveOccurrencesComplete cs)
+    (hoccSem :
+      ∀ cref c,
+        cref ∈ cs.getOcc pivot.negate →
+        cs.getClauseRaw cref = some c →
+        c.deleted = false →
+        IsSemanticConsequence f cs (dqrateResolvent f lits c.lits pivot)) :
+    DQRATE_exec_Condition f cs lits pivot := by
+  refine ⟨hexi, ?_⟩
+  intro cref c hraw hdeleted hblocker
+  have hget : cs.getClause cref = some c := by
+    by_cases hne : cref = CRef_Undef
+    · subst hne
+      simp [ClauseStore.getClauseRaw] at hraw
+    · unfold ClauseStore.getClauseRaw at hraw
+      simp [hne] at hraw
+      unfold ClauseStore.getClause
+      simp [hne, hraw, hdeleted]
+  have hmemOcc : cref ∈ cs.getOcc pivot.negate :=
+    ClauseStore.mem_getOcc_of_liveOccurrencesComplete hocc hget hblocker
+  exact hoccSem cref c hmemOcc hraw hdeleted
 
 private theorem outerClause_true_of_exec_condition
     (f : DQBF) (cs : ClauseStore) (lits : Array Literal) (pivot : Literal)
@@ -5572,6 +5748,19 @@ private theorem getClauseRaw_deleted_of_getClause
       rcases hget' with ⟨hdeleted, hc⟩
       cases hc
       simp [ClauseStore.getClauseRaw, hne, hraw, hdeleted]
+
+private theorem getClause_of_getClauseRaw_not_deleted
+    {cs : ClauseStore} {cref : CRef} {c : Clause}
+    (hraw : cs.getClauseRaw cref = some c)
+    (hdeleted : c.deleted = false) :
+    cs.getClause cref = some c := by
+  by_cases hne : cref = CRef_Undef
+  · subst hne
+    simp [ClauseStore.getClauseRaw] at hraw
+  · unfold ClauseStore.getClauseRaw at hraw
+    simp [hne] at hraw
+    unfold ClauseStore.getClause
+    simp [hne, hraw, hdeleted]
 
 private theorem varValue_patchPivot_eq_of_ne
     (f : DQBF) (pivot : Literal) (σ₀ σ : UnivAssignment) (b : Bool)
@@ -7271,6 +7460,75 @@ private theorem backtrackBefore_nested_trial_restore_spec
   simp only [WP.wp, PredTrans.apply, EStateM.run, hrun]
   exact ⟨htrial', ⟨hformula', hclauses'⟩⟩
 
+private theorem backtrackBefore_nested_trial_consistent_restore_spec
+    (dqbf : DQBF) (cs : ClauseStore) (s₀ sOuter : CheckState)
+    (σ : UnivAssignment) (sk : SkolemAssignment) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s₀ ∧
+                  TrialState s₀ sOuter ∧
+                  CheckState.ConsistentWith sOuter.formula sOuter.clauses σ sk sOuter ∧
+                  NestedTrialState sOuter s⌝⦄
+    (backtrackBefore 2 : CheckM Unit)
+    ⦃⇓ _ s' => ⌜CheckState.ConsistentWith sOuter.formula sOuter.clauses σ sk s' ∧
+        TrialState s₀ s' ∧ SameFC sOuter s'⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hcorr₀, houter, hconOuter, hnested⟩
+  let sRest : CheckState :=
+    { s with
+      trail := s.trail.pop
+      isAssigned := (s.trail.getD 2 #[]).foldl clearAssigned s.isAssigned
+      propQueue := #[] }
+  have hclearLevels :
+      backtrackBefore.clearLevels 2 s.trail s.isAssigned =
+        (s.trail.pop, (s.trail.getD 2 #[]).foldl clearAssigned s.isAssigned) := by
+    rw [backtrackBefore.clearLevels.eq_def]
+    have hstop₀ : ¬ s.trail.size ≤ 2 := by
+      simpa [hnested.trail_three_levels]
+    rw [if_neg hstop₀]
+    rw [backtrackBefore.clearLevels.eq_def]
+    have hstop₁ : s.trail.pop.size ≤ 2 := by
+      simpa [hnested.trail_three_levels]
+    rw [if_pos hstop₁]
+    have hlast : s.trail.getD (s.trail.size - 1) #[] = s.trail.getD 2 #[] := by
+      simpa [hnested.trail_three_levels]
+    simp [hlast]
+    have hclearFun :
+        (fun acc (l : Literal) =>
+          if 0 < l.var then acc.setIfInBounds (l.var - 1) false else acc) = clearAssigned := by
+      funext acc l
+      simp [clearAssigned]
+    rw [hclearFun]
+  have hrunRest : backtrackBefore 2 s = .ok () sRest := by
+    simpa using
+      (show EStateM.run (backtrackBefore 2) s = .ok () sRest from by
+        simp [backtrackBefore, sRest, hclearLevels])
+  have hback := backtrackBefore_nested_trial_restore_spec dqbf cs s₀ sOuter s
+    ⟨hcorr₀, houter, hnested⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hback
+  rw [hrunRest] at hback
+  rcases hback with ⟨htrialRest, hsameRest⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run, hrunRest]
+  refine ⟨?_, htrialRest, hsameRest⟩
+  refine
+    { toSound := htrialRest.toSound
+      formula_eq := hsameRest.1
+      clauses_eq := hsameRest.2
+      clauses_wf := by simpa [hconOuter.formula_eq, hconOuter.clauses_eq] using hconOuter.clauses_wf
+      assigned_model := ?_
+      queue_model := ?_ }
+  · intro v hpos hassign
+    have hassignOuter : sOuter.isAssigned.getD (v - 1) false = true := by
+      exact (NestedTrialState.clearedAssigned_iff_outerAssigned houter hnested hpos).mp <| by
+        simpa [sRest] using hassign
+    have hmodelOuter := hconOuter.assigned_model v hpos hassignOuter
+    have hvalueOuter : sRest.value.getD (v - 1) false = sOuter.value.getD (v - 1) false := by
+      calc
+        sRest.value.getD (v - 1) false = s.value.getD (v - 1) false := by
+          simp [sRest]
+        _ = sOuter.value.getD (v - 1) false := hnested.outer_values_preserved v hpos hassignOuter
+    simpa [hvalueOuter] using hmodelOuter
+  · intro l hl
+    simp [sRest] at hl
+
 section NestedTrialProof
 
 private theorem enqueue_nested_trial_spec
@@ -8199,6 +8457,45 @@ private theorem checkDQRATEBlockerStep_trial_spec
                 · exact ⟨hcorr₀', htrial', hsameOuter'⟩
                 · exact ⟨hcorr₀', htrial', hsameOuter'⟩
 
+private theorem checkDQRATEBlockerStep_none_runDQRATEBlockerTrial_true
+    (pivot : Literal) {s s' : CheckState} {cref : CRef} {clause : Clause}
+    (hget : s.clauses.getClauseRaw cref = some clause)
+    (hdeleted : clause.deleted = false)
+    (hrun : checkDQRATEBlockerStep pivot none cref s = .ok none s') :
+    runDQRATEBlockerTrial pivot s.formula clause.lits s = .ok true s' := by
+  have hgetState : (get : CheckM CheckState) = EStateM.get := rfl
+  cases htrial : runDQRATEBlockerTrial pivot s.formula clause.lits s with
+  | error e s_err =>
+      simp [checkDQRATEBlockerStep, hgetState, hget, hdeleted, htrial,
+        Bind.bind, EStateM.bind, EStateM.get, EStateM.pure, Pure.pure] at hrun
+  | ok gotConflict s'' =>
+      cases hgc : gotConflict with
+      | false =>
+          simp [checkDQRATEBlockerStep, hgetState, hget, hdeleted, htrial, hgc,
+            Bind.bind, EStateM.bind, EStateM.get, EStateM.pure, Pure.pure] at hrun
+      | true =>
+          simp [checkDQRATEBlockerStep, hgetState, hget, hdeleted, htrial, hgc,
+            Bind.bind, EStateM.bind, EStateM.get, EStateM.pure, Pure.pure] at hrun
+          simpa [htrial, hgc] using hrun
+
+private theorem checkDQRATEBlockerFold_some_ne_none
+    (pivot : Literal) (blocker : CRef) :
+    ∀ (occs : List CRef) (s s' : CheckState),
+      (occs.foldlM (checkDQRATEBlockerStep pivot) (some blocker) : CheckM (Option CRef)) s ≠
+        .ok none s'
+  | [], s, s' => by
+      intro h
+      cases h
+  | cref :: occs, s, s' => by
+      have hgetState : (get : CheckM CheckState) = EStateM.get := rfl
+      intro h
+      have htail :
+          (occs.foldlM (checkDQRATEBlockerStep pivot) (some blocker) : CheckM (Option CRef)) s =
+            .ok none s' := by
+        simpa [List.foldlM, checkDQRATEBlockerStep, hgetState, Bind.bind, EStateM.bind,
+          EStateM.get, EStateM.pure, Pure.pure] using h
+      exact checkDQRATEBlockerFold_some_ne_none pivot blocker occs s s' htail
+
 private theorem checkDQRATEBlockerFold_trial_spec
     (dqbf : DQBF) (cs : ClauseStore) (s₀ sOuter : CheckState)
     (pivot : Literal) (occs : Array CRef) :
@@ -8224,6 +8521,167 @@ private theorem checkDQRATEBlockerFold_trial_spec
           (checkDQRATEBlockerStep_trial_spec
             (dqbf := dqbf) (cs := cs) (s₀ := s₀) (sOuter := sOuter)
             (pivot := pivot) (acc := acc) (cref := cref)))
+
+private theorem checkDQRATEBlockerFold_none_occ_semantic_list
+    (dqbf : DQBF) (cs : ClauseStore) (s₀ sOuter : CheckState)
+    (lits : Array Literal) (pivot : Literal) :
+    ∀ (occs : List CRef) (s s' : CheckState),
+      CheckState.Correct dqbf cs s₀ →
+      TrialState s₀ s →
+      SameFC sOuter s →
+      (occs.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s = .ok none s' →
+      (∀ {sMid sNext cref clause},
+          TrialState s₀ sMid →
+          SameFC sOuter sMid →
+          sMid.clauses.getClauseRaw cref = some clause →
+          clause.deleted = false →
+          runDQRATEBlockerTrial pivot sMid.formula clause.lits sMid = .ok true sNext →
+          IsSemanticConsequence sOuter.formula sOuter.clauses
+            (dqrateResolvent sOuter.formula lits clause.lits pivot)) →
+      ∀ cref clause,
+        cref ∈ occs →
+        sOuter.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        IsSemanticConsequence sOuter.formula sOuter.clauses
+          (dqrateResolvent sOuter.formula lits clause.lits pivot) := by
+  intro occs
+  induction occs with
+  | nil =>
+      intro s s' hcorr₀ htrial hsame hfold htrialSem cref clause hmem
+      simp at hmem
+  | cons cref occs ih =>
+      intro s s' hcorr₀ htrial hsame hfold htrialSem cref' clause hmem hget hdeleted
+      cases hstep : checkDQRATEBlockerStep pivot none cref s with
+      | error e s_err =>
+          have : False := by
+            simpa [List.foldlM, hstep, Bind.bind, EStateM.bind] using hfold
+          exact False.elim this
+      | ok acc s₁ =>
+          cases acc with
+          | some blocker =>
+              exact False.elim <| checkDQRATEBlockerFold_some_ne_none pivot blocker occs s₁ s' (by
+                simpa [List.foldlM, hstep, Bind.bind, EStateM.bind] using hfold)
+          | none =>
+              have htail :
+                  (occs.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s₁ =
+                    .ok none s' := by
+                simpa [List.foldlM, hstep, Bind.bind, EStateM.bind] using hfold
+              have hstep_post := checkDQRATEBlockerStep_trial_spec dqbf cs s₀ sOuter
+                pivot none cref s ⟨hcorr₀, htrial, hsame⟩
+              simp only [WP.wp, PredTrans.apply, EStateM.run] at hstep_post
+              rw [hstep] at hstep_post
+              rcases hstep_post with ⟨hcorr₁, htrial₁, hsame₁⟩
+              have hmem' : cref' = cref ∨ cref' ∈ occs := by
+                simpa using hmem
+              rcases hmem' with hhead | hmem_tail
+              · subst cref'
+                have hget_s :
+                    s.clauses.getClauseRaw cref = some clause := by
+                  simpa [hsame.2] using hget
+                have htrial_run :
+                    runDQRATEBlockerTrial pivot s.formula clause.lits s = .ok true s₁ := by
+                  exact checkDQRATEBlockerStep_none_runDQRATEBlockerTrial_true
+                    pivot hget_s hdeleted hstep
+                exact htrialSem htrial hsame hget_s hdeleted htrial_run
+              · exact ih s₁ s' hcorr₁ htrial₁ hsame₁ htail htrialSem cref' clause hmem_tail hget hdeleted
+
+private theorem checkDQRATEBlockerFold_none_occ_semantic
+    (dqbf : DQBF) (cs : ClauseStore) (s₀ sOuter s' : CheckState)
+    (lits : Array Literal) (pivot : Literal) (occs : Array CRef)
+    (hcorr₀ : CheckState.Correct dqbf cs s₀)
+    (htrial : TrialState s₀ sOuter)
+    (hfold :
+      (occs.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) sOuter = .ok none s')
+    (htrialSem :
+      ∀ {sMid sNext cref clause},
+        TrialState s₀ sMid →
+        SameFC sOuter sMid →
+        sMid.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        runDQRATEBlockerTrial pivot sMid.formula clause.lits sMid = .ok true sNext →
+        IsSemanticConsequence sOuter.formula sOuter.clauses
+          (dqrateResolvent sOuter.formula lits clause.lits pivot)) :
+    ∀ cref clause,
+      cref ∈ occs →
+      sOuter.clauses.getClauseRaw cref = some clause →
+      clause.deleted = false →
+      IsSemanticConsequence sOuter.formula sOuter.clauses
+        (dqrateResolvent sOuter.formula lits clause.lits pivot) := by
+  intro cref clause hmem hget hdeleted
+  exact checkDQRATEBlockerFold_none_occ_semantic_list
+    dqbf cs s₀ sOuter lits pivot occs.toList sOuter s'
+    hcorr₀ htrial (by exact ⟨rfl, rfl⟩) (by simpa using hfold)
+    htrialSem cref clause (Array.mem_toList_iff.mpr hmem) hget hdeleted
+
+private theorem runDQRATEPivotPhase_true_gives_exec_condition
+    (dqbf : DQBF) (cs : ClauseStore) (s₀ s s' : CheckState)
+    (lits : Array Literal) (pivot : Literal)
+    (hfull : FullInv dqbf cs s₀)
+    (htrial : TrialState s₀ s)
+    (hexi : s.formula.isVarExistential pivot.var = true)
+    (hrun : runDQRATEPivotPhase pivot s = .ok (true, none) s')
+    (htrialSem :
+      ∀ {sMid sNext cref clause},
+        TrialState s₀ sMid →
+        SameFC s sMid →
+        sMid.clauses.getClauseRaw cref = some clause →
+        clause.deleted = false →
+        runDQRATEBlockerTrial pivot sMid.formula clause.lits sMid = .ok true sNext →
+        IsSemanticConsequence s.formula s.clauses
+          (dqrateResolvent s.formula lits clause.lits pivot)) :
+    DQRATE_exec_Condition s.formula s.clauses lits pivot := by
+  have hget : (get : CheckM CheckState) = EStateM.get := rfl
+  let occPivot := s.clauses.getOcc pivot.negate
+  have hrun_expand :
+      runDQRATEPivotPhase pivot s =
+        match (occPivot.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s with
+        | .error e s' => .error e s'
+        | .ok blocker s₂ =>
+            match backtrackBefore 1 s₂ with
+            | .error e s' => .error e s'
+            | .ok _ s₃ =>
+                match blocker with
+                | some c => .ok (false, some c) s₃
+                | none => .ok (true, none) s₃ := by
+    cases hfold_run :
+        (occPivot.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s with
+    | error e s' =>
+        simp [runDQRATEPivotPhase, hget, occPivot, Bind.bind, EStateM.bind, EStateM.get,
+          EStateM.pure, Pure.pure, hfold_run]
+    | ok blocker s₂ =>
+        cases hback_run : backtrackBefore 1 s₂ with
+        | error e s' =>
+            simp [runDQRATEPivotPhase, hget, occPivot, Bind.bind, EStateM.bind, EStateM.get,
+              EStateM.pure, Pure.pure, hfold_run, hback_run]
+        | ok _ s₃ =>
+            cases blocker <;> simp [runDQRATEPivotPhase, hget, occPivot, Bind.bind,
+              EStateM.bind, EStateM.get, EStateM.pure, Pure.pure, hfold_run, hback_run]
+  rw [hrun_expand] at hrun
+  cases hfold_run :
+      (occPivot.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s with
+  | error e s_err =>
+      simp [hfold_run] at hrun
+  | ok blocker s₂ =>
+      cases hback_run : backtrackBefore 1 s₂ with
+      | error e s_err =>
+          simp [hfold_run, hback_run] at hrun
+      | ok _ s₃ =>
+          cases hblocker : blocker with
+          | some cref =>
+              simp [hfold_run, hback_run, hblocker] at hrun
+          | none =>
+              simp [hfold_run, hback_run, hblocker] at hrun
+              have hocc : ClauseStore.LiveOccurrencesComplete s.clauses :=
+                liveOccurrencesComplete_of_sameFC hfull.2 htrial.sameFC
+              have hfold_none :
+                  (occPivot.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s =
+                    .ok none s₂ := by
+                simpa [hblocker] using hfold_run
+              have hoccSem :=
+                checkDQRATEBlockerFold_none_occ_semantic dqbf cs s₀ s s₂ lits pivot occPivot
+                  hfull.1 htrial hfold_none htrialSem
+              exact dqrate_exec_condition_of_occ_semantic s.formula s.clauses lits pivot
+                hexi hocc hoccSem
 
 private theorem runDQRATEPivotPhase_restore_spec
     (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState)
@@ -8456,6 +8914,69 @@ private theorem runDQRATURatPhase_restore_spec
           rcases hback with ⟨hcorr₃, hsame₃⟩
           simp [hback_run]
           exact ⟨hcorr₃, clauseLitsWellFormed_of_sameFC hsame₃ hlits₀⟩
+
+private theorem runDQRATEPivotPhase_restore_sameFC_spec
+    (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState)
+    (pivot : Literal) (lits : Array Literal) :
+    ⦃fun s => ⌜CheckState.Correct dqbf cs s₀ ∧ TrialState s₀ s ∧
+                  ClauseLitsWellFormed s.formula lits⌝⦄
+    (runDQRATEPivotPhase pivot : CheckM (Bool × Option CRef))
+    ⦃⇓? _ s' => ⌜CheckState.Correct dqbf cs s' ∧ SameFC s₀ s' ∧
+        ClauseLitsWellFormed s'.formula lits⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hcorr₀, htrial, hlits⟩
+  have hget : (get : CheckM CheckState) = EStateM.get := rfl
+  let occPivot := s.clauses.getOcc pivot.negate
+  have hlits₀ : ClauseLitsWellFormed s₀.formula lits := by
+    simpa [htrial.sameFC.1] using hlits
+  have hrun :
+      runDQRATEPivotPhase pivot s =
+        match (occPivot.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s with
+        | .error e s' => .error e s'
+        | .ok blocker s₂ =>
+            match backtrackBefore 1 s₂ with
+            | .error e s' => .error e s'
+            | .ok _ s₃ =>
+                match blocker with
+                | some c => .ok (false, some c) s₃
+                | none => .ok (true, none) s₃ := by
+    cases hfold_run :
+        (occPivot.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s with
+    | error e s' =>
+        simp [runDQRATEPivotPhase, hget, occPivot, Bind.bind, EStateM.bind, EStateM.get,
+          EStateM.pure, Pure.pure, hfold_run]
+    | ok blocker s₂ =>
+        cases hback_run' : backtrackBefore 1 s₂ with
+        | error e s' =>
+            simp [runDQRATEPivotPhase, hget, occPivot, Bind.bind, EStateM.bind, EStateM.get,
+              EStateM.pure, Pure.pure, hfold_run, hback_run']
+        | ok _ s₃ =>
+            cases blocker <;> simp [runDQRATEPivotPhase, hget, occPivot, Bind.bind,
+              EStateM.bind, EStateM.get, EStateM.pure, Pure.pure, hfold_run, hback_run']
+  have hfold := checkDQRATEBlockerFold_trial_spec dqbf cs s₀ s pivot occPivot
+  specialize hfold s ⟨hcorr₀, htrial, ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hfold
+  simp only [WP.wp, PredTrans.apply, EStateM.run]
+  rw [hrun]
+  cases hfold_run :
+      (occPivot.foldlM (checkDQRATEBlockerStep pivot) none : CheckM (Option CRef)) s with
+  | error e s' =>
+      simp [hfold_run]
+  | ok blocker s₂ =>
+      rw [hfold_run] at hfold
+      rcases hfold with ⟨hcorr₂, htrial₂, _hsame₂⟩
+      cases hback_run : backtrackBefore 1 s₂ with
+      | error e s' =>
+          simp [hback_run]
+      | ok _ s₃ =>
+          have hback := backtrackBefore_trial_correct_spec dqbf cs s₀ s₂
+            ⟨hcorr₀, htrial₂⟩
+          simp only [WP.wp, PredTrans.apply, EStateM.run] at hback
+          rw [hback_run] at hback
+          rcases hback with ⟨hcorr₃, hsame₃⟩
+          cases blocker <;> simp [hback_run]
+          · exact ⟨hcorr₃, hsame₃, clauseLitsWellFormed_of_sameFC hsame₃ hlits₀⟩
+          · exact ⟨hcorr₃, hsame₃, clauseLitsWellFormed_of_sameFC hsame₃ hlits₀⟩
 
 private theorem runDQRATURatPhase_restore_sameFC_spec
     (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState)
@@ -9432,7 +9953,7 @@ theorem addClause_self_spec (lits : Array Literal) :
   have hcache :=
     invalidateDepCaches_correct_sameFC_spec s.formula s.clauses lits s s
       ⟨hcorr, ⟨rfl, rfl⟩⟩
-  simp only [WP.wp, PredTrans.apply, EStateM.run] at hcache ⊢
+  simp only [WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind] at hcache ⊢
   cases hrun : invalidateDepCaches lits s with
   | error e s' =>
       rw [hrun] at hcache
@@ -9446,6 +9967,79 @@ theorem addClause_self_spec (lits : Array Literal) :
             clauseLitsWellFormed_of_sameFC hsame' hlits⟩
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hafter
       simpa [Bind.bind, EStateM.bind, hrun] using hafter
+
+private theorem addClause_self_liveOccurrences_of_some
+    {s s' : CheckState} {lits : Array Literal} {cref : CRef}
+    (hcorr : CheckState.Correct s.formula s.clauses s)
+    (hlits : ClauseLitsWellFormed s.formula lits)
+    (hocc : ClauseStore.LiveOccurrencesComplete s.clauses)
+    (hrun : addClause lits s = .ok (some cref) s') :
+    ClauseStore.LiveOccurrencesComplete s'.clauses := by
+  unfold addClause at hrun
+  have hcache :=
+    invalidateDepCaches_correct_sameFC_spec s.formula s.clauses lits s s
+      ⟨hcorr, ⟨rfl, rfl⟩⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run, Bind.bind, EStateM.bind] at hcache
+  cases hcache_run : invalidateDepCaches lits s with
+  | error e s0 =>
+      rw [hcache_run] at hrun
+      simp at hrun
+  | ok _ s₁ =>
+      rw [hcache_run] at hcache
+      rcases hcache with ⟨hcorr₁, hsame₁⟩
+      have hocc₁ : ClauseStore.LiveOccurrencesComplete s₁.clauses :=
+        liveOccurrencesComplete_of_sameFC hocc hsame₁
+      let s_added : CheckState := { s₁ with clauses := (s₁.clauses.addClause lits).1 }
+      have hocc_added : ClauseStore.LiveOccurrencesComplete s_added.clauses := by
+        dsimp [s_added]
+        exact liveOccurrencesComplete_withAddClause hcorr₁ hocc₁
+      let unassigned := lits.filter fun l =>
+        let v := l.var
+        v > 0 && v <= s₁.formula.maxVar &&
+        !s₁.isAssigned.getD (v - 1) false
+      unfold addClauseAfterCache at hrun
+      by_cases hempty : lits.isEmpty = true
+      · simp [hempty] at hrun
+      · by_cases hsat : lits.any (fun l =>
+            let v := l.var
+            v > 0 && v <= s₁.formula.maxVar &&
+            s₁.isAssigned.getD (v - 1) false &&
+            (s₁.value.getD (v - 1) false == l.isPos)) = true
+        · simp [hempty, hsat, s_added] at hrun
+          cases hrun
+          simpa [s_added] using hocc_added
+        · by_cases hunempty : unassigned.isEmpty = true
+          · simp [unassigned, hempty, hsat, hunempty] at hrun
+          · by_cases hsize1 : unassigned.size = 1
+            · cases henq_run : enqueue (unassigned.getD 0 ⟨0⟩) s_added with
+              | error e s_enq =>
+                  simp [unassigned, hempty, hsat, hunempty, hsize1, henq_run] at hrun
+              | ok _ s_enq =>
+                  have henq_same := enqueue_sameFC_spec (unassigned.getD 0 ⟨0⟩) s_added
+                  specialize henq_same s_added ⟨rfl, rfl⟩
+                  simp only [WP.wp, PredTrans.apply, EStateM.run] at henq_same
+                  rw [henq_run] at henq_same
+                  cases hprop_run : propagate s_enq with
+                  | error e s₂ =>
+                      simp [unassigned, hempty, hsat, hunempty, hsize1, henq_run, hprop_run] at hrun
+                  | ok conflict s₂ =>
+                      have hprop_same := propagate_sameFC_spec s_added s_enq henq_same
+                      simp only [WP.wp, PredTrans.apply, EStateM.run] at hprop_same
+                      rw [hprop_run] at hprop_same
+                      cases conflict with
+                      | none =>
+                          simp [unassigned, hempty, hsat, hunempty, hsize1, henq_run, hprop_run] at hrun
+                          cases hrun
+                          exact liveOccurrencesComplete_of_sameFC hocc_added hprop_same
+                      | some conflict =>
+                          simp [unassigned, hempty, hsat, hunempty, hsize1, henq_run, hprop_run] at hrun
+            · simp [unassigned, hempty, hsat, hunempty, hsize1, s_added] at hrun
+              cases hrun
+              simpa [s_added] using hocc_added
+
+/-- Result-dependent occurrence-completeness postcondition for parser/matrix loading. -/
+def ReadMatrixOccPost (r : Bool) (s' : CheckState) : Prop :=
+  if r then True else ClauseStore.LiveOccurrencesComplete s'.clauses
 
 private theorem readMatrixM_sound_run
     (declaredMaxVar : Nat) (toks : Array String) :
@@ -9487,8 +10081,8 @@ private theorem readMatrixM_sound_run
               let isTauto :=
                 (List.range (if sorted.size > 0 then sorted.size - 1 else 0)).any fun i =>
                   sorted.getD i ⟨0⟩ == (sorted.getD (i + 1) ⟨0⟩).negate
-              by_cases hskip : !isTauto
-              · have hskip_prop :
+	              by_cases hskip : !isTauto
+	              · have hskip_prop :
                     ∀ (x : Nat),
                       x < (if 0 < (ClauseStore.sortLits curLits).size
                         then (ClauseStore.sortLits curLits).size - 1 else 0) →
@@ -9597,6 +10191,183 @@ private theorem readMatrixM_sound_run
                         simp [extVar, hlookup, EStateM.bind, EStateM.pure, hrec] at hrun'
                         simpa [ReadMatrixPost, hrun'.1, hrun'.2] using hpost
 
+private theorem readMatrixM_occ_run
+    (declaredMaxVar : Nat) (toks : Array String) :
+    ∀ n pos curLits s result s',
+      CheckState.Correct s.formula s.clauses s →
+      ClauseLitsWellFormed s.formula curLits →
+      ClauseStore.LiveOccurrencesComplete s.clauses →
+      toks.size - pos ≤ n →
+      readMatrixM declaredMaxVar toks pos curLits s = .ok result s' →
+      ReadMatrixOccPost result s' := by
+  intro n
+  induction n with
+  | zero =>
+      intro pos curLits s result s' hcorr hcur hocc hmeasure hrun
+      have hpos : pos ≥ toks.size := by omega
+      rw [readMatrixM.eq_def, if_pos hpos] at hrun
+      simp [Pure.pure, EStateM.pure, ReadMatrixOccPost] at hrun
+      rcases hrun with ⟨rfl, rfl⟩
+      change ClauseStore.LiveOccurrencesComplete s.clauses
+      exact hocc
+  | succ n ih =>
+      intro pos curLits s result s' hcorr hcur hocc hmeasure hrun
+      rw [readMatrixM.eq_def] at hrun
+      by_cases hpos : pos ≥ toks.size
+      · rw [if_pos hpos] at hrun
+        simp [Pure.pure, EStateM.pure, ReadMatrixOccPost] at hrun
+        rcases hrun with ⟨rfl, rfl⟩
+        change ClauseStore.LiveOccurrencesComplete s.clauses
+        exact hocc
+      · rw [if_neg hpos] at hrun
+        cases htok : (toks.getD pos "").toInt? with
+        | none =>
+            rw [htok] at hrun
+            have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
+            exact ih (pos + 1) curLits s result s' hcorr hcur hocc hmeasure' hrun
+        | some lit =>
+            by_cases hzero : lit = 0
+            · rw [htok, hzero] at hrun
+              simp at hrun
+              let sorted := ClauseStore.sortLits curLits
+              have hsorted : ClauseLitsWellFormed s.formula sorted := by
+                dsimp [sorted]
+                exact ClauseLitsWellFormed.sortLits hcur
+              let isTauto :=
+                (List.range (if sorted.size > 0 then sorted.size - 1 else 0)).any fun i =>
+                  sorted.getD i ⟨0⟩ == (sorted.getD (i + 1) ⟨0⟩).negate
+              by_cases hskip : !isTauto
+              · have hskip_prop :
+                    ∀ (x : Nat),
+                      x < (if 0 < (ClauseStore.sortLits curLits).size
+                        then (ClauseStore.sortLits curLits).size - 1 else 0) →
+                        ¬(ClauseStore.sortLits curLits)[x]?.getD { x := 0 } =
+                          ((ClauseStore.sortLits curLits)[x + 1]?.getD { x := 0 }).negate := by
+                    simpa [sorted, isTauto] using hskip
+                rw [if_pos hskip_prop] at hrun
+                simp [Bind.bind, EStateM.bind] at hrun
+	                have haddcorr := addClause_self_spec sorted s ⟨hcorr, hsorted⟩
+	                simp only [WP.wp, PredTrans.apply, EStateM.run] at haddcorr
+	                cases hadd : addClause sorted s with
+                | error e s1 =>
+                    have hadd' : addClause (ClauseStore.sortLits curLits) s = .error e s1 := by
+                      simpa [sorted] using hadd
+                    rw [hadd'] at hrun
+                    simp at hrun
+                | ok r s1 =>
+                    have hadd' : addClause (ClauseStore.sortLits curLits) s = .ok r s1 := by
+                      simpa [sorted] using hadd
+                    rw [hadd'] at hrun
+                    rw [hadd'] at haddcorr
+                    rw [hadd'] at haddocc
+                    cases hr : r with
+	                    | none =>
+	                        rw [hr] at hrun
+	                        simp [Bind.bind, EStateM.bind, Pure.pure, EStateM.pure,
+	                          ReadMatrixOccPost] at hrun ⊢
+	                        intro hfalse
+	                        cases hrun.1.symm.trans hfalse
+	                    | some cref =>
+	                        have hcorr1 : CheckState.Correct s1.formula s1.clauses s1 := by
+	                          simpa [hr] using haddcorr
+	                        have hocc1 : ClauseStore.LiveOccurrencesComplete s1.clauses := by
+	                          exact addClause_self_liveOccurrences_of_some hcorr hsorted hocc (by
+	                            simpa [hr] using hadd)
+	                        rw [hr] at hrun
+                        cases hrec : readMatrixM declaredMaxVar toks (pos + 1) #[] s1 with
+                        | error e s2 =>
+                            simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
+                            rw [hrec] at hrun
+                            simp at hrun
+                        | ok r2 s2 =>
+                            have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
+                            have hpost :=
+                              ih (pos + 1) #[] s1 r2 s2 hcorr1
+                                (by intro l hl; simp at hl)
+                                hocc1 hmeasure' hrec
+                            simp [Bind.bind, EStateM.bind, EStateM.pure, Pure.pure] at hrun
+                            rw [hrec] at hrun
+                            rcases hrun with ⟨rfl, rfl⟩
+                            exact hpost
+              · have hskip_prop :
+                    ¬ ∀ (x : Nat),
+                      x < (if 0 < (ClauseStore.sortLits curLits).size
+                        then (ClauseStore.sortLits curLits).size - 1 else 0) →
+                        ¬(ClauseStore.sortLits curLits)[x]?.getD { x := 0 } =
+                          ((ClauseStore.sortLits curLits)[x + 1]?.getD { x := 0 }).negate := by
+                    simpa [sorted, isTauto] using hskip
+                rw [if_neg hskip_prop] at hrun
+                cases hrec : readMatrixM declaredMaxVar toks (pos + 1) #[] s with
+                | error e s1 =>
+                    rw [hrec] at hrun
+                    simp at hrun
+                | ok r1 s1 =>
+                    have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
+                    have hpost :=
+                      ih (pos + 1) #[] s r1 s1 hcorr
+                        (by intro l hl; simp at hl)
+                        hocc hmeasure' hrec
+                    rw [hrec] at hrun
+                    injection hrun with hres hs
+                    subst hres hs
+                    exact hpost
+            · have hrun' := hrun
+              rw [htok] at hrun'
+              let extVar := lit.natAbs
+              by_cases hgt : extVar > declaredMaxVar
+              · simp [extVar, ensureWithinMaxVar, hgt, Bind.bind, EStateM.bind,
+                  throw, throwThe, MonadExceptOf.throw, EStateM.throw] at hrun'
+              · have hlt : ¬ declaredMaxVar < extVar := by simpa [extVar] using hgt
+                simp [extVar, ensureWithinMaxVar, hlt, Bind.bind, EStateM.bind] at hrun'
+                simp [Pure.pure, EStateM.pure] at hrun'
+                rw [getFormula_run] at hrun'
+                cases hlookup : s.formula.lookupInternal extVar with
+                | none =>
+                    simp [extVar, hlookup, EStateM.bind, throw, throwThe,
+                      MonadExceptOf.throw, EStateM.throw] at hrun'
+                | some iv =>
+                    rcases hcorr.lookupInternal_sound extVar iv hlookup with ⟨hposv, hlev⟩
+                    have hmk : (mkLit iv (lit > 0)).var = iv := by
+                      unfold Literal.var mkLit
+                      by_cases hsign : lit > 0
+                      · simp [hsign]
+                        rw [Nat.add_comm (iv * 2) 1]
+                        rw [Nat.add_mul_div_right 1 iv (by decide)]
+                        simp
+                      · simp [hsign]
+                    cases hrec : readMatrixM declaredMaxVar toks (pos + 1)
+                        (curLits.push (mkLit iv (lit > 0))) s with
+                    | error e s1 =>
+                        simp [extVar, hlookup, EStateM.bind, EStateM.pure, hrec] at hrun'
+                    | ok r1 s1 =>
+                        have hmeasure' : toks.size - (pos + 1) ≤ n := by omega
+                        have hcur1 : ClauseLitsWellFormed s.formula
+                            (curLits.push (mkLit iv (lit > 0))) := by
+                          apply ClauseLitsWellFormed.push hcur
+                          simpa [hmk] using (show 0 < iv ∧ iv ≤ s.formula.maxVar from ⟨hposv, hlev⟩)
+                        have hpost :=
+                          ih (pos + 1) (curLits.push (mkLit iv (lit > 0))) s r1 s1
+                            hcorr hcur1 hocc hmeasure' hrec
+                        simp [extVar, hlookup, EStateM.bind, EStateM.pure, hrec] at hrun'
+                        simpa [ReadMatrixOccPost, hrun'.1, hrun'.2] using hpost
+
+theorem readMatrixM_occ_spec
+    (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) (curLits : Array Literal) :
+    ⦃fun s =>
+      ⌜CheckState.Correct s.formula s.clauses s ∧
+       ClauseLitsWellFormed s.formula curLits ∧
+       ClauseStore.LiveOccurrencesComplete s.clauses⌝⦄
+    (readMatrixM declaredMaxVar toks pos curLits : CheckM Bool)
+    ⦃⇓? r s' => ⌜ReadMatrixOccPost r s'⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨hcorr, hcur, hocc⟩
+  simp only [WP.wp, PredTrans.apply, EStateM.run]
+  cases hrun : readMatrixM declaredMaxVar toks pos curLits s with
+  | error e s' => simp
+  | ok result s' =>
+      exact readMatrixM_occ_run declaredMaxVar toks
+        (toks.size - pos) pos curLits s result s' hcorr hcur hocc (by omega) hrun
+
 theorem readMatrixM_sound_spec
     (declaredMaxVar : Nat) (toks : Array String) (pos : Nat) (curLits : Array Literal) :
     ⦃fun s =>
@@ -9635,6 +10406,31 @@ theorem parseDQDIMACSInner_prefix_sound_spec
       simp only [WP.wp, PredTrans.apply, EStateM.run] at hmatrix
       simpa [Bind.bind, EStateM.bind, hpre] using hmatrix
 
+theorem parseDQDIMACSInner_prefix_occ_spec
+    (declaredMaxVar : Nat) (allToks : Array String) :
+    ⦃fun s => ⌜PrefixState s⌝⦄
+    (parseDQDIMACSInner declaredMaxVar allToks : CheckM Bool)
+    ⦃⇓? r s' => ⌜ReadMatrixOccPost r s'⌝⦄ := by
+  intro s hpref
+  simp only [WP.wp, PredTrans.apply, EStateM.run, parseDQDIMACSInner]
+  have hprefix := readPrefixM_prefix_spec declaredMaxVar allToks 4 #[] s hpref
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hprefix
+  cases hpre : readPrefixM declaredMaxVar allToks 4 #[] s with
+  | error e s1 =>
+      simp [Bind.bind, EStateM.bind, hpre]
+  | ok prefixResult s1 =>
+      rw [hpre] at hprefix
+      have hpref1 : PrefixState s1 := hprefix
+      have hocc1 : ClauseStore.LiveOccurrencesComplete s1.clauses := by
+        rw [hpref1.2.1]
+        exact ClauseStore.liveOccurrencesComplete_empty
+      rcases prefixResult with ⟨matrixStart, _univs⟩
+      have hmatrix :=
+        readMatrixM_occ_spec declaredMaxVar allToks matrixStart #[] s1
+          ⟨PrefixState.toMatrixCorrect hpref1, by simpa [ClauseLitsWellFormed], hocc1⟩
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at hmatrix
+      simpa [Bind.bind, EStateM.bind, hpre] using hmatrix
+
 theorem parseDQDIMACSInner_sound
     (declaredMaxVar : Nat) (allToks : Array String) (result : Bool) (st : CheckState)
     (h : parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok result st) :
@@ -9645,6 +10441,28 @@ theorem parseDQDIMACSInner_sound
   simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
   rw [h] at hspec
   exact hspec
+
+theorem parseDQDIMACSInner_occ
+    (declaredMaxVar : Nat) (allToks : Array String) (result : Bool) (st : CheckState)
+    (h : parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok result st) :
+    ReadMatrixOccPost result st := by
+  have hspec :=
+    parseDQDIMACSInner_prefix_occ_spec declaredMaxVar allToks
+      CheckState.empty PrefixState.empty
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
+  rw [h] at hspec
+  exact hspec
+
+theorem parseDQDIMACSInner_liveOccurrences
+    (declaredMaxVar : Nat) (allToks : Array String) (st : CheckState)
+    (h : parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok false st) :
+    ClauseStore.LiveOccurrencesComplete st.clauses := by
+  have hspec :=
+    parseDQDIMACSInner_prefix_occ_spec declaredMaxVar allToks
+      CheckState.empty PrefixState.empty
+  simp only [WP.wp, PredTrans.apply, EStateM.run] at hspec
+  rw [h] at hspec
+  simpa [ClauseStore.LiveOccurrencesComplete, ReadMatrixOccPost] using hspec
 
 theorem parseDQDIMACSTokensAfterHeader_correct
     (declaredMaxVar : Nat) (allToks : Array String) (st : CheckState)
@@ -9667,6 +10485,27 @@ theorem parseDQDIMACSTokensAfterHeader_correct
             simpa [EStateM.run] using hinner
           have hsound := parseDQDIMACSInner_sound declaredMaxVar allToks false s0 hinner'
           simpa [ReadMatrixPost] using hsound
+
+theorem parseDQDIMACSTokensAfterHeader_liveOccurrences
+    (declaredMaxVar : Nat) (allToks : Array String) (st : CheckState)
+    (h : parseDQDIMACSTokensAfterHeader declaredMaxVar allToks = .ok (some st)) :
+    ClauseStore.LiveOccurrencesComplete st.clauses := by
+  unfold parseDQDIMACSTokensAfterHeader at h
+  cases hinner : (parseDQDIMACSInner declaredMaxVar allToks).run CheckState.empty with
+  | error e s0 =>
+      simp [hinner] at h
+  | ok result s0 =>
+      cases hpost : result with
+      | true =>
+          simp [hinner, hpost] at h
+      | false =>
+          subst hpost
+          simp [hinner] at h
+          subst h
+          have hinner' :
+              parseDQDIMACSInner declaredMaxVar allToks CheckState.empty = .ok false s0 := by
+            simpa [EStateM.run] using hinner
+          exact parseDQDIMACSInner_liveOccurrences declaredMaxVar allToks s0 hinner'
 
 theorem parseDQDIMACSTokens_correct
     (allToks : Array String) (st : CheckState)
@@ -9714,6 +10553,52 @@ theorem parseDQDIMACSTokens_correct
       simpa [Except.bind] using h
     exact False.elim this
 
+theorem parseDQDIMACSTokens_liveOccurrences
+    (allToks : Array String) (st : CheckState)
+    (h : parseDQDIMACSTokens allToks = .ok (some st)) :
+    ClauseStore.LiveOccurrencesComplete st.clauses := by
+  unfold parseDQDIMACSTokens at h
+  by_cases hp : allToks.getD 0 "" = "p"
+  · by_cases hcnf : allToks.getD 1 "" = "cnf"
+    · simp [hp, hcnf, Bind.bind] at h
+      cases hmax : (allToks.getD 2 "").toNat? with
+      | none =>
+          have hmax' : (allToks[2]?.getD "").toNat? = none := by
+            simpa using hmax
+          simp [hmax', Bind.bind] at h
+          have h' := h
+          simp at h'
+          cases h'
+      | some declaredMaxVar =>
+          have hmax' : (allToks[2]?.getD "").toNat? = some declaredMaxVar := by
+            simpa using hmax
+          simp [hmax', Bind.bind] at h
+          cases hclauses : (allToks.getD 3 "").toNat? with
+          | none =>
+              have hclauses' : (allToks[3]?.getD "").toNat? = none := by
+                simpa using hclauses
+              simp [hclauses', Bind.bind] at h
+              have h' := h
+              simp at h'
+              cases h'
+          | some declaredNumClauses =>
+              have hclauses' : (allToks[3]?.getD "").toNat? = some declaredNumClauses := by
+                simpa using hclauses
+              simp [hclauses', Bind.bind] at h
+              exact parseDQDIMACSTokensAfterHeader_liveOccurrences declaredMaxVar allToks st h
+    · have hcnf' : ¬allToks[1]?.getD "" = "cnf" := by
+        simpa using hcnf
+      simp [hp, hcnf', Bind.bind] at h
+      have : False := by
+        simpa [Except.bind] using h
+      exact False.elim this
+  · have hp' : ¬allToks[0]?.getD "" = "p" := by
+      simpa using hp
+    simp [hp', Bind.bind] at h
+    have : False := by
+      simpa [Except.bind] using h
+    exact False.elim this
+
 /-- The `CheckState` returned by `parseDQDIMACS` satisfies `Correct` with
     respect to its own formula and clauses whenever parsing succeeds without
     parse-time contradiction. -/
@@ -9728,6 +10613,23 @@ theorem parseDQDIMACS_correct (content : String) (st : CheckState)
   | ok header =>
       simp [hstruct] at h
       exact parseDQDIMACSTokens_correct (tokenize (stripCommentLines content)) st h
+
+theorem parseDQDIMACS_liveOccurrences (content : String) (st : CheckState)
+    (h : parseDQDIMACS content = .ok (some st)) :
+    ClauseStore.LiveOccurrencesComplete st.clauses := by
+  unfold parseDQDIMACS at h
+  cases hstruct : validateDQDIMACSStructure content with
+  | error e =>
+      simp [hstruct] at h
+      cases h
+  | ok header =>
+      simp [hstruct] at h
+      exact parseDQDIMACSTokens_liveOccurrences (tokenize (stripCommentLines content)) st h
+
+theorem parseDQDIMACS_fullInv (content : String) (st : CheckState)
+    (h : parseDQDIMACS content = .ok (some st)) :
+    FullInv st.formula st.clauses st := by
+  exact ⟨parseDQDIMACS_correct content st h, parseDQDIMACS_liveOccurrences content st h⟩
 
 /-- **Improved main soundness theorem**:
     if `processProof` verifies a proof, the input formula is unsatisfiable. -/
@@ -10193,6 +11095,133 @@ private theorem checkDQRATE_restore_spec
                         (which := fun _ => true) hcorr hlits htrial hback_run
               | true =>
                   have hrat := runDQRATEPivotPhase_restore_spec dqbf cs s
+                    (lits[0]?.getD ({ x := 0 } : Literal)) lits s₁
+                    ⟨hcorr, htrial, hlits₁⟩
+                  simp only [WP.wp, PredTrans.apply, EStateM.run] at hrat
+                  simpa [hisRup, hempty, hexi] using hrat
+
+private theorem checkDQRATE_restore_sameFC_spec
+    (dqbf : DQBF) (cs : ClauseStore) (s₀ : CheckState) (lits : Array Literal) :
+    ⦃fun s => ⌜s = s₀ ∧ CheckState.Correct dqbf cs s₀ ∧
+                  ClauseLitsWellFormed s.formula lits⌝⦄
+    checkDQRATE lits
+    ⦃⇓? _ s' => ⌜CheckState.Correct dqbf cs s' ∧ SameFC s₀ s' ∧
+        ClauseLitsWellFormed s'.formula lits⌝⦄ := by
+  intro s hs
+  rcases hs with ⟨rfl, hcorr, hlits⟩
+  have hget : (get : CheckM CheckState) = EStateM.get := rfl
+  have hrun :
+      checkDQRATE lits s =
+        match negateAndPropagate lits (fun _ => true) s with
+        | .error e s' => .error e s'
+        | .ok isRup s₁ =>
+            if isRup then
+              match backtrackBefore 1 s₁ with
+              | .error e s₂ => .error e s₂
+              | .ok _ s₂ => .ok (true, none) s₂
+            else if lits.isEmpty then
+              match backtrackBefore 1 s₁ with
+              | .error e s₂ => .error e s₂
+              | .ok _ s₂ => .ok (false, none) s₂
+            else
+              if !s₁.formula.isVarExistential (lits[0]?.getD ({ x := 0 } : Literal)).var then
+                match backtrackBefore 1 s₁ with
+                | .error e s₂ => .error e s₂
+                | .ok _ s₂ => .ok (false, none) s₂
+              else
+                runDQRATEPivotPhase (lits[0]?.getD ({ x := 0 } : Literal)) s₁ := by
+    unfold checkDQRATE
+    cases hneg : negateAndPropagate lits (fun _ => true) s with
+    | error e s' =>
+        simp [Bind.bind, EStateM.bind, hneg]
+    | ok isRup s₁ =>
+        cases hisRup : isRup with
+        | true =>
+            cases hback_run : backtrackBefore 1 s₁ with
+            | error e s₂ =>
+                simp [Bind.bind, EStateM.bind, hneg, hisRup, hback_run, Pure.pure, EStateM.pure]
+            | ok _ s₂ =>
+                simp [Bind.bind, EStateM.bind, hneg, hisRup, hback_run, Pure.pure, EStateM.pure]
+        | false =>
+            cases hempty : lits.isEmpty with
+            | true =>
+                cases hback_run : backtrackBefore 1 s₁ with
+                | error e s₂ =>
+                    simp [Bind.bind, EStateM.bind, hneg, hisRup, hempty, hback_run,
+                      Pure.pure, EStateM.pure]
+                | ok _ s₂ =>
+                    simp [Bind.bind, EStateM.bind, hneg, hisRup, hempty, hback_run,
+                      Pure.pure, EStateM.pure]
+            | false =>
+                cases hexi : s₁.formula.isVarExistential
+                    (lits[0]?.getD ({ x := 0 } : Literal)).var with
+                | false =>
+                    cases hback_run : backtrackBefore 1 s₁ with
+                    | error e s₂ =>
+                        simp [Bind.bind, EStateM.bind, hneg, hisRup, hempty, hexi,
+                          hback_run, hget, EStateM.get, Pure.pure, EStateM.pure]
+                    | ok _ s₂ =>
+                        simp [Bind.bind, EStateM.bind, hneg, hisRup, hempty, hexi,
+                          hback_run, hget, EStateM.get, Pure.pure, EStateM.pure]
+                | true =>
+                    simp [runDQRATEPivotPhase, Bind.bind, EStateM.bind, hneg, hisRup, hempty,
+                      hexi, hget, EStateM.get, Pure.pure, EStateM.pure]
+  simp only [WP.wp, PredTrans.apply, EStateM.run]
+  rw [hrun]
+  cases hneg_run : negateAndPropagate lits (fun _ => true) s with
+  | error e s' =>
+      simp [hneg_run]
+  | ok isRup s₁ =>
+      have htrial := negateAndPropagate_trial_spec dqbf cs s lits (fun _ => true) s
+        ⟨rfl, hcorr⟩
+      simp only [WP.wp, PredTrans.apply, EStateM.run] at htrial
+      rw [hneg_run] at htrial
+      cases hisRup : isRup with
+      | true =>
+          cases hback_run : backtrackBefore 1 s₁ with
+          | error e s' =>
+              simp [hisRup, hback_run]
+          | ok _ s₂ =>
+              have hback := backtrackBefore_trial_correct_spec dqbf cs s s₁
+                ⟨hcorr, htrial⟩
+              simp only [WP.wp, PredTrans.apply, EStateM.run] at hback
+              rw [hback_run] at hback
+              rcases hback with ⟨hcorr₂, hsame₂⟩
+              simp [hisRup, hback_run]
+              exact ⟨hcorr₂, hsame₂, clauseLitsWellFormed_of_sameFC hsame₂ hlits⟩
+      | false =>
+          cases hempty : lits.isEmpty with
+          | true =>
+              cases hback_run : backtrackBefore 1 s₁ with
+              | error e s' =>
+                  simp [hisRup, hempty, hback_run]
+              | ok _ s₂ =>
+                  have hback := backtrackBefore_trial_correct_spec dqbf cs s s₁
+                    ⟨hcorr, htrial⟩
+                  simp only [WP.wp, PredTrans.apply, EStateM.run] at hback
+                  rw [hback_run] at hback
+                  rcases hback with ⟨hcorr₂, hsame₂⟩
+                  simp [hisRup, hempty, hback_run]
+                  exact ⟨hcorr₂, hsame₂, clauseLitsWellFormed_of_sameFC hsame₂ hlits⟩
+          | false =>
+              have hlits₁ : ClauseLitsWellFormed s₁.formula lits :=
+                clauseLitsWellFormed_of_sameFC htrial.sameFC hlits
+              cases hexi : s₁.formula.isVarExistential
+                  (lits[0]?.getD ({ x := 0 } : Literal)).var with
+              | false =>
+                  cases hback_run : backtrackBefore 1 s₁ with
+                  | error e s' =>
+                      simpa [hisRup, hempty, hexi, hback_run]
+                  | ok _ s₂ =>
+                      have hback := backtrackBefore_trial_correct_spec dqbf cs s s₁
+                        ⟨hcorr, htrial⟩
+                      simp only [WP.wp, PredTrans.apply, EStateM.run] at hback
+                      rw [hback_run] at hback
+                      rcases hback with ⟨hcorr₂, hsame₂⟩
+                      simp [hisRup, hempty, hexi, hback_run]
+                      exact ⟨hcorr₂, hsame₂, clauseLitsWellFormed_of_sameFC hsame₂ hlits⟩
+              | true =>
+                  have hrat := runDQRATEPivotPhase_restore_sameFC_spec dqbf cs s
                     (lits[0]?.getD ({ x := 0 } : Literal)) lits s₁
                     ⟨hcorr, htrial, hlits₁⟩
                   simp only [WP.wp, PredTrans.apply, EStateM.run] at hrat
